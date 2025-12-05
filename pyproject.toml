@@ -1,0 +1,14 @@
+[project]
+name = "mlir-test"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mlir",
+    "mlir-native-tools",
+    "mlir-python-bindings",
+]
+
+[tool.uv]
+find-links = ["https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"]
