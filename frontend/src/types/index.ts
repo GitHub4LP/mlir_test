@@ -1,6 +1,6 @@
-// MLIR Blueprint Editor Type Definitions
+// MLIR 蓝图编辑器类型定义
 
-// Dialect and Operation Types
+// 方言与操作类型
 export interface DialectInfo {
   name: string;
   operations: OperationDef[];
@@ -14,7 +14,7 @@ export interface OperationDef {
   description: string;
   arguments: ArgumentDef[]; // operands + attributes
   results: ResultDef[];
-  regions: RegionDef[];     // Regions for control flow operations
+  regions: RegionDef[];     // 控制流 region
   traits: string[];
   assemblyFormat: string;
   // Derived properties for node rendering
@@ -24,7 +24,7 @@ export interface OperationDef {
 }
 
 /**
- * Enum option with all fields from TableGen.
+ * 枚举选项（来自 TableGen）
  * - str: MLIR IR 显示值，如 "oeq"
  * - symbol: Python 枚举成员名，如 "OEQ"（用于保存到图文件）
  * - value: 整数值，用于 Operation.create
@@ -52,12 +52,11 @@ export interface ArgumentDef {
   displayName: string;      // Human-readable type name (e.g., "Index", "AnyFloat")
   description: string;      // Detailed description for tooltip
   isOptional: boolean;
-  isVariadic: boolean;      // True if this is a variadic argument
-  /** 数量约束（派生自 isOptional/isVariadic） */
-  quantity?: PortQuantity;
-  enumOptions?: EnumOption[];  // Enum options with str, symbol, value
-  defaultValue?: string;    // Default value for attribute (if any)
-  allowedTypes?: string[];  // 如果是 AnyTypeOf，允许的具体类型列表
+  isVariadic: boolean;      // 是否可变参数
+  quantity?: PortQuantity;  // 数量约束
+  enumOptions?: EnumOption[];
+  defaultValue?: string;    // 默认值
+  allowedTypes?: string[];  // AnyTypeOf 允许的类型列表
 }
 
 export interface ResultDef {
@@ -91,15 +90,13 @@ export interface RegionDef {
   hasYieldInputs: boolean;
 }
 
-/**
- * Operation classification for automatic node rendering
- */
+/** 操作分类（用于节点渲染） */
 export interface OperationClassification {
   hasRegions: boolean;      // True if operation has regions (control flow)
   isTerminator: boolean;    // True if operation is a terminator (yield, return)
 }
 
-// Type System Types
+// 类型系统
 export interface TypeConstraint {
   name: string;
   summary: string;
@@ -107,23 +104,19 @@ export interface TypeConstraint {
   isAbstract: boolean;
 }
 
-// Forward declaration for RegionPinConfig (defined in operationClassifier.ts)
-// Re-exported here for convenience
+// 前向声明（定义在 operationClassifier.ts）
 export interface RegionPinConfig {
   regionName: string;
   blockArgOutputs: DataPin[];
   hasYieldInputs: boolean;
 }
 
-// Node Types
+// 节点类型
 
-/**
- * Stored format for BlueprintNodeData (used in JSON files)
- * Does NOT include the full operation definition - only the fullName reference
- */
+/** 存储格式的 BlueprintNodeData（只存 fullName 引用） */
 export interface StoredBlueprintNodeData {
   [key: string]: unknown;
-  /** Operation identifier (e.g., "arith.addi") - used to look up OperationDef */
+  /** 操作标识符，如 "arith.addi" */
   fullName: string;
   /** User-set attribute values in MLIR attribute string format */
   attributes: Record<string, string>;
@@ -131,17 +124,14 @@ export interface StoredBlueprintNodeData {
   inputTypes: Record<string, string>;
   /** User-selected concrete types for output ports */
   outputTypes: Record<string, string>;
-  /** Variadic 端口的实例数量 */
+  /** Variadic 端口实例数 */
   variadicCounts?: Record<string, number>;
   execIn?: ExecPin;
   execOuts: ExecPin[];
   regionPins: RegionPinConfig[];
 }
 
-/**
- * Runtime format for BlueprintNodeData (used in memory)
- * Includes the full operation definition loaded from dialectStore
- */
+/** 运行时格式的 BlueprintNodeData（包含完整 OperationDef） */
 export interface BlueprintNodeData {
   [key: string]: unknown;
   operation: OperationDef;
@@ -187,19 +177,13 @@ export interface PortConfig {
   color: string;
 }
 
-/**
- * Execution pin configuration for control flow (UE5-style)
- * Execution pins are white triangular connectors that define execution order
- * All execution pin arrows point RIGHT (direction of execution flow)
- */
+/** 执行引脚（UE5 风格白色三角连接器，定义执行顺序） */
 export interface ExecPin {
   id: string;
   label: string;  // Empty string = no label (default exec pin)
 }
 
-/**
- * Data pin configuration
- */
+/** 数据引脚 */
 export interface DataPin {
   id: string;
   label: string;
@@ -216,25 +200,13 @@ export interface DataPin {
   variadicIndex?: number;
 }
 
-/**
- * Unified pin row for rendering
- * Each row can have a left pin (input) and/or right pin (output)
- */
+/** 统一引脚行（左输入/右输出） */
 export interface PinRow {
-  left?: {
-    type: 'exec' | 'data';
-    pin: ExecPin | DataPin;
-  };
-  right?: {
-    type: 'exec' | 'data';
-    pin: ExecPin | DataPin;
-  };
+  left?: { type: 'exec' | 'data'; pin: ExecPin | DataPin };
+  right?: { type: 'exec' | 'data'; pin: ExecPin | DataPin };
 }
 
-
-
-
-// Function Types
+// 函数类型
 
 /**
  * 函数级别的 Trait，描述参数/返回值之间的类型关系

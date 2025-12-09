@@ -1,21 +1,16 @@
 /**
- * Operation Classifier Service
+ * 操作分类服务
  * 
- * Automatically classifies MLIR operations and generates appropriate
- * execution pin configurations based on operation metadata.
+ * 根据操作元数据自动分类 MLIR 操作，生成执行引脚配置。
  * 
- * This enables programmatic, batch processing of all MLIR operations
- * to generate correct UE5-style blueprint nodes.
+ * 分类规则：
+ * 1. 有 region 的操作 → 多个 exec 输出（每个 region 一个）
+ * 2. Terminator 操作 → 无 exec 输出
+ * 3. 普通操作 → exec-in + exec-out
  * 
- * Classification rules:
- * 1. Operations with regions -> multiple exec outputs (one per region)
- * 2. Terminator operations -> no exec output (they end a region)
- * 3. Regular operations -> single exec-in and exec-out
- * 
- * Region visualization model:
- * - Region block args -> OUTPUT pins (data flows INTO the region subgraph)
- * - Region yield values -> INPUT pins (data flows FROM the region subgraph)
- * - This creates a "pure function subgraph" pattern for regions
+ * Region 数据流模型：
+ * - Block args → OUTPUT 引脚（数据流入 region 子图）
+ * - Yield 值 → INPUT 引脚（数据从 region 子图返回）
  */
 
 import type { OperationDef, ExecPin, RegionDef, DataPin } from '../types';
@@ -60,7 +55,7 @@ export interface OperationExecConfig {
  */
 export function generateExecConfig(operation: OperationDef): OperationExecConfig {
   const { regions, isTerminator, hasRegions, isPure } = operation;
-  
+
   // Pure operations: NO execution pins
   // Execution order is determined by data dependencies
   // This includes: arith.*, math.*, scf.if (value selector)
@@ -74,7 +69,7 @@ export function generateExecConfig(operation: OperationDef): OperationExecConfig
       regionPins,
     };
   }
-  
+
   // Terminator operations: exec-in only, no exec-out
   if (isTerminator) {
     return {
@@ -85,7 +80,7 @@ export function generateExecConfig(operation: OperationDef): OperationExecConfig
       regionPins: [],
     };
   }
-  
+
   // Control flow operations with regions (non-pure): exec-in + region exec-outs + default exec-out
   // This includes: scf.for, scf.while (have side effects via region execution)
   if (hasRegions && regions.length > 0) {
@@ -99,7 +94,7 @@ export function generateExecConfig(operation: OperationDef): OperationExecConfig
       regionPins,
     };
   }
-  
+
   // Regular operations with side effects: exec-in + single exec-out
   return {
     hasExecIn: true,
@@ -126,7 +121,7 @@ function generateRegionPins(regions: RegionDef[]): RegionPinConfig[] {
       displayName: arg.typeConstraint,  // BlockArgDef doesn't have displayName yet
       color: getTypeColor(arg.typeConstraint),
     }));
-    
+
     return {
       regionName: region.name,
       blockArgOutputs,
@@ -173,16 +168,16 @@ function generateExecOutsFromRegions(regions: RegionDef[]): ExecPin[] {
   if (regions.length === 0) {
     return [{ id: 'exec-out', label: '' }];
   }
-  
+
   // Default exec-out first (aligns with exec-in on first row)
   const defaultExecOut = { id: 'exec-out', label: '' };
-  
+
   // Region exec-outs with original names (no transformation)
   const regionExecOuts = regions.map(region => ({
     id: `exec-out-${region.name}`,
     label: region.name,  // Use original name directly
   }));
-  
+
   return [defaultExecOut, ...regionExecOuts];
 }
 
@@ -225,10 +220,10 @@ export function shouldHaveExecPins(_op: OperationDef): boolean {
  */
 export function classifyOperations(operations: OperationDef[]): Map<string, OperationExecConfig> {
   const configs = new Map<string, OperationExecConfig>();
-  
+
   for (const op of operations) {
     configs.set(op.fullName, generateExecConfig(op));
   }
-  
+
   return configs;
 }

@@ -1,12 +1,7 @@
 """
-Project Management API Routes
+项目管理 API 路由
 
-Handles CRUD operations for MLIR Blueprint projects.
-Requirements: 1.1, 1.2, 1.3, 1.4
-
-设计原则：
-- 项目路径放在请求体中，避免 URL 编码问题
-- 与 build.py 保持一致的 API 设计
+设计原则：项目路径放在请求体中，避免 URL 编码问题
 """
 
 import json
@@ -21,19 +16,19 @@ router = APIRouter()
 # --- Pydantic Models ---
 
 class ParameterDef(BaseModel):
-    """Function parameter definition."""
+    """函数参数"""
     name: str
     type: str
 
 
 class TypeDef(BaseModel):
-    """Type definition for return values."""
+    """返回类型"""
     name: str
     type: str
 
 
 class PortConfig(BaseModel):
-    """Port configuration for nodes."""
+    """端口配置"""
     id: str
     name: str
     kind: str  # 'input' | 'output'
@@ -43,7 +38,7 @@ class PortConfig(BaseModel):
 
 
 class ArgumentDef(BaseModel):
-    """Operation argument definition."""
+    """操作参数"""
     name: str
     kind: str  # 'operand' | 'attribute'
     typeConstraint: str
@@ -51,13 +46,13 @@ class ArgumentDef(BaseModel):
 
 
 class ResultDef(BaseModel):
-    """Operation result definition."""
+    """操作结果"""
     name: str
     typeConstraint: str
 
 
 class OperationDef(BaseModel):
-    """MLIR operation definition."""
+    """MLIR 操作"""
     dialect: str
     opName: str
     fullName: str
@@ -82,19 +77,19 @@ class BlueprintNodeData(BaseModel):
 
 
 class FunctionEntryData(BaseModel):
-    """Function entry node data."""
+    """函数入口节点"""
     functionId: str
     outputs: list[PortConfig]
 
 
 class FunctionReturnData(BaseModel):
-    """Function return node data."""
+    """函数返回节点"""
     functionId: str
     inputs: list[PortConfig]
 
 
 class FunctionCallData(BaseModel):
-    """Function call node data."""
+    """函数调用节点"""
     functionId: str
     functionName: str
     inputs: list[PortConfig]
@@ -102,7 +97,7 @@ class FunctionCallData(BaseModel):
 
 
 class GraphNode(BaseModel):
-    """Graph node."""
+    """图节点"""
     id: str
     type: str  # 'operation' | 'function-entry' | 'function-return' | 'function-call'
     position: dict[str, float]
@@ -110,7 +105,7 @@ class GraphNode(BaseModel):
 
 
 class GraphEdge(BaseModel):
-    """Graph edge."""
+    """图边"""
     id: str
     source: str
     sourceHandle: str
@@ -125,7 +120,7 @@ class GraphState(BaseModel):
 
 
 class FunctionDef(BaseModel):
-    """Function definition."""
+    """函数定义"""
     id: str
     name: str
     parameters: list[ParameterDef]
@@ -135,7 +130,7 @@ class FunctionDef(BaseModel):
 
 
 class Project(BaseModel):
-    """Complete project model."""
+    """完整项目"""
     name: str
     path: str
     mainFunction: FunctionDef
@@ -144,53 +139,53 @@ class Project(BaseModel):
 
 
 class ProjectCreate(BaseModel):
-    """Request model for creating a new project."""
+    """创建项目请求"""
     name: str
     path: str
 
 
 class ProjectResponse(BaseModel):
-    """Response model for project data."""
+    """项目响应"""
     name: str
     path: str
     dialects: list[str] = []
 
 
 class SaveProjectRequest(BaseModel):
-    """Request model for saving a project."""
+    """保存项目请求"""
     project: Project
 
 
 class SaveProjectResponse(BaseModel):
-    """Response model for save operation."""
+    """保存响应"""
     status: str
     path: str
 
 
 class LoadProjectResponse(BaseModel):
-    """Response model for load operation."""
+    """加载响应"""
     project: Project
 
 
 class ProjectPathRequest(BaseModel):
-    """Request model with project path in body (避免 URL 编码问题)."""
+    """包含项目路径的请求"""
     projectPath: str
 
 
 # --- Helper Functions ---
 
 def get_project_file_path(project_path: str) -> Path:
-    """Get the path to the project.json file."""
+    """获取 project.json 路径"""
     return Path(project_path) / "project.json"
 
 
 def get_functions_dir(project_path: str) -> Path:
-    """Get the path to the functions directory."""
+    """获取函数目录路径"""
     return Path(project_path) / "functions"
 
 
 def ensure_project_directories(project_path: str) -> None:
-    """Ensure project directories exist."""
+    """确保项目目录存在"""
     path = Path(project_path)
     path.mkdir(parents=True, exist_ok=True)
     (path / "functions").mkdir(exist_ok=True)

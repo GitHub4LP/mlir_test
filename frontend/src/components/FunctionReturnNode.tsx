@@ -1,12 +1,8 @@
 /**
- * FunctionReturnNode Component
+ * FunctionReturnNode 组件
  * 
- * Return point node for function editing (UE5-style).
- * Left side only: exec-in + return value inputs
- * 
- * Each Return node can have a branchName for multi-exit functions.
- * 
- * Requirements: 14.2, 14.4, 14.5
+ * 函数返回节点（UE5 风格）：左侧显示 exec-in + 返回值输入
+ * 每个 Return 节点可有 branchName 用于多出口函数
  */
 
 import { memo, useCallback, useState, useMemo } from 'react';
@@ -44,10 +40,14 @@ const EditableName = memo(function EditableName({
     onDoubleClick={handleDoubleClick} title="Double-click to edit">{value}</span>;
 });
 
-const execPinStyle = { width: 0, height: 0, borderStyle: 'solid' as const, borderWidth: '5px 0 5px 8px',
-  borderColor: 'transparent transparent transparent white', backgroundColor: 'transparent', borderRadius: 0 };
-const dataPinStyle = (color: string) => ({ width: 10, height: 10, backgroundColor: color,
-  border: '2px solid #1a1a2e', borderRadius: '50%' });
+const execPinStyle = {
+  width: 0, height: 0, borderStyle: 'solid' as const, borderWidth: '5px 0 5px 8px',
+  borderColor: 'transparent transparent transparent white', backgroundColor: 'transparent', borderRadius: 0
+};
+const dataPinStyle = (color: string) => ({
+  width: 10, height: 10, backgroundColor: color,
+  border: '2px solid #1a1a2e', borderRadius: '50%'
+});
 
 export const FunctionReturnNode = memo(function FunctionReturnNode({ data, selected }: FunctionReturnNodeProps) {
   const { functionId, branchName, inputs, execIn, isMain } = data;

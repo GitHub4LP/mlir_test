@@ -1,9 +1,4 @@
-"""
-Dialect API Routes
-
-Provides access to MLIR dialect definitions and operations.
-Requirements: 8.1, 8.2, 8.3, 8.4, 8.5
-"""
+"""方言 API 路由：提供 MLIR 方言定义和操作信息"""
 
 import json
 from pathlib import Path
@@ -14,12 +9,12 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# Path to dialect JSON files
+# 方言 JSON 文件路径
 DIALECTS_DIR = Path(__file__).parent.parent.parent / "mlir_data" / "dialects"
 
 
 class EnumOption(BaseModel):
-    """Enum option with all fields from TableGen."""
+    """枚举选项"""
     str: str       # MLIR IR 显示值，如 "oeq"
     symbol: str    # Python 枚举成员名，如 "OEQ"
     value: int     # 整数值，用于 Operation.create
@@ -27,38 +22,38 @@ class EnumOption(BaseModel):
 
 
 class ArgumentDef(BaseModel):
-    """Argument definition (operand or attribute)."""
+    """参数定义（操作数或属性）"""
     name: str
     kind: Literal["operand", "attribute"]
     typeConstraint: str
-    displayName: str  # Human-readable resolved type name (concise)
-    description: str = ""  # Detailed description for tooltip
+    displayName: str  # 类型显示名
+    description: str = ""  # tooltip 描述
     isOptional: bool
-    isVariadic: bool = False  # True if this is a variadic argument
-    enumOptions: list[EnumOption] | None = None  # Enum options with str and int value
-    defaultValue: str | None = None  # Default value for attribute (if any)
+    isVariadic: bool = False  # 是否可变参数
+    enumOptions: list[EnumOption] | None = None  # 枚举选项
+    defaultValue: str | None = None  # 默认值
     allowedTypes: list[str] | None = None  # 如果是 AnyTypeOf，允许的具体类型列表
 
 
 class ResultDef(BaseModel):
-    """Result definition."""
+    """结果定义"""
     name: str
     typeConstraint: str
-    displayName: str  # Human-readable resolved type name (concise)
-    description: str = ""  # Detailed description for tooltip
-    isVariadic: bool = False  # True if this is a variadic result
+    displayName: str  # 类型显示名
+    description: str = ""  # tooltip 描述
+    isVariadic: bool = False  # 是否可变结果
     allowedTypes: list[str] | None = None  # 如果是 AnyTypeOf，允许的具体类型列表
 
 
 class BlockArgDef(BaseModel):
-    """Block argument definition for region entry blocks."""
+    """Region 入口块参数"""
     name: str
     typeConstraint: str  # Type constraint or "inferred" if derived from operands
     sourceOperand: str | None = None  # Name of operand this arg corresponds to (for iter_args)
 
 
 class RegionDef(BaseModel):
-    """Region definition for control flow operations."""
+    """Region 定义（控制流操作）"""
     name: str
     isVariadic: bool = False
     # Block arguments for the entry block of this region
@@ -70,7 +65,7 @@ class RegionDef(BaseModel):
 
 
 class OperationDef(BaseModel):
-    """Operation definition from dialect JSON."""
+    """操作定义"""
     dialect: str
     opName: str
     fullName: str
@@ -78,7 +73,7 @@ class OperationDef(BaseModel):
     description: str
     arguments: list[ArgumentDef]
     results: list[ResultDef]
-    regions: list[RegionDef] = []  # Regions for control flow operations
+    regions: list[RegionDef] = []  # 控制流 region
     traits: list[str]
     assemblyFormat: str = ""
     

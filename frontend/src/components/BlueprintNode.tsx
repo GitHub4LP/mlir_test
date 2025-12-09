@@ -1,17 +1,13 @@
 /**
- * BlueprintNode Component
+ * BlueprintNode 组件
  * 
- * A UE5-style blueprint node component for React Flow.
- * Uses unified pin rendering:
- * - Left side: exec-in + all input operands
- * - Right side: exec-outs + all output results
- * - All exec pin arrows point RIGHT (direction of flow)
+ * UE5 风格蓝图节点组件。
+ * - 左侧：exec-in + 输入操作数
+ * - 右侧：exec-out + 输出结果
  * 
  * 类型传播模型：
  * - pinnedTypes：用户显式选择的类型（持久化）
  * - inputTypes/outputTypes：显示用的类型（传播结果）
- * 
- * Requirements: 3.1, 3.2, 3.3, 3.4
  */
 
 import { memo, useCallback, useMemo } from 'react';
@@ -41,11 +37,11 @@ function getDialectColor(dialect: string): string {
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
   const { operation, attributes, inputTypes, outputTypes, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
   const dialectColor = getDialectColor(operation.dialect);
-  
+
   const { setNodes } = useReactFlow();
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  
+
   const operands = getOperands(operation);
   const attrs = getAttributes(operation);
   const results = operation.results;
@@ -88,9 +84,9 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     // 2. 选择的是抽象约束 → 不 pin
     // 3. 其他情况 → pin
     const shouldPin = type && type !== originalConstraint && !isAbstractConstraint(type);
-    
+
     console.log('handleTypeChange:', { portId, type, originalConstraint, shouldPin });
-    
+
     // 更新节点数据并触发传播
     setNodes(currentNodes => {
       // 1. 更新当前节点的 pinnedTypes
@@ -98,7 +94,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         if (node.id === id) {
           const nodeData = node.data as BlueprintNodeData;
           const newPinnedTypes = { ...(nodeData.pinnedTypes || {}) };
-          
+
           if (shouldPin) {
             // 添加到 pinnedTypes
             newPinnedTypes[portId] = type;
@@ -108,7 +104,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
             delete newPinnedTypes[portId];
             console.log('Unpinned:', { portId });
           }
-          
+
           return {
             ...node,
             data: {
@@ -119,17 +115,17 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         }
         return node;
       });
-      
+
       // 2. 重新计算传播结果并更新所有节点（包含函数级别 Traits）
       const currentFunction = getCurrentFunction();
       const graph = buildPropagationGraph(updatedNodes, edges, currentFunction ?? undefined);
       const sources = extractTypeSources(updatedNodes);
       const propagationResult = propagateTypes(graph, sources);
-      
-      console.log('Propagation result:', { 
-        types: [...propagationResult.types.entries()] 
+
+      console.log('Propagation result:', {
+        types: [...propagationResult.types.entries()]
       });
-      
+
       // 3. 统一更新所有节点的显示类型
       return applyPropagationResult(updatedNodes, propagationResult);
     });
@@ -207,7 +203,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     // 优先检查是否是 pinned 的类型
     const pinnedType = pinnedTypes[pinId];
     if (pinnedType) return pinnedType;
-    
+
     // 否则使用传播结果（存储在 inputTypes/outputTypes 中）
     // 处理 variadic 端口：input-name_0 → name
     if (pinId.startsWith('input-')) {
@@ -274,10 +270,10 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   return (
     <div className={`min-w-56 rounded-lg overflow-visible shadow-lg ${selected ? 'ring-2 ring-blue-400' : ''}`}
       style={{ backgroundColor: '#2d2d3d', border: `1px solid ${selected ? '#60a5fa' : '#3d3d4d'}` }}>
-      
+
       {/* Header - 悬停显示 description */}
-      <div 
-        className="px-3 py-2" 
+      <div
+        className="px-3 py-2"
         style={{ backgroundColor: dialectColor }}
         title={operation.description || undefined}
       >

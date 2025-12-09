@@ -1,10 +1,7 @@
 /**
- * Pin Utilities
+ * 引脚工具函数
  * 
- * Helper functions for building pin configurations and rows.
- * 
- * Pin layout for operations with regions:
- * 
+ * 引脚布局示意：
  * ┌─────────────────────────────────────────┐
  * │  scf.for                                │
  * ├─────────────────────────────────────────┤
@@ -15,7 +12,7 @@
  * │ ● ub                        iter_arg ○  │  <- Region block args (outputs)
  * │ ● step                       results ○  │
  * │ ● initArgs                              │
- * │ ● body_yield                            │  <- Region yield inputs
+ * │ ● body_yield                            │  <- Region yield 输入
  * └─────────────────────────────────────────┘
  */
 
@@ -34,7 +31,7 @@ export function expandVariadicPins(
   variadicCounts: Record<string, number> = {}
 ): DataPin[] {
   const result: DataPin[] = [];
-  
+
   for (const pin of pins) {
     if (pin.quantity === 'variadic') {
       // Variadic 端口：展开为多个实例
@@ -57,7 +54,7 @@ export function expandVariadicPins(
       result.push(pin);
     }
   }
-  
+
   return result;
 }
 
@@ -76,32 +73,32 @@ export function buildPinRows(config: {
   variadicCounts?: Record<string, number>;
 }): PinRow[] {
   const rows: PinRow[] = [];
-  
+
   // 1. Exec pin rows
   const maxExec = Math.max(config.execIn ? 1 : 0, config.execOuts.length);
   for (let i = 0; i < maxExec; i++) {
     const row: PinRow = {};
-    
+
     if (i === 0 && config.execIn) {
       row.left = { type: 'exec', pin: config.execIn };
     }
-    
+
     if (i < config.execOuts.length) {
       row.right = { type: 'exec', pin: config.execOuts[i] };
     }
-    
+
     rows.push(row);
   }
-  
+
   // 2. Collect region pins
   const regionOutputs: DataPin[] = [];  // Block args -> outputs
   const regionInputs: DataPin[] = [];   // Yield values -> inputs
-  
+
   if (config.regionPins) {
     for (const regionPin of config.regionPins) {
       // Block args become output pins
       regionOutputs.push(...regionPin.blockArgOutputs);
-      
+
       // If region has yield inputs, add placeholder input pins
       // (actual yield pins are created dynamically based on results)
       if (regionPin.hasYieldInputs) {
@@ -115,31 +112,31 @@ export function buildPinRows(config: {
       }
     }
   }
-  
+
   // 3. Expand variadic pins
   const expandedInputs = expandVariadicPins(config.dataInputs, config.variadicCounts);
   const expandedOutputs = expandVariadicPins(config.dataOutputs, config.variadicCounts);
-  
+
   // 4. Combine all data pins
   const allInputs = [...expandedInputs, ...regionInputs];
   const allOutputs = [...expandedOutputs, ...regionOutputs];
-  
+
   // 5. Data pin rows
   const maxData = Math.max(allInputs.length, allOutputs.length);
   for (let i = 0; i < maxData; i++) {
     const row: PinRow = {};
-    
+
     if (i < allInputs.length) {
       row.left = { type: 'data', pin: allInputs[i] };
     }
-    
+
     if (i < allOutputs.length) {
       row.right = { type: 'data', pin: allOutputs[i] };
     }
-    
+
     rows.push(row);
   }
-  
+
   return rows;
 }
 

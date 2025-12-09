@@ -1,5 +1,5 @@
 /**
- * Function Synchronization Service
+ * 函数同步服务
  * 
  * Handles synchronization of function signature changes across the project.
  * When a function's parameters or return types change, all dependent nodes
@@ -91,12 +91,12 @@ function createReturnInputPorts(func: FunctionDef): PortConfig[] {
  */
 function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
   const returnNodes = func.graph.nodes.filter(n => n.type === 'function-return');
-  
+
   if (returnNodes.length === 0) {
     // Default single exec output
     return [{ id: 'exec-out', label: '' }];
   }
-  
+
   return returnNodes.map((node, index) => {
     const data = node.data as FunctionReturnData;
     const branchName = data.branchName || '';
@@ -159,13 +159,13 @@ function findInvalidEdges(
   nodes: GraphNode[]
 ): string[] {
   const invalidEdgeIds: string[] = [];
-  
+
   // Build a map of valid port IDs for each node
   const validPorts = new Map<string, Set<string>>();
-  
+
   for (const node of nodes) {
     const portIds = new Set<string>();
-    
+
     if (node.type === 'function-entry') {
       const data = node.data as FunctionEntryData;
       if (data.execOut) portIds.add(data.execOut.id);
@@ -185,27 +185,27 @@ function findInvalidEdges(
       // We don't need to validate them here
       continue;
     }
-    
+
     validPorts.set(node.id, portIds);
   }
-  
+
   // Check each edge
   for (const edge of edges) {
     const sourcePortIds = validPorts.get(edge.source);
     const targetPortIds = validPorts.get(edge.target);
-    
+
     // If source node has tracked ports and the port doesn't exist
     if (sourcePortIds && !sourcePortIds.has(edge.sourceHandle)) {
       invalidEdgeIds.push(edge.id);
       continue;
     }
-    
+
     // If target node has tracked ports and the port doesn't exist
     if (targetPortIds && !targetPortIds.has(edge.targetHandle)) {
       invalidEdgeIds.push(edge.id);
     }
   }
-  
+
   return invalidEdgeIds;
 }
 
@@ -218,7 +218,7 @@ function syncGraphWithFunction(
   isOwnGraph: boolean
 ): GraphState {
   let updatedNodes = graph.nodes;
-  
+
   // Update nodes
   updatedNodes = updatedNodes.map(node => {
     // Update Entry node in the function's own graph
@@ -231,7 +231,7 @@ function syncGraphWithFunction(
         };
       }
     }
-    
+
     // Update Return nodes in the function's own graph
     if (isOwnGraph && node.type === 'function-return') {
       const data = node.data as FunctionReturnData;
@@ -242,7 +242,7 @@ function syncGraphWithFunction(
         };
       }
     }
-    
+
     // Update FunctionCallNodes that call this function (in any graph)
     if (node.type === 'function-call') {
       const data = node.data as FunctionCallData;
@@ -253,14 +253,14 @@ function syncGraphWithFunction(
         };
       }
     }
-    
+
     return node;
   });
-  
+
   // Remove invalid edges
   const invalidEdgeIds = new Set(findInvalidEdges(graph.edges, updatedNodes));
   const updatedEdges = graph.edges.filter(e => !invalidEdgeIds.has(e.id));
-  
+
   return {
     nodes: updatedNodes,
     edges: updatedEdges,
@@ -286,18 +286,18 @@ export function syncFunctionSignatureChange(
   } else {
     changedFunc = project.customFunctions.find(f => f.id === changedFuncId) || null;
   }
-  
+
   if (!changedFunc) {
     return project;
   }
-  
+
   // Update main function's graph
   const updatedMainGraph = syncGraphWithFunction(
     project.mainFunction.graph,
     changedFunc,
     project.mainFunction.id === changedFuncId
   );
-  
+
   // Update all custom functions' graphs
   const updatedCustomFunctions = project.customFunctions.map(func => ({
     ...func,
@@ -307,7 +307,7 @@ export function syncFunctionSignatureChange(
       func.id === changedFuncId
     ),
   }));
-  
+
   return {
     ...project,
     mainFunction: {
@@ -330,31 +330,31 @@ export function syncFunctionRemoval(
     // Remove FunctionCallNodes that reference the deleted function
     const nodesToRemove = new Set(
       graph.nodes
-        .filter(n => 
-          n.type === 'function-call' && 
+        .filter(n =>
+          n.type === 'function-call' &&
           (n.data as FunctionCallData).functionId === removedFuncId
         )
         .map(n => n.id)
     );
-    
+
     if (nodesToRemove.size === 0) {
       return graph;
     }
-    
+
     // Remove the nodes
     const updatedNodes = graph.nodes.filter(n => !nodesToRemove.has(n.id));
-    
+
     // Remove edges connected to removed nodes
     const updatedEdges = graph.edges.filter(
       e => !nodesToRemove.has(e.source) && !nodesToRemove.has(e.target)
     );
-    
+
     return {
       nodes: updatedNodes,
       edges: updatedEdges,
     };
   };
-  
+
   return {
     ...project,
     mainFunction: {

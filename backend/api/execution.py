@@ -1,9 +1,4 @@
-"""
-Execution API Routes
-
-Handles MLIR code execution through various methods.
-Requirements: 6.1, 6.2, 6.3, 6.4
-"""
+"""MLIR 执行 API 路由：支持 compile、mlir-run、jit 三种执行方式"""
 
 import asyncio
 from typing import Literal

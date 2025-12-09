@@ -1,11 +1,8 @@
 /**
- * NodePalette Component
+ * NodePalette 组件
  * 
- * Displays MLIR operations grouped by dialect with search filtering.
- * Supports drag-and-drop to add nodes to the canvas.
- * Uses dialectStore for lazy loading of dialect data.
- * 
- * Requirements: 4.1, 4.2, 4.3
+ * 按方言分组显示 MLIR 操作，支持搜索过滤和拖放添加节点。
+ * 使用 dialectStore 实现方言数据懒加载。
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -39,7 +36,7 @@ function OperationItem({ operation, onDragStart, onClick }: OperationItemProps) 
     event.dataTransfer.setData('application/json', JSON.stringify(operation));
     event.dataTransfer.setData('text/plain', operation.fullName);
     event.dataTransfer.effectAllowed = 'copy';
-    
+
     onDragStart?.(event, operation);
   }, [operation, onDragStart]);
 
@@ -78,14 +75,14 @@ interface FunctionItemProps {
 
 function FunctionItem({ func, onDragStart, currentFunctionId }: FunctionItemProps) {
   const isCurrentFunction = func.id === currentFunctionId;
-  
+
   const handleDragStart = useCallback((event: React.DragEvent) => {
     // Generate function call data for the drag
     const functionCallData = generateFunctionCallData(func);
     event.dataTransfer.setData('application/reactflow-function', JSON.stringify(functionCallData));
     event.dataTransfer.setData('text/plain', func.name);
     event.dataTransfer.effectAllowed = 'copy';
-    
+
     onDragStart?.(event, func);
   }, [func, onDragStart]);
 
@@ -98,11 +95,10 @@ function FunctionItem({ func, onDragStart, currentFunctionId }: FunctionItemProp
     <div
       draggable={!isCurrentFunction}
       onDragStart={isCurrentFunction ? undefined : handleDragStart}
-      className={`px-3 py-2 rounded transition-colors ${
-        isCurrentFunction 
-          ? 'bg-gray-800 cursor-not-allowed opacity-50' 
+      className={`px-3 py-2 rounded transition-colors ${isCurrentFunction
+          ? 'bg-gray-800 cursor-not-allowed opacity-50'
           : 'cursor-grab hover:bg-gray-700'
-      }`}
+        }`}
       title={isCurrentFunction ? 'Cannot call current function' : signature}
     >
       <div className="flex items-center gap-2">
@@ -168,7 +164,7 @@ function DialectGroupWithLoading({
           </span>
         </span>
       </button>
-      
+
       {isExpanded && (
         <div className="mt-1 ml-2 border-l border-gray-600 pl-2">
           {isLoading ? (
@@ -220,7 +216,7 @@ export function NodePalette({
   // Get custom functions from project store
   const project = useProjectStore(state => state.project);
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
-  
+
   // Get custom functions (excluding main function)
   const customFunctions = useMemo(() => {
     return project?.customFunctions || [];
@@ -230,7 +226,7 @@ export function NodePalette({
   const filteredFunctions = useMemo(() => {
     if (!searchQuery.trim()) return customFunctions;
     const query = searchQuery.toLowerCase();
-    return customFunctions.filter(f => 
+    return customFunctions.filter(f =>
       f.name.toLowerCase().includes(query)
     );
   }, [customFunctions, searchQuery]);
@@ -242,7 +238,7 @@ export function NodePalette({
   // Filter and group operations based on search query
   const filteredGroups = useMemo(() => {
     const groups = new Map<string, OperationDef[]>();
-    
+
     // Only show loaded dialects
     for (const [name, dialect] of dialects) {
       const filtered = filterOperations(dialect.operations, searchQuery);
@@ -250,14 +246,14 @@ export function NodePalette({
         groups.set(name, filtered);
       }
     }
-    
+
     return groups;
   }, [dialects, searchQuery]);
 
   // Toggle dialect expansion and load dialect data if needed
   const toggleDialect = useCallback((dialectName: string) => {
     const isCurrentlyExpanded = expandedDialects.has(dialectName);
-    
+
     // Update expanded state
     setExpandedDialects(prev => {
       const next = new Set(prev);
@@ -268,7 +264,7 @@ export function NodePalette({
       }
       return next;
     });
-    
+
     // Load dialect data when expanding (outside of setState callback)
     if (!isCurrentlyExpanded && !dialects.has(dialectName)) {
       loadDialect(dialectName);
@@ -282,7 +278,7 @@ export function NodePalette({
     }
     return null;
   }, [searchQuery, filteredGroups]);
-  
+
   // Final expanded state: search overrides manual expansion
   const finalExpandedDialects = searchExpandedDialects ?? expandedDialects;
 
@@ -374,7 +370,7 @@ export function NodePalette({
                 </span>
               </span>
             </button>
-            
+
             {showFunctions && (
               <div className="mt-1 ml-2 border-l border-purple-600 pl-2">
                 {filteredFunctions.length === 0 ? (
@@ -407,12 +403,12 @@ export function NodePalette({
             const isLoaded = dialects.has(dialectName);
             const isLoading = loading.has(dialectName);
             const isExpanded = finalExpandedDialects.has(dialectName);
-            
+
             // When searching, only show dialects with matching operations
             if (searchQuery.trim() && operations.length === 0) {
               return null;
             }
-            
+
             return (
               <DialectGroupWithLoading
                 key={dialectName}

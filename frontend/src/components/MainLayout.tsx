@@ -1,21 +1,19 @@
 /**
- * MainLayout Component
+ * MainLayout 组件
  * 
- * Implements the main application layout with:
- * - Left panel: Node palette for browsing/searching MLIR operations
- * - Center: Node editor canvas (React Flow)
- * - Right panel: Properties panel for editing selected node attributes
- * - Bottom: Execution panel for running MLIR code
- * 
- * Requirements: 2.1
+ * 主应用布局：
+ * - 左侧：节点面板（MLIR 操作浏览/搜索）
+ * - 中央：节点编辑画布（React Flow）
+ * - 右侧：属性面板
+ * - 底部：执行面板
  */
 
 import { useCallback, useRef, useState, useEffect, type ReactNode } from 'react';
-import { 
-  ReactFlow, 
+import {
+  ReactFlow,
   ReactFlowProvider,
-  Background, 
-  Controls, 
+  Background,
+  Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -74,20 +72,20 @@ function createBlueprintNodeData(operation: OperationDef): BlueprintNodeData {
   const attributes: Record<string, string> = {};
   const inputTypes: Record<string, string> = {};
   const outputTypes: Record<string, string> = {};
-  
+
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand') {
       inputTypes[arg.name] = arg.typeConstraint;
     }
   }
-  
+
   for (const result of operation.results) {
     outputTypes[result.name] = result.typeConstraint;
   }
-  
+
   // Generate execution pin configuration based on operation classification
   const execConfig = generateExecConfig(operation);
-  
+
   return {
     operation,
     attributes,
@@ -117,7 +115,7 @@ function ConnectionErrorToast({ message, onClose }: ConnectionErrorToastProps) {
           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
         </svg>
         <span className="text-sm">{message}</span>
-        <button 
+        <button
           onClick={onClose}
           className="ml-2 text-white/80 hover:text-white"
         >
@@ -148,7 +146,7 @@ function PropertiesPanel({ selectedNode }: PropertiesPanelProps) {
   return (
     <div className="p-4 overflow-y-auto h-full">
       <h2 className="text-lg font-semibold text-white mb-4">Properties</h2>
-      
+
       {/* Node Info */}
       <div className="mb-4 p-3 bg-gray-700 rounded">
         <div className="text-sm text-gray-300">
@@ -262,24 +260,24 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [executionPanelExpanded, setExecutionPanelExpanded] = useState(true);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  
+
   // Clipboard for copy/paste operations
   const clipboardRef = useRef<ClipboardData | null>(null);
-  
+
   // Project dialog states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
-  
+
   // Get resolved types from type store for connection validation
   const resolvedTypes = useTypeStore(state => state.resolvedTypes);
-  
+
   // Get project state and actions
   const project = useProjectStore(state => state.project);
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
   const createProject = useProjectStore(state => state.createProject);
   const updateFunctionGraph = useProjectStore(state => state.updateFunctionGraph);
-  
+
   // Get the current function directly from the store to react to changes
   const currentFunction = useProjectStore(state => {
     if (!state.project || !state.currentFunctionId) return null;
@@ -310,16 +308,16 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const lastFunctionIdRef = useRef<string | null>(null);
   const lastProjectPathRef = useRef<string | null>(null);
   const lastProjectRef = useRef<Project | null>(null);
-  
+
   useEffect(() => {
     if (!currentFunction || !project) return;
-    
+
     const currentGraph = currentFunction.graph;
     const isFunctionSwitch = lastFunctionIdRef.current !== currentFunctionId;
     const isProjectSwitch = lastProjectPathRef.current !== project.path;
     // Also detect when the same path is reloaded (project object reference changed)
     const isProjectReload = lastProjectRef.current !== project && lastProjectPathRef.current === project.path;
-    
+
     // Reload graph when switching functions OR when project changes OR when project is reloaded
     // This ensures the graph is updated when opening a different project or reopening the same project
     if (isFunctionSwitch || isProjectSwitch || isProjectReload) {
@@ -341,8 +339,8 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   // Derive selected node validity - if function changes, selected node should be null
   // This is computed during render, not in an effect
-  const effectiveSelectedNode = selectedNode && nodes.find(n => n.id === selectedNode.id) 
-    ? selectedNode 
+  const effectiveSelectedNode = selectedNode && nodes.find(n => n.id === selectedNode.id)
+    ? selectedNode
     : null;
 
   // Convert nodes and edges to GraphState format for saving
@@ -367,13 +365,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   // Auto-save graph changes (debounced)
   // Only save when persistable data changes (position, data), not UI state (selected)
   const lastSavedGraphRef = useRef<string>('');
-  
+
   useEffect(() => {
     // Skip if we're loading from store
     if (isLoadingFromStoreRef.current) return;
-    
+
     if (!currentFunctionId) return;
-    
+
     // Create a serializable representation of persistable data only
     // Exclude UI state like 'selected', 'dragging', etc.
     const persistableData = JSON.stringify({
@@ -391,23 +389,23 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         targetHandle: e.targetHandle,
       })),
     });
-    
+
     // Skip if nothing changed
     if (persistableData === lastSavedGraphRef.current) return;
-    
+
     const timer = setTimeout(() => {
       const graphState = convertToGraphState();
       updateFunctionGraph(currentFunctionId, graphState);
       lastSavedGraphRef.current = persistableData;
     }, 500);
-    
+
     return () => clearTimeout(timer);
   }, [currentFunctionId, nodes, edges, convertToGraphState, updateFunctionGraph]);
 
   // Handle node selection
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     onNodesChange(changes);
-    
+
     // Track selection changes
     for (const change of changes) {
       if (change.type === 'select' && change.selected) {
@@ -433,19 +431,19 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const copySelectedNodes = useCallback(() => {
     const selectedNodes = nodes.filter(n => n.selected);
     if (selectedNodes.length === 0) return;
-    
+
     const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
-    
+
     // Only copy edges that connect selected nodes (internal edges)
     const internalEdges = edges.filter(
       e => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
     );
-    
+
     clipboardRef.current = {
       nodes: selectedNodes.map(n => ({ ...n })),
       edges: internalEdges.map(e => ({ ...e })),
     };
-    
+
     console.log(`Copied ${selectedNodes.length} nodes and ${internalEdges.length} edges`);
   }, [nodes, edges]);
 
@@ -455,13 +453,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
    */
   const pasteNodes = useCallback(() => {
     if (!clipboardRef.current || clipboardRef.current.nodes.length === 0) return;
-    
+
     const { nodes: copiedNodes, edges: copiedEdges } = clipboardRef.current;
-    
+
     // Create ID mapping: old ID -> new ID
     const idMap = new Map<string, string>();
     const offset = { x: 50, y: 50 }; // Offset for pasted nodes
-    
+
     // Create new nodes with new IDs (skip Entry nodes, allow Return nodes)
     const newNodes: Node[] = [];
     for (const node of copiedNodes) {
@@ -469,10 +467,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       if (node.type === 'function-entry') {
         continue;
       }
-      
+
       const newId = generateNodeId();
       idMap.set(node.id, newId);
-      
+
       newNodes.push({
         ...node,
         id: newId,
@@ -484,9 +482,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         data: { ...node.data }, // Deep copy data
       });
     }
-    
+
     if (newNodes.length === 0) return;
-    
+
     // Create new edges with updated source/target IDs
     const newEdges: Edge[] = copiedEdges
       .filter(edge => idMap.has(edge.source) && idMap.has(edge.target))
@@ -497,15 +495,15 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         target: idMap.get(edge.target)!,
         selected: false,
       }));
-    
+
     // Deselect existing nodes and add new ones
     setNodes(nds => [
       ...nds.map(n => ({ ...n, selected: false })),
       ...newNodes,
     ]);
-    
+
     setEdges(eds => [...eds, ...newEdges]);
-    
+
     console.log(`Pasted ${newNodes.length} nodes and ${newEdges.length} edges`);
   }, [setNodes, setEdges]);
 
@@ -518,12 +516,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     // Count total Return nodes and selected Return nodes
     const allReturnNodes = nodes.filter(n => n.type === 'function-return');
     const selectedReturnNodes = allReturnNodes.filter(n => n.selected);
-    
+
     // Calculate how many Return nodes we can delete (keep at least 1)
     const maxReturnNodesToDelete = Math.max(0, allReturnNodes.length - 1);
     const returnNodesToDelete = selectedReturnNodes.slice(0, maxReturnNodesToDelete);
     const returnNodeIdsToDelete = new Set(returnNodesToDelete.map(n => n.id));
-    
+
     // Get selected nodes that can be deleted:
     // - Not Entry nodes
     // - Return nodes only if we can delete them (keeping at least 1)
@@ -537,26 +535,26 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         })
         .map(n => n.id)
     );
-    
+
     // Get selected edges
     const selectedEdgeIds = new Set(edges.filter(e => e.selected).map(e => e.id));
-    
+
     if (selectedNodeIds.size === 0 && selectedEdgeIds.size === 0) return;
-    
+
     // Remove selected nodes
     if (selectedNodeIds.size > 0) {
       setNodes(nds => nds.filter(n => !selectedNodeIds.has(n.id)));
       // Also remove edges connected to deleted nodes
-      setEdges(eds => eds.filter(e => 
+      setEdges(eds => eds.filter(e =>
         !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target)
       ));
     }
-    
+
     // Remove selected edges
     if (selectedEdgeIds.size > 0) {
       setEdges(eds => eds.filter(e => !selectedEdgeIds.has(e.id)));
     }
-    
+
     // Log deletion info
     const skippedReturnNodes = selectedReturnNodes.length - returnNodesToDelete.length;
     if (skippedReturnNodes > 0) {
@@ -575,26 +573,26 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
-      
+
       // Ctrl+C or Cmd+C: Copy
       if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
         event.preventDefault();
         copySelectedNodes();
       }
-      
+
       // Ctrl+V or Cmd+V: Paste
       if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
         event.preventDefault();
         pasteNodes();
       }
-      
+
       // Delete or Backspace: Delete selected
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         deleteSelected();
       }
     };
-    
+
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [copySelectedNodes, pasteNodes, deleteSelected]);
@@ -613,21 +611,21 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     // 删除边
     const remainingEdges = edges.filter(e => e.id !== edge.id);
     setEdges(remainingEdges);
-    
+
     // 传播模型：重新计算类型传播（数据边）
     if (!edge.sourceHandle?.startsWith('exec-')) {
       const graph = buildPropagationGraph(nodes, remainingEdges, currentFunction ?? undefined);
       const sources = extractTypeSources(nodes);
       const propagationResult = propagateTypes(graph, sources);
-      
+
       console.log('Edge removed, propagation result:', {
         types: [...propagationResult.types.entries()]
       });
-      
+
       // 统一更新所有节点的显示类型
       setNodes(nds => applyPropagationResult(nds, propagationResult));
     }
-    
+
     console.log(`Deleted edge: ${edge.id}`);
   }, [edges, nodes, setEdges, setNodes, currentFunction]);
 
@@ -667,7 +665,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       if (functionData) {
         try {
           const functionCallData = JSON.parse(functionData);
-          
+
           const newNode: Node = {
             id: generateNodeId(),
             type: 'function-call',
@@ -688,7 +686,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
       try {
         const operation: OperationDef = JSON.parse(data);
-        
+
         const newNode: Node = {
           id: generateNodeId(),
           type: 'operation',
@@ -755,7 +753,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
    */
   const getEdgeColor = useCallback((sourceNodeId: string, sourceHandleId: string | null | undefined): string => {
     if (!sourceHandleId) return '#4A90D9';
-    
+
     // Get the resolved type for this port from typeStore
     const nodeTypesMap = resolvedTypes.get(sourceNodeId);
     if (nodeTypesMap) {
@@ -764,7 +762,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         return getTypeColor(resolvedType);
       }
     }
-    
+
     // Try to get type from node data
     const sourceNode = nodes.find(n => n.id === sourceNodeId);
     if (sourceNode) {
@@ -778,10 +776,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           }
         }
       }
-      
+
       // Handle FunctionReturnNode - inputs are in data.inputs array (but Return node doesn't have source handles)
       // This case is unlikely since Return node only has target handles
-      
+
       // Handle FunctionCallNode - outputs are in data.outputs array
       if (sourceNode.type === 'function-call') {
         const callData = sourceNode.data as FunctionCallData;
@@ -792,7 +790,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           }
         }
       }
-      
+
       // Handle BlueprintNode (operation) - outputTypes is a Record
       if (sourceNode.type === 'operation') {
         const nodeData = sourceNode.data as BlueprintNodeData;
@@ -805,7 +803,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         }
       }
     }
-    
+
     // Default blue for data connections
     return '#4A90D9';
   }, [resolvedTypes, nodes]);
@@ -823,23 +821,23 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         target: e.target,
         targetHandle: e.targetHandle ?? null,
       }));
-      
+
       const validationResult: ConnectionValidationResult = validateConnection(
-        connection, 
-        nodes, 
+        connection,
+        nodes,
         resolvedTypes,
         existingEdges
       );
-      
+
       if (!validationResult.isValid) {
         setConnectionError(validationResult.errorMessage || 'Invalid connection');
         setTimeout(() => setConnectionError(null), 3000);
         return;
       }
-      
+
       // Determine edge type and style based on handle type
       const isExec = isExecHandle(connection.sourceHandle) || isExecHandle(connection.targetHandle);
-      
+
       const edgeWithStyle: Edge = {
         ...connection,
         id: `edge-${connection.source}-${connection.sourceHandle}-${connection.target}-${connection.targetHandle}`,
@@ -847,20 +845,20 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         data: isExec ? undefined : { color: getEdgeColor(connection.source!, connection.sourceHandle) },
         animated: isExec,
       };
-      
+
       const newEdges = [...edges, edgeWithStyle];
       setEdges(newEdges);
-      
+
       // 传播模型：重新计算类型传播（数据边）
       if (!isExec) {
         const graph = buildPropagationGraph(nodes, newEdges, currentFunction ?? undefined);
         const sources = extractTypeSources(nodes);
         const propagationResult = propagateTypes(graph, sources);
-        
+
         console.log('Edge added, propagation result:', {
           types: [...propagationResult.types.entries()]
         });
-        
+
         // 统一更新所有节点的显示类型
         setNodes(nds => applyPropagationResult(nds, propagationResult));
       }
@@ -895,10 +893,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         </div>
         <span className="text-white font-semibold">MLIR Blueprint Editor</span>
       </div>
-      
+
       {/* Separator */}
       <div className="h-6 w-px bg-gray-600" />
-      
+
       {/* Project Actions */}
       <div className="flex items-center gap-2">
         <button
@@ -911,7 +909,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           </svg>
           New
         </button>
-        
+
         <button
           onClick={() => setIsOpenDialogOpen(true)}
           className="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-1.5"
@@ -922,7 +920,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           </svg>
           Open
         </button>
-        
+
         <button
           onClick={() => setIsSaveDialogOpen(true)}
           disabled={!project}
@@ -935,10 +933,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           Save
         </button>
       </div>
-      
+
       {/* Separator */}
       <div className="h-6 w-px bg-gray-600" />
-      
+
       {/* Current Project Info */}
       {project && (
         <div className="flex items-center gap-2 text-sm">
@@ -948,10 +946,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           <span className="text-gray-500 text-xs">{project.path}</span>
         </div>
       )}
-      
+
       {/* Spacer */}
       <div className="flex-1" />
-      
+
       {/* Status */}
       <div className="text-xs text-gray-500">
         {project ? `${project.customFunctions.length + 1} functions` : 'No project'}
@@ -963,7 +961,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     <div className="w-full h-screen flex flex-col bg-gray-900">
       {/* Project Toolbar */}
       {ProjectToolbar}
-      
+
       {/* Optional Header */}
       {header && (
         <div className="flex-shrink-0 border-b border-gray-700">
@@ -979,19 +977,19 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           <div className="border-b border-gray-700 max-h-64 flex-shrink-0">
             <FunctionManager onFunctionSelect={handleFunctionSelect} />
           </div>
-          
+
           {/* Node Palette Section */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <h2 className="text-lg font-semibold text-white p-4 pb-0 flex-shrink-0">Node Palette</h2>
-            <NodePalette 
-              onDragStart={handleDragStart} 
+            <NodePalette
+              onDragStart={handleDragStart}
               onFunctionDragStart={handleFunctionDragStart}
             />
           </div>
         </div>
 
         {/* Center - Node Editor */}
-        <div 
+        <div
           className="flex-1 flex flex-col overflow-hidden"
           style={{ paddingBottom: executionPanelHeight }}
         >
@@ -1015,7 +1013,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
               // Left-click drag = box select, Right-click/Middle-click drag = pan (like UE5 Blueprint)
               selectionOnDrag
               panOnDrag={[2]}
-              selectionMode={SelectionMode.Partial} 
+              selectionMode={SelectionMode.Partial}
               selectNodesOnDrag={false}
               edgesReconnectable
               fitView
@@ -1027,7 +1025,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
             >
               <Background color="#444" gap={16} />
               <Controls />
-              <MiniMap 
+              <MiniMap
                 nodeColor={(node) => {
                   switch (node.type) {
                     case 'function-entry': return '#22c55e';
@@ -1038,12 +1036,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
                 }}
               />
             </ReactFlow>
-            
+
             {/* Connection Error Toast */}
             {connectionError && (
-              <ConnectionErrorToast 
-                message={connectionError} 
-                onClose={dismissError} 
+              <ConnectionErrorToast
+                message={connectionError}
+                onClose={dismissError}
               />
             )}
           </div>
@@ -1058,9 +1056,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       </div>
 
       {/* Bottom Panel - Execution (动态调整右边距) */}
-      <div 
+      <div
         className="flex-shrink-0 absolute bottom-0 left-64"
-        style={{ 
+        style={{
           height: executionPanelHeight,
           right: effectiveSelectedNode ? 288 : 0, // w-72 = 288px
         }}

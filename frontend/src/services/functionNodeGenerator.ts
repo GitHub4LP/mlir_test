@@ -1,10 +1,7 @@
 /**
- * Function Node Generator Service
+ * 函数节点生成服务
  * 
- * Generates FunctionCallNode data from function definitions and handles
- * synchronization when function signatures change.
- * 
- * Requirements: 13.1, 13.2, 13.3
+ * 从函数定义生成 FunctionCallNode 数据，处理签名变更时的同步
  */
 
 import type { FunctionDef, FunctionCallData, FunctionReturnData, PortConfig, GraphNode, ExecPin } from '../types';
@@ -58,12 +55,12 @@ export function createOutputPortsFromReturns(func: FunctionDef): PortConfig[] {
  */
 function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
   const returnNodes = func.graph.nodes.filter(n => n.type === 'function-return');
-  
+
   if (returnNodes.length === 0) {
     // Default single exec output
     return [{ id: 'exec-out', label: '' }];
   }
-  
+
   return returnNodes.map((node, index) => {
     const data = node.data as FunctionReturnData;
     const branchName = data.branchName || '';
@@ -193,7 +190,7 @@ export interface FunctionPaletteEntry {
 export function createFunctionPaletteEntry(func: FunctionDef): FunctionPaletteEntry {
   const paramTypes = func.parameters.map((p) => p.type).join(', ');
   const returnTypes = func.returnTypes.map((r) => r.type).join(', ');
-  
+
   return {
     id: `func_${func.id}`,
     name: func.name,

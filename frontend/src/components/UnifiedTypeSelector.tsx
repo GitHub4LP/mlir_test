@@ -9,7 +9,7 @@
  * 5. 方言分组：内置约束/类型 + 方言特有约束分组显示
  */
 
-import { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { memo, useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getTypeColor, analyzeConstraint as analyzeConstraintKind } from '../services/typeSystem';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
@@ -44,32 +44,32 @@ const WRAPPERS = [
 
 export function serializeType(node: TypeNode): string {
   if (node.kind === 'scalar') return node.name;
-  
+
   const elem = serializeType(node.element);
   const { wrapper, shape } = node;
-  
+
   if (!shape || shape.length === 0) {
     return `${wrapper}<${elem}>`;
   }
-  
+
   const shapeStr = shape.map(d => d === null ? '?' : d).join('x');
   return `${wrapper}<${shapeStr}x${elem}>`;
 }
 
 export function parseType(str: string): TypeNode {
   str = str.trim();
-  
+
   for (const w of WRAPPERS) {
     if (str.startsWith(w.name + '<') && str.endsWith('>')) {
       const inner = str.slice(w.name.length + 1, -1);
-      
+
       if (w.hasShape) {
         // 智能解析：找到 element 开始的位置
         // element 可能是：标量(f32)、约束(AnyFloat)、或复合类型(tensor<...>)
         // 从左到右扫描，找到第一个非 shape 部分
         const parts: string[] = [];
         let remaining = inner;
-        
+
         while (remaining) {
           // 检查是否是数字或 ?
           const match = remaining.match(/^(\d+|\?)(x|$)/);
@@ -82,7 +82,7 @@ export function parseType(str: string): TypeNode {
             break;
           }
         }
-        
+
         if (parts.length > 0 && remaining) {
           const shape = parts.map(s => s === '?' ? null : parseInt(s, 10));
           return { kind: 'composite', wrapper: w.name, shape, element: parseType(remaining) };
@@ -91,7 +91,7 @@ export function parseType(str: string): TypeNode {
       return { kind: 'composite', wrapper: w.name, element: parseType(inner) };
     }
   }
-  
+
   return { kind: 'scalar', name: str || 'AnyType' };
 }
 
@@ -124,7 +124,7 @@ function buildTypeGroups(
 ): TypeGroup[] {
   const buildableSet = new Set(buildableTypes);
   const groups: TypeGroup[] = [];
-  
+
   // 构建匹配函数
   let matcher: (item: string) => boolean;
   if (!searchText) {
@@ -141,9 +141,9 @@ function buildTypeGroups(
     const lower = searchText.toLowerCase();
     matcher = (item) => item.toLowerCase().includes(lower);
   }
-  
+
   const showBuiltin = !dialectFilter;
-  
+
   // 1. 内置约束（排除具体类型）
   if (showConstraints && showBuiltin) {
     const items = Object.keys(constraintMap)
@@ -154,7 +154,7 @@ function buildTypeGroups(
       groups.push({ label: '内置约束', items });
     }
   }
-  
+
   // 2. 内置类型
   if (showTypes && showBuiltin) {
     const items = buildableTypes.filter(matcher).sort();
@@ -162,7 +162,7 @@ function buildTypeGroups(
       groups.push({ label: '内置类型', items });
     }
   }
-  
+
   // 3. 方言约束
   if (showConstraints) {
     for (const [dialect, constraints] of Object.entries(dialectConstraints).sort()) {
@@ -173,7 +173,7 @@ function buildTypeGroups(
       }
     }
   }
-  
+
   return groups;
 }
 
@@ -211,26 +211,26 @@ const SelectionPanel = memo(function SelectionPanel({
   const [useRegex, setUseRegex] = useState(false);
   const [dialectFilter, setDialectFilter] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  
+
   const { buildableTypes, constraintMap, dialectConstraints } = useTypeConstraintStore();
-  
+
   const dialectNames = useMemo(() => Object.keys(dialectConstraints).sort(), [dialectConstraints]);
-  
+
   // 是否有约束限制
   const hasConstraint = constraintTypes !== null;
-  
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-  
+
   // 展开约束名到具体类型
   // 例如：['AnyInteger', 'AnyFloat'] → ['I1', 'I8', 'I16', 'I32', 'I64', 'F16', 'F32', 'F64', ...]
   const expandedConstraintTypes = useMemo(() => {
     if (!constraintTypes) return null;
-    
+
     const buildableSet = new Set(buildableTypes);
     const expanded = new Set<string>();
-    
+
     for (const t of constraintTypes) {
       // 如果是 BuildableType，直接添加
       if (buildableSet.has(t)) {
@@ -246,10 +246,10 @@ const SelectionPanel = memo(function SelectionPanel({
         expanded.add(t);
       }
     }
-    
+
     return [...expanded];
   }, [constraintTypes, constraintMap, buildableTypes]);
-  
+
   const typeGroups = useMemo(() => {
     // 构建匹配函数
     let matcher: (item: string) => boolean;
@@ -266,39 +266,39 @@ const SelectionPanel = memo(function SelectionPanel({
       const lower = search.toLowerCase();
       matcher = (item) => item.toLowerCase().includes(lower);
     }
-    
+
     // 如果有约束限制，显示约束 + 展开后的具体类型
     if (hasConstraint && expandedConstraintTypes && expandedConstraintTypes.length > 0) {
       // 合并约束和具体类型到一个列表（使用 Set 去重）
       const allItems = new Set<string>();
       if (constraintName) allItems.add(constraintName);
       expandedConstraintTypes.forEach(t => allItems.add(t));
-      
+
       const items = [...allItems].filter(matcher).sort((a, b) => {
         // 约束排在最前面
         if (a === constraintName) return -1;
         if (b === constraintName) return 1;
         return a.localeCompare(b);
       });
-      
+
       if (items.length > 0) {
         return [{ label: constraintName || '可选类型', items }];
       }
       return [];
     }
-    
+
     // 无约束，显示所有
     return buildTypeGroups(
       constraintMap, buildableTypes, dialectConstraints,
       search, showConstraints, showTypes, dialectFilter, useRegex
     );
   }, [hasConstraint, expandedConstraintTypes, constraintName, constraintMap, buildableTypes, dialectConstraints, search, showConstraints, showTypes, dialectFilter, useRegex]);
-  
-  const totalCount = useMemo(() => 
+
+  const totalCount = useMemo(() =>
     typeGroups.reduce((sum, g) => sum + g.items.length, 0),
     [typeGroups]
   );
-  
+
   return createPortal(
     <div
       ref={panelRef}
@@ -342,7 +342,7 @@ const SelectionPanel = memo(function SelectionPanel({
             </div>
           )}
         </div>
-        
+
         {/* 方言过滤 - 只在无约束时显示 */}
         {!hasConstraint && dialectNames.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
@@ -352,8 +352,8 @@ const SelectionPanel = memo(function SelectionPanel({
                 key={d}
                 type="button"
                 className={`text-xs px-1 rounded transition-colors
-                  ${dialectFilter === d 
-                    ? 'bg-green-600 text-white' 
+                  ${dialectFilter === d
+                    ? 'bg-green-600 text-white'
                     : 'text-gray-400 hover:text-gray-200'}`}
                 onClick={() => setDialectFilter(f => f === d ? null : d)}
               >
@@ -363,7 +363,7 @@ const SelectionPanel = memo(function SelectionPanel({
           </div>
         )}
       </div>
-      
+
       {/* 包装选项 - 只在有允许的包装器时显示 */}
       {allowedWrappers.length > 0 && (
         <div className="px-2 py-1.5 border-b border-gray-700">
@@ -382,7 +382,7 @@ const SelectionPanel = memo(function SelectionPanel({
           </div>
         </div>
       )}
-      
+
       {/* 列表 */}
       <div className="max-h-52 overflow-y-auto">
         {totalCount === 0 ? (
@@ -415,7 +415,7 @@ const SelectionPanel = memo(function SelectionPanel({
           ))
         )}
       </div>
-      
+
       <div className="px-2 py-1 text-xs text-gray-500 border-t border-gray-700">
         {totalCount} 个结果
       </div>
@@ -489,7 +489,7 @@ const BuildPanel = memo(function BuildPanel({
   path = 'root',
 }: BuildPanelProps) {
   const leafRef = useRef<HTMLButtonElement>(null);
-  
+
   const handleLeafClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (leafRef.current) {
@@ -497,26 +497,26 @@ const BuildPanel = memo(function BuildPanel({
       onOpenSelector('leaf', rect, node.kind === 'scalar' ? node.name : '', leafRef.current);
     }
   }, [node, onOpenSelector]);
-  
+
   const handleUnwrap = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (node.kind === 'composite') {
       onChange(node.element);
     }
   }, [node, onChange]);
-  
+
   const handleShapeChange = useCallback((shape: (number | null)[]) => {
     if (node.kind === 'composite') {
       onChange({ ...node, shape });
     }
   }, [node, onChange]);
-  
+
   const handleElementChange = useCallback((element: TypeNode) => {
     if (node.kind === 'composite') {
       onChange({ ...node, element });
     }
   }, [node, onChange]);
-  
+
   if (node.kind === 'scalar') {
     const color = getTypeColor(node.name);
     return (
@@ -533,10 +533,10 @@ const BuildPanel = memo(function BuildPanel({
       </button>
     );
   }
-  
+
   // 复合类型
   const w = WRAPPERS.find(x => x.name === node.wrapper);
-  
+
   return (
     <span className="inline-flex items-center flex-wrap gap-0.5">
       <span className="inline-flex items-center group">
@@ -550,18 +550,18 @@ const BuildPanel = memo(function BuildPanel({
           title="移除此层"
         >×</button>
       </span>
-      
+
       {w?.hasShape && node.shape && (
         <ShapeEditor shape={node.shape} onChange={handleShapeChange} />
       )}
-      
+
       <BuildPanel
         node={node.element}
         onChange={handleElementChange}
         onOpenSelector={onOpenSelector}
         path={`${path}.element`}
       />
-      
+
       <span className="text-gray-500">&gt;</span>
     </span>
   );
@@ -602,7 +602,7 @@ function analyzeConstraint(
       scalarTypes: null, // 所有标量
     };
   }
-  
+
   // Variadic<...> 类型：解析内部类型
   const variadicMatch = constraint.match(/^Variadic<(.+)>$/);
   if (variadicMatch) {
@@ -614,7 +614,7 @@ function analyzeConstraint(
       // Variadic 本身不改变约束的性质，只是表示可以有多个
     };
   }
-  
+
   // AnyOf<...> 类型：这是合成约束，应该允许选择
   if (constraint.startsWith('AnyOf<')) {
     return {
@@ -624,7 +624,7 @@ function analyzeConstraint(
       scalarTypes: null, // 由 allowedTypes prop 提供
     };
   }
-  
+
   // 复合类型约束检测
   // 关键词映射到允许的包装器
   const compositePatterns: { pattern: RegExp; wrappers: string[] }[] = [
@@ -634,7 +634,7 @@ function analyzeConstraint(
     { pattern: /Complex/i, wrappers: ['complex'] },
     { pattern: /Shaped/i, wrappers: ['tensor', 'vector', 'memref', 'unranked_tensor', 'unranked_memref'] },
   ];
-  
+
   for (const { pattern, wrappers } of compositePatterns) {
     if (pattern.test(constraint)) {
       // 检查是否有元素类型限制（如 AnyTensorOf）
@@ -647,7 +647,7 @@ function analyzeConstraint(
       };
     }
   }
-  
+
   // 标量约束
   const scalarTypes = constraintMap[constraint] || [];
   return {
@@ -692,13 +692,13 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   className = '',
 }: UnifiedTypeSelectorProps) {
   const { constraintMap } = useTypeConstraintStore();
-  
+
   // 分析约束
-  const analysis = useMemo(() => 
+  const analysis = useMemo(() =>
     analyzeConstraint(constraint, constraintMap),
     [constraint, constraintMap]
   );
-  
+
   // 允许的包装器
   const allowedWrappers = useMemo(() => {
     if (analysis.allowedWrappers === null) return WRAPPERS;
@@ -710,19 +710,19 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const clickedElementRef = useRef<Element | null>(null);
-  
+
   // 约束对应的标量类型（用于选择面板）
   // 优先使用 prop 传入的 allowedTypes（来自后端 AnyTypeOf 解析）
   const constraintTypes = propAllowedTypes || analysis.scalarTypes;
-  
+
   // 展开约束名到具体类型（用于判断是否需要选择）
   const { buildableTypes } = useTypeConstraintStore();
   const expandedTypes = useMemo(() => {
     if (!constraintTypes) return null;
-    
+
     const buildableSet = new Set(buildableTypes);
     const expanded = new Set<string>();
-    
+
     for (const t of constraintTypes) {
       if (buildableSet.has(t)) {
         expanded.add(t);
@@ -735,16 +735,16 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
         expanded.add(t);
       }
     }
-    
+
     return [...expanded];
   }, [constraintTypes, constraintMap, buildableTypes]);
-  
+
   // 分析约束类型（fixed/single/multi）
-  const constraintKind = useMemo(() => 
+  const constraintKind = useMemo(() =>
     constraint ? analyzeConstraintKind(constraint) : null,
     [constraint]
   );
-  
+
   // 判断是否不需要用户选择
   // 条件：
   // 1. 无约束 → 可选择
@@ -758,16 +758,16 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     if (!constraintKind) return false;
     return constraintKind.kind !== 'multi';
   }, [analysis.isUnconstrained, expandedTypes, allowedWrappers, constraintKind]);
-  
-  // 同步外部 selectedType 变化
-  useEffect(() => {
+
+  // 同步外部 selectedType 变化（使用 useLayoutEffect 避免闪烁）
+  useLayoutEffect(() => {
     setNode(parseType(selectedType || 'AnyType'));
   }, [selectedType]);
-  
+
   // 更新位置（RAF 循环）- 跟随点击的元素
   useEffect(() => {
     if (!isOpen) return;
-    
+
     let rafId: number;
     const update = () => {
       const el = clickedElementRef.current;
@@ -780,7 +780,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     rafId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(rafId);
   }, [isOpen]);
-  
+
   // 点击外部关闭
   useEffect(() => {
     if (!isOpen) return;
@@ -795,13 +795,13 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     document.addEventListener('mousedown', handler, true);
     return () => document.removeEventListener('mousedown', handler, true);
   }, [isOpen]);
-  
+
   const handleOpenSelector = useCallback((_target: 'leaf', rect: DOMRect, _currentValue: string, element: Element) => {
     clickedElementRef.current = element;
     setSelectorPos({ top: rect.bottom + 4, left: rect.left });
     setIsOpen(true);
   }, []);
-  
+
   const handleSelect = useCallback((value: string) => {
     // 找到最内层的 scalar 并替换
     const updateLeaf = (n: TypeNode): TypeNode => {
@@ -815,7 +815,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     onTypeSelect(serializeType(newNode));
     setIsOpen(false);
   }, [node, onTypeSelect]);
-  
+
   const handleWrap = useCallback((wrapper: string) => {
     // 包装最内层的 scalar，而不是整个 node
     // 例如：vector<4xAnyFloat> + tensor => vector<4xtensor<4xAnyFloat>>
@@ -830,20 +830,20 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     onTypeSelect(serializeType(newNode));
     setIsOpen(false);
   }, [node, onTypeSelect]);
-  
+
   const handleNodeChange = useCallback((newNode: TypeNode) => {
     setNode(newNode);
     onTypeSelect(serializeType(newNode));
   }, [onTypeSelect]);
-  
+
   const preview = useMemo(() => serializeType(node), [node]);
   const color = getTypeColor(node.kind === 'scalar' ? node.name : 'tensor');
-  
+
   // 禁用或自动解析类型时，显示为只读
   // 自动解析：固定类型（I1）或单一映射约束（BoolLike）
   if (disabled || isAutoResolved) {
     return (
-      <span 
+      <span
         className={`text-xs px-1.5 py-0.5 rounded ${className}`}
         style={{ color, backgroundColor: `${color}20`, border: `1px solid ${color}40` }}
         title={isAutoResolved ? '此端口类型自动确定' : undefined}
@@ -852,7 +852,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
       </span>
     );
   }
-  
+
   return (
     <>
       <div
@@ -867,7 +867,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
           onOpenSelector={handleOpenSelector}
         />
       </div>
-      
+
       {isOpen && (
         <SelectionPanel
           position={selectorPos}

@@ -1,10 +1,7 @@
 /**
- * FunctionEntryNode Component
+ * FunctionEntryNode 组件
  * 
- * Entry point node for function editing (UE5-style).
- * Right side only: exec-out + parameter outputs
- * 
- * Requirements: 14.1, 14.3
+ * 函数入口节点（UE5 风格）：右侧显示 exec-out + 参数输出
  */
 
 import { memo, useCallback, useState, useMemo } from 'react';
@@ -43,10 +40,14 @@ const EditableName = memo(function EditableName({
     onDoubleClick={handleDoubleClick} title="Double-click to edit">{value}</span>;
 });
 
-const execPinStyle = { width: 0, height: 0, borderStyle: 'solid' as const, borderWidth: '5px 0 5px 8px',
-  borderColor: 'transparent transparent transparent white', backgroundColor: 'transparent', borderRadius: 0 };
-const dataPinStyle = (color: string) => ({ width: 10, height: 10, backgroundColor: color,
-  border: '2px solid #1a1a2e', borderRadius: '50%' });
+const execPinStyle = {
+  width: 0, height: 0, borderStyle: 'solid' as const, borderWidth: '5px 0 5px 8px',
+  borderColor: 'transparent transparent transparent white', backgroundColor: 'transparent', borderRadius: 0
+};
+const dataPinStyle = (color: string) => ({
+  width: 10, height: 10, backgroundColor: color,
+  border: '2px solid #1a1a2e', borderRadius: '50%'
+});
 
 export const FunctionEntryNode = memo(function FunctionEntryNode({ data, selected }: FunctionEntryNodeProps) {
   const { functionId, functionName, outputs, execOut, isMain } = data;
@@ -55,13 +56,13 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ data, selecte
   const updateParameter = useProjectStore(state => state.updateParameter);
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const setFunctionTraits = useProjectStore(state => state.setFunctionTraits);
-  
+
   // 获取当前函数的 traits 和 returnTypes
   const currentFunction = getCurrentFunction();
   const traits = currentFunction?.traits || [];
   const returnTypes = currentFunction?.returnTypes || [];
   const parameters = currentFunction?.parameters || [];
-  
+
   const handleTraitsChange = useCallback((newTraits: FunctionTrait[]) => {
     setFunctionTraits(functionId, newTraits);
   }, [functionId, setFunctionTraits]);

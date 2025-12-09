@@ -1,9 +1,4 @@
-"""
-MLIR Blueprint Editor - FastAPI Backend
-
-This module provides the main FastAPI application for the MLIR Blueprint Editor.
-It handles project management, dialect parsing, and MLIR execution.
-"""
+"""MLIR 蓝图编辑器后端入口"""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,16 +7,16 @@ from backend.api import projects, dialects, execution, graph, build, types
 
 app = FastAPI(
     title="MLIR Blueprint Editor API",
-    description="Backend API for the MLIR Blueprint visual editor",
+    description="MLIR 蓝图可视化编辑器后端 API",
     version="0.1.0",
 )
 
-# Configure CORS for frontend access
+# CORS 配置
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Alternative dev port
+        "http://localhost:5173",
+        "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ],
@@ -30,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routers
+# 注册路由
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(dialects.router, prefix="/api/dialects", tags=["dialects"])
 app.include_router(execution.router, prefix="/api/execution", tags=["execution"])

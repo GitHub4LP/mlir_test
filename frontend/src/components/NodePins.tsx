@@ -1,19 +1,10 @@
 /**
- * NodePins Component
+ * NodePins 组件
  * 
- * Unified pin rendering for all node types.
- * Handles both execution pins and data pins with consistent styling.
- * 
- * Layout rules:
- * - Left side: inputs (exec-in + data inputs)
- * - Right side: outputs (exec-outs + data outputs)
- * - Exec pins first, then data pins
- * - All exec pin arrows point RIGHT (direction of flow)
- * - Empty label = no label displayed (default exec pin)
- * 
- * Variadic 端口支持：
- * - Variadic 端口会展开为多个实例
- * - 每个 variadic 组的最后一个实例后显示 +/- 按钮
+ * 统一的引脚渲染组件，处理执行引脚和数据引脚。
+ * - 左侧：输入（exec-in + 数据输入）
+ * - 右侧：输出（exec-out + 数据输出）
+ * - Variadic 端口支持 +/- 按钮增删
  */
 
 import { memo } from 'react';
@@ -64,7 +55,7 @@ const PinRowComponent = memo(function PinRowComponent({
 }: PinRowProps) {
   const leftPin = row.left;
   const rightPin = row.right;
-  
+
   return (
     <div className="flex justify-between items-center min-h-7">
       {/* Left pin (input) */}
@@ -77,8 +68,8 @@ const PinRowComponent = memo(function PinRowComponent({
               id={leftPin.pin.id}
               isConnectable={true}
               className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2"
-              style={leftPin.type === 'exec' 
-                ? execPinStyle 
+              style={leftPin.type === 'exec'
+                ? execPinStyle
                 : dataPinStyle((leftPin.pin as DataPin).color || getTypeColor((leftPin.pin as DataPin).typeConstraint))
               }
             />
@@ -98,7 +89,7 @@ const PinRowComponent = memo(function PinRowComponent({
           </>
         )}
       </div>
-      
+
       {/* Right pin (output) */}
       <div className="relative flex items-center justify-end py-1">
         {rightPin && (
@@ -210,11 +201,11 @@ export const NodePins = memo(function NodePins({
 }: NodePinsProps) {
   // 收集 variadic 组信息
   const variadicGroups = new Map<string, { side: 'left' | 'right'; lastIndex: number }>();
-  
+
   rows.forEach((row, idx) => {
     const leftPin = row.left?.type === 'data' ? row.left.pin as DataPin : null;
     const rightPin = row.right?.type === 'data' ? row.right.pin as DataPin : null;
-    
+
     if (leftPin?.variadicGroup) {
       const existing = variadicGroups.get(leftPin.variadicGroup);
       if (!existing || idx > existing.lastIndex) {
@@ -231,10 +222,10 @@ export const NodePins = memo(function NodePins({
 
   // 构建渲染列表（包含控制按钮行）
   const renderItems: Array<{ type: 'row'; row: PinRow; idx: number } | { type: 'control'; groupName: string; side: 'left' | 'right' }> = [];
-  
+
   rows.forEach((row, idx) => {
     renderItems.push({ type: 'row', row, idx });
-    
+
     // 检查是否需要在此行后添加控制按钮
     for (const [groupName, info] of variadicGroups) {
       if (info.lastIndex === idx && onVariadicAdd && onVariadicRemove) {
@@ -245,7 +236,7 @@ export const NodePins = memo(function NodePins({
 
   return (
     <div className="px-1 py-1">
-      {renderItems.map((item, i) => {
+      {renderItems.map((item) => {
         if (item.type === 'row') {
           return (
             <PinRowComponent

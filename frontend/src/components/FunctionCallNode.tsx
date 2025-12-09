@@ -1,13 +1,10 @@
 /**
- * FunctionCallNode Component
+ * FunctionCallNode 组件
  * 
- * A node that represents a call to a custom function.
- * Uses unified pin rendering:
- * - Left side: exec-in + input parameters
- * - Right side: exec-outs + output return values
+ * 自定义函数调用节点：
+ * - 左侧：exec-in + 输入参数
+ * - 右侧：exec-out + 返回值
  * - Multiple exec-outs supported (one per Return node in function)
- * 
- * Requirements: 13.1, 13.2, 13.3
  */
 
 import { memo, useCallback, useMemo } from 'react';
@@ -75,10 +72,10 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     // 从 inputs/outputs 中查找具体类型
     const inputPort = inputs.find(p => p.id === pinId);
     if (inputPort?.concreteType) return inputPort.concreteType;
-    
+
     const outputPort = outputs.find(p => p.id === pinId);
     if (outputPort?.concreteType) return outputPort.concreteType;
-    
+
     // 回退到 typeStore
     return getPortType(id, pinId);
   }, [id, inputs, outputs, getPortType]);
@@ -86,7 +83,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   return (
     <div className={`min-w-48 rounded-lg overflow-visible shadow-lg ${selected ? 'ring-2 ring-blue-400' : ''}`}
       style={{ backgroundColor: '#2d2d3d', border: `1px solid ${selected ? '#60a5fa' : '#3d3d4d'}` }}>
-      
+
       {/* Header */}
       <div className="px-3 py-2" style={{ backgroundColor: '#9B59B6' }}>
         <span className="text-xs font-medium text-white/70 uppercase">call</span>

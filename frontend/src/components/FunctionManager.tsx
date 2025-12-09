@@ -1,12 +1,7 @@
 /**
- * FunctionManager Component
+ * FunctionManager 组件
  * 
- * Provides UI for managing functions in a project:
- * - Display function list
- * - Create/delete/rename functions
- * - Switch between functions for editing
- * 
- * Requirements: 1.4, 13.4
+ * 项目函数管理：显示函数列表，创建/删除/重命名函数，切换编辑函数
  */
 
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
@@ -97,8 +92,8 @@ const FunctionListItem = memo(function FunctionListItem({
       className={`
         flex items-center gap-2 px-3 py-2 cursor-pointer rounded-md
         transition-colors duration-150
-        ${isSelected 
-          ? 'bg-blue-600/30 border border-blue-500/50' 
+        ${isSelected
+          ? 'bg-blue-600/30 border border-blue-500/50'
           : 'hover:bg-gray-700/50 border border-transparent'
         }
       `}
@@ -198,18 +193,18 @@ const CreateFunctionDialog = memo(function CreateFunctionDialog({
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
-    
+
     if (!trimmedName) {
       setError('Function name is required');
       return;
     }
-    
+
     // Validate function name (alphanumeric and underscore, starting with letter)
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmedName)) {
       setError('Invalid function name. Use letters, numbers, and underscores.');
       return;
     }
-    
+
     onCreate(trimmedName);
     handleClose();
   }, [name, onCreate, handleClose]);
@@ -224,14 +219,14 @@ const CreateFunctionDialog = memo(function CreateFunctionDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div 
+      <div
         className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-80"
         onKeyDown={handleKeyDown}
       >
         <div className="px-4 py-3 border-b border-gray-700">
           <h3 className="text-lg font-semibold text-white">Create Function</h3>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-4">
           <div className="mb-4">
             <label className="block text-sm text-gray-400 mb-1">
@@ -252,7 +247,7 @@ const CreateFunctionDialog = memo(function CreateFunctionDialog({
               <p className="mt-1 text-xs text-red-400">{error}</p>
             )}
           </div>
-          
+
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -301,14 +296,14 @@ const DeleteConfirmDialog = memo(function DeleteConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div 
+      <div
         className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-80"
         onKeyDown={handleKeyDown}
       >
         <div className="px-4 py-3 border-b border-gray-700">
           <h3 className="text-lg font-semibold text-white">Delete Function</h3>
         </div>
-        
+
         <div className="p-4">
           <p className="text-sm text-gray-300 mb-4">
             Are you sure you want to delete <span className="font-semibold text-white">"{functionName}"</span>?
@@ -316,7 +311,7 @@ const DeleteConfirmDialog = memo(function DeleteConfirmDialog({
           <p className="text-xs text-yellow-400 mb-4">
             ⚠️ This will remove all usages of this function in other functions.
           </p>
-          
+
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -364,7 +359,7 @@ export const FunctionManager = memo(function FunctionManager({
   const project = useProjectStore(state => state.project);
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
   const error = useProjectStore(state => state.error);
-  
+
   // Get actions from store
   const addFunction = useProjectStore(state => state.addFunction);
   const removeFunction = useProjectStore(state => state.removeFunction);
@@ -374,7 +369,7 @@ export const FunctionManager = memo(function FunctionManager({
 
   // Get all functions (memoized to prevent unnecessary re-renders)
   const allFunctions = useMemo(() => {
-    return project 
+    return project
       ? [project.mainFunction, ...project.customFunctions]
       : [];
   }, [project]);

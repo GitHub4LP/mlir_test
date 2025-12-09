@@ -1,10 +1,7 @@
 /**
- * AttributeEditor Component
+ * AttributeEditor 组件
  * 
- * Provides input controls for editing MLIR operation attributes.
- * Supports integer, float, string, boolean, and enum types.
- * 
- * Requirements: 3.4, 9.1, 9.2, 9.3, 9.4, 9.5
+ * MLIR 操作属性编辑控件：支持整数、浮点数、字符串、布尔值、枚举类型
  */
 
 import { memo, useCallback, useState } from 'react';
@@ -29,40 +26,40 @@ export interface AttributeEditorProps {
  */
 function getInputType(typeConstraint: string): 'integer' | 'float' | 'boolean' | 'string' | 'enum' | 'array' | 'typed-attr' {
   const constraint = typeConstraint.toLowerCase();
-  
+
   // TypedAttrInterface - can be integer or float, needs special handling
   // This is used by arith.constant and similar operations
   if (constraint.includes('typedattrinterface') || constraint === 'typedattr') {
     return 'typed-attr';
   }
-  
+
   // Boolean types
   if (constraint.includes('bool') || constraint === 'i1' || constraint === 'unitattr') {
     return 'boolean';
   }
-  
+
   // Integer types
-  if (constraint.includes('int') || constraint.match(/^[su]?i\d+/) || 
-      constraint.includes('index') || constraint.includes('apint')) {
+  if (constraint.includes('int') || constraint.match(/^[su]?i\d+/) ||
+    constraint.includes('index') || constraint.includes('apint')) {
     return 'integer';
   }
-  
+
   // Float types
-  if (constraint.includes('float') || constraint.match(/^[bt]?f\d+/) || 
-      constraint.includes('apfloat')) {
+  if (constraint.includes('float') || constraint.match(/^[bt]?f\d+/) ||
+    constraint.includes('apfloat')) {
     return 'float';
   }
-  
+
   // Enum types (typically have "Enum" in the name or specific patterns)
   if (constraint.includes('enum') || constraint.includes('case')) {
     return 'enum';
   }
-  
+
   // Array types
   if (constraint.includes('array') || constraint.includes('dense')) {
     return 'array';
   }
-  
+
   // Default to string
   return 'string';
 }
@@ -112,10 +109,10 @@ const IntegerInput = memo(function IntegerInput({
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
-    
+
     const validation = validateInteger(newValue);
     setError(validation.error);
-    
+
     if (validation.valid && newValue !== '' && newValue !== '-') {
       onChange(parseInt(newValue, 10));
     } else if (newValue === '') {
@@ -127,9 +124,8 @@ const IntegerInput = memo(function IntegerInput({
     <div className="flex flex-col">
       <input
         type="number"
-        className={`w-20 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${
-          error ? 'border-red-500' : 'border-gray-600'
-        } focus:outline-none focus:border-blue-500`}
+        className={`w-20 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
+          } focus:outline-none focus:border-blue-500`}
         value={displayValue}
         onChange={handleChange}
         onClick={(e) => e.stopPropagation()}
@@ -160,10 +156,10 @@ const FloatInput = memo(function FloatInput({
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
-    
+
     const validation = validateFloat(newValue);
     setError(validation.error);
-    
+
     if (validation.valid && newValue !== '' && newValue !== '-' && newValue !== '.') {
       onChange(parseFloat(newValue));
     } else if (newValue === '') {
@@ -176,9 +172,8 @@ const FloatInput = memo(function FloatInput({
       <input
         type="number"
         step="any"
-        className={`w-20 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${
-          error ? 'border-red-500' : 'border-gray-600'
-        } focus:outline-none focus:border-blue-500`}
+        className={`w-20 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
+          } focus:outline-none focus:border-blue-500`}
         value={displayValue}
         onChange={handleChange}
         onClick={(e) => e.stopPropagation()}
@@ -281,8 +276,8 @@ const EnumInput = memo(function EnumInput({
   name: string;
 }) {
   // 从 value 中提取 symbol 用于显示当前选中项
-  const currentSymbol = typeof value === 'object' && value !== null 
-    ? (value as EnumOptionValue).symbol 
+  const currentSymbol = typeof value === 'object' && value !== null
+    ? (value as EnumOptionValue).symbol
     : '';
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -331,7 +326,7 @@ const ArrayInput = memo(function ArrayInput({
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
-    
+
     // Parse comma-separated values
     const parsed = newValue
       .split(',')
@@ -341,7 +336,7 @@ const ArrayInput = memo(function ArrayInput({
         const num = parseFloat(s);
         return isNaN(num) ? s : num;
       });
-    
+
     onChange(parsed);
   }, [onChange]);
 
@@ -379,7 +374,7 @@ const TypedAttrInput = memo(function TypedAttrInput({
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
-    
+
     // Allow empty, negative sign, or decimal point during typing
     if (newValue === '' || newValue === '-' || newValue === '.') {
       setError(undefined);
@@ -388,7 +383,7 @@ const TypedAttrInput = memo(function TypedAttrInput({
       }
       return;
     }
-    
+
     // Try to parse as number (integer or float)
     const num = parseFloat(newValue);
     if (isNaN(num)) {
@@ -404,9 +399,8 @@ const TypedAttrInput = memo(function TypedAttrInput({
       <input
         type="number"
         step="any"
-        className={`w-24 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${
-          error ? 'border-red-500' : 'border-gray-600'
-        } focus:outline-none focus:border-blue-500`}
+        className={`w-24 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
+          } focus:outline-none focus:border-blue-500`}
         value={displayValue}
         onChange={handleChange}
         onClick={(e) => e.stopPropagation()}
@@ -452,14 +446,14 @@ export const AttributeEditor = memo(function AttributeEditor({
 
   return (
     <div className="flex items-center justify-between py-1 gap-2">
-      <span 
+      <span
         className="text-xs text-gray-400 flex items-center cursor-help"
         title={tooltip}
       >
         {attribute.name}
         {optionalIndicator}
       </span>
-      
+
       {inputType === 'integer' && (
         <IntegerInput
           value={value}
@@ -468,7 +462,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'float' && (
         <FloatInput
           value={value}
@@ -477,7 +471,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'boolean' && (
         <BooleanInput
           value={value}
@@ -486,7 +480,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'string' && (
         <StringInput
           value={value}
@@ -495,7 +489,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'enum' && enumOptions.length > 0 && (
         <EnumInput
           value={value}
@@ -505,7 +499,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'enum' && enumOptions.length === 0 && (
         <StringInput
           value={value}
@@ -514,7 +508,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'array' && (
         <ArrayInput
           value={value}
@@ -523,7 +517,7 @@ export const AttributeEditor = memo(function AttributeEditor({
           name={attribute.name}
         />
       )}
-      
+
       {inputType === 'typed-attr' && (
         <TypedAttrInput
           value={value}

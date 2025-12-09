@@ -1,9 +1,7 @@
 /**
- * Project State Store
+ * 项目状态 Store
  * 
- * Manages project metadata and function list using Zustand.
- * 
- * Requirements: 1.1, 1.2, 1.3, 1.4
+ * 使用 Zustand 管理项目元数据和函数列表
  */
 
 import { create } from 'zustand';
@@ -55,19 +53,19 @@ function createReturnPorts(returnTypes: TypeDef[]): PortConfig[] {
  * @param isMain - If true, creates a main function with fixed signature (no params, returns i32)
  */
 function createFunctionGraph(
-  functionId: string, 
-  functionName: string, 
-  parameters: ParameterDef[], 
+  functionId: string,
+  functionName: string,
+  parameters: ParameterDef[],
   returnTypes: TypeDef[],
   isMain: boolean = false
 ): GraphState {
   const entryNodeId = `${functionId}-entry`;
   const returnNodeId = `${functionId}-return`;
-  
+
   // Main function has fixed signature: no parameters, returns I32
   const actualParams = isMain ? [] : parameters;
   const actualReturns = isMain ? [{ name: 'result', type: 'I32' }] : returnTypes;
-  
+
   const entryData: FunctionEntryData = {
     functionId,
     functionName,
@@ -75,7 +73,7 @@ function createFunctionGraph(
     execOut: { id: 'exec-out', label: '' },
     isMain,
   };
-  
+
   const returnData: FunctionReturnData = {
     functionId,
     functionName,
@@ -84,7 +82,7 @@ function createFunctionGraph(
     execIn: { id: 'exec-in', label: '' },
     isMain,
   };
-  
+
   return {
     nodes: [
       {
@@ -145,13 +143,13 @@ function createFunction(name: string, id?: string): FunctionDef {
 interface ProjectState {
   // Current project (null if no project is open)
   project: Project | null;
-  
+
   // Currently selected function ID for editing
   currentFunctionId: string | null;
-  
+
   // Loading state
   isLoading: boolean;
-  
+
   // Error state
   error: string | null;
 }
@@ -165,37 +163,37 @@ interface ProjectActions {
   loadProject: (project: Project) => void;
   closeProject: () => void;
   updateProjectPath: (path: string) => void;
-  
+
   // Persistence operations (Requirements: 1.2, 1.3)
   saveProjectToPath: (path?: string) => Promise<boolean>;
   loadProjectFromPath: (path: string) => Promise<boolean>;
-  
+
   // Function management
   addFunction: (name: string) => FunctionDef | null;
   removeFunction: (functionId: string) => boolean;
   renameFunction: (functionId: string, newName: string) => boolean;
   selectFunction: (functionId: string) => void;
-  
+
   // Function parameter management
   addParameter: (functionId: string, param: ParameterDef) => boolean;
   removeParameter: (functionId: string, paramName: string) => boolean;
   updateParameter: (functionId: string, paramName: string, newParam: ParameterDef) => boolean;
-  
+
   // Function return type management
   addReturnType: (functionId: string, returnType: TypeDef) => boolean;
   removeReturnType: (functionId: string, returnTypeName: string) => boolean;
   updateReturnType: (functionId: string, returnTypeName: string, newReturnType: TypeDef) => boolean;
-  
+
   // Function traits management
   setFunctionTraits: (functionId: string, traits: FunctionTrait[]) => boolean;
-  
+
   // Graph management (updates the graph for a specific function)
   updateFunctionGraph: (functionId: string, graph: GraphState) => boolean;
-  
+
   // Dialect management
   addDialect: (dialectName: string) => void;
   removeDialect: (dialectName: string) => void;
-  
+
   // Utility
   getCurrentFunction: () => FunctionDef | null;
   getFunctionById: (functionId: string) => FunctionDef | null;
@@ -226,7 +224,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       customFunctions: [],
       dialects,
     };
-    
+
     set({
       project,
       currentFunctionId: mainFunction.id,
@@ -266,23 +264,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       set({ error: 'No project to save' });
       return false;
     }
-    
+
     const savePath = path || state.project.path;
     if (!savePath) {
       set({ error: 'Project path is required for saving' });
       return false;
     }
-    
+
     set({ isLoading: true, error: null });
-    
+
     try {
       // Update project path if different
       const projectToSave = savePath !== state.project.path
         ? { ...state.project, path: savePath }
         : state.project;
-      
+
       await projectPersistence.saveProject(projectToSave, savePath);
-      
+
       // Update the project path in state if it changed
       if (savePath !== state.project.path) {
         set((state) => ({
@@ -292,7 +290,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       } else {
         set({ isLoading: false });
       }
-      
+
       return true;
     } catch (error) {
       const errorMessage = error instanceof projectPersistence.ProjectPersistenceError
@@ -308,19 +306,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       set({ error: 'Project path is required for loading' });
       return false;
     }
-    
+
     set({ isLoading: true, error: null });
-    
+
     try {
       const project = await projectPersistence.loadProject(path);
-      
+
       set({
         project,
         currentFunctionId: project.mainFunction.id,
         isLoading: false,
         error: null,
       });
-      
+
       return true;
     } catch (error) {
       const errorMessage = error instanceof projectPersistence.ProjectPersistenceError
@@ -335,16 +333,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   addFunction: (name) => {
     const state = get();
     if (!state.project) return null;
-    
+
     // Check for duplicate names
     const allFunctions = get().getAllFunctions();
     if (allFunctions.some(f => f.name === name)) {
       set({ error: `Function with name '${name}' already exists` });
       return null;
     }
-    
+
     const newFunction = createFunction(name);
-    
+
     set((state) => {
       if (!state.project) return state;
       return {
@@ -355,68 +353,68 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         error: null,
       };
     });
-    
+
     return newFunction;
   },
 
   removeFunction: (functionId) => {
     const state = get();
     if (!state.project) return false;
-    
+
     // Cannot remove main function
     if (state.project.mainFunction.id === functionId) {
       set({ error: 'Cannot remove main function' });
       return false;
     }
-    
+
     const functionExists = state.project.customFunctions.some(f => f.id === functionId);
     if (!functionExists) {
       set({ error: `Function with id '${functionId}' not found` });
       return false;
     }
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Remove the function
       let updatedProject = {
         ...state.project,
         customFunctions: state.project.customFunctions.filter(f => f.id !== functionId),
       };
-      
+
       // Remove all FunctionCallNodes that reference this function
       updatedProject = syncFunctionRemoval(updatedProject, functionId);
-      
+
       const newState: Partial<ProjectState> = {
         project: updatedProject,
         error: null,
       };
-      
+
       // If the removed function was selected, switch to main
       if (state.currentFunctionId === functionId) {
         newState.currentFunctionId = state.project.mainFunction.id;
       }
-      
+
       return newState as ProjectState;
     });
-    
+
     return true;
   },
 
   renameFunction: (functionId, newName) => {
     const state = get();
     if (!state.project) return false;
-    
+
     // Check for duplicate names
     const allFunctions = get().getAllFunctions();
     if (allFunctions.some(f => f.name === newName && f.id !== functionId)) {
       set({ error: `Function with name '${newName}' already exists` });
       return false;
     }
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function name
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -426,13 +424,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           f.id === functionId ? { ...f, name: newName } : f
         );
       }
-      
+
       // Sync all FunctionCallNodes to update the displayed name
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
@@ -449,22 +447,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   addParameter: (functionId, param) => {
     const state = get();
     if (!state.project) return false;
-    
+
     const func = get().getFunctionById(functionId);
     if (!func) {
       set({ error: `Function with id '${functionId}' not found` });
       return false;
     }
-    
+
     // Check for duplicate parameter names
     if (func.parameters.some(p => p.name === param.name)) {
       set({ error: `Parameter '${param.name}' already exists in function '${func.name}'` });
       return false;
     }
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function's parameters
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -477,23 +475,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           f.id === functionId ? { ...f, parameters: [...f.parameters, param] } : f
         );
       }
-      
+
       // Sync all dependent nodes across all graphs
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
   removeParameter: (functionId, paramName) => {
     const state = get();
     if (!state.project) return false;
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function's parameters
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -506,23 +504,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           f.id === functionId ? { ...f, parameters: f.parameters.filter(p => p.name !== paramName) } : f
         );
       }
-      
+
       // Sync all dependent nodes across all graphs
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
   updateParameter: (functionId, paramName, newParam) => {
     const state = get();
     if (!state.project) return false;
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function's parameters
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -534,18 +532,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         };
       } else {
         updatedProject.customFunctions = state.project.customFunctions.map(f =>
-          f.id === functionId 
-            ? { ...f, parameters: f.parameters.map(p => p.name === paramName ? newParam : p) } 
+          f.id === functionId
+            ? { ...f, parameters: f.parameters.map(p => p.name === paramName ? newParam : p) }
             : f
         );
       }
-      
+
       // Sync all dependent nodes across all graphs
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
@@ -553,16 +551,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   addReturnType: (functionId, returnType) => {
     const state = get();
     if (!state.project) return false;
-    
+
     const func = get().getFunctionById(functionId);
     if (!func) {
       set({ error: `Function with id '${functionId}' not found` });
       return false;
     }
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function's return types
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -575,23 +573,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           f.id === functionId ? { ...f, returnTypes: [...f.returnTypes, returnType] } : f
         );
       }
-      
+
       // Sync all dependent nodes across all graphs
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
   removeReturnType: (functionId, returnTypeName) => {
     const state = get();
     if (!state.project) return false;
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function's return types
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -604,23 +602,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           f.id === functionId ? { ...f, returnTypes: f.returnTypes.filter(r => r.name !== returnTypeName) } : f
         );
       }
-      
+
       // Sync all dependent nodes across all graphs
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
   updateReturnType: (functionId, returnTypeName, newReturnType) => {
     const state = get();
     if (!state.project) return false;
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       // Update the function's return types
       let updatedProject = { ...state.project };
       if (state.project.mainFunction.id === functionId) {
@@ -632,28 +630,28 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         };
       } else {
         updatedProject.customFunctions = state.project.customFunctions.map(f =>
-          f.id === functionId 
-            ? { ...f, returnTypes: f.returnTypes.map(r => r.name === returnTypeName ? newReturnType : r) } 
+          f.id === functionId
+            ? { ...f, returnTypes: f.returnTypes.map(r => r.name === returnTypeName ? newReturnType : r) }
             : f
         );
       }
-      
+
       // Sync all dependent nodes across all graphs
       updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
-      
+
       return { project: updatedProject, error: null };
     });
-    
+
     return true;
   },
 
   setFunctionTraits: (functionId, traits) => {
     const state = get();
     if (!state.project) return false;
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       if (state.project.mainFunction.id === functionId) {
         return {
           project: {
@@ -662,7 +660,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           },
         };
       }
-      
+
       return {
         project: {
           ...state.project,
@@ -672,7 +670,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         },
       };
     });
-    
+
     return true;
   },
 
@@ -680,15 +678,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   updateFunctionGraph: (functionId, graph) => {
     const state = get();
     if (!state.project) return false;
-    
+
     set((state) => {
       if (!state.project) return state;
-      
+
       const updateFunc = (f: FunctionDef): FunctionDef => ({
         ...f,
         graph,
       });
-      
+
       if (state.project.mainFunction.id === functionId) {
         return {
           project: {
@@ -697,7 +695,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           },
         };
       }
-      
+
       return {
         project: {
           ...state.project,
@@ -707,7 +705,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         },
       };
     });
-    
+
     return true;
   },
 
@@ -716,7 +714,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set((state) => {
       if (!state.project) return state;
       if (state.project.dialects.includes(dialectName)) return state;
-      
+
       return {
         project: {
           ...state.project,
@@ -729,7 +727,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   removeDialect: (dialectName) => {
     set((state) => {
       if (!state.project) return state;
-      
+
       return {
         project: {
           ...state.project,
@@ -749,18 +747,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   getFunctionById: (functionId) => {
     const state = get();
     if (!state.project) return null;
-    
+
     if (state.project.mainFunction.id === functionId) {
       return state.project.mainFunction;
     }
-    
+
     return state.project.customFunctions.find(f => f.id === functionId) || null;
   },
 
   getAllFunctions: () => {
     const state = get();
     if (!state.project) return [];
-    
+
     return [state.project.mainFunction, ...state.project.customFunctions];
   },
 

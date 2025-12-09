@@ -1,16 +1,13 @@
 /**
- * Connection Validator Service
+ * 连接验证服务
  * 
- * Validates connections between node ports based on type compatibility.
- * Provides error messages for invalid connections.
- * 
- * Requirements: 7.1, 7.2, 7.3
+ * 基于类型兼容性验证节点端口间的连接
  */
 
 import type { Node, Connection } from '@xyflow/react';
-import type { 
-  BlueprintNodeData, 
-  FunctionEntryData, 
+import type {
+  BlueprintNodeData,
+  FunctionEntryData,
   FunctionReturnData,
   FunctionCallData,
   PortConfig,
@@ -58,11 +55,11 @@ export function getPortTypeConstraint(
   }
 
   const data = node.data;
-  
+
   // Handle operation nodes (BlueprintNode)
   if (node.type === 'operation') {
     const blueprintData = data as BlueprintNodeData;
-    
+
     if (isSource) {
       // Output port - check outputTypes
       const portName = handleId.replace('output-', '');
@@ -73,7 +70,7 @@ export function getPortTypeConstraint(
       return blueprintData.inputTypes[portName] || null;
     }
   }
-  
+
   // Handle function entry nodes
   if (node.type === 'function-entry') {
     const entryData = data as FunctionEntryData;
@@ -84,7 +81,7 @@ export function getPortTypeConstraint(
     }
     return null;
   }
-  
+
   // Handle function return nodes
   if (node.type === 'function-return') {
     const returnData = data as FunctionReturnData;
@@ -95,7 +92,7 @@ export function getPortTypeConstraint(
     }
     return null;
   }
-  
+
   // Handle function call nodes
   if (node.type === 'function-call') {
     const callData = data as unknown as FunctionCallData;
@@ -107,7 +104,7 @@ export function getPortTypeConstraint(
       return port?.concreteType || port?.typeConstraint || null;
     }
   }
-  
+
   return null;
 }
 
@@ -142,14 +139,14 @@ export function validateConnectionCount(
   existingEdges: { source: string; sourceHandle: string | null; target: string; targetHandle: string | null }[]
 ): ConnectionCountResult {
   const { source, sourceHandle, target, targetHandle } = connection;
-  
+
   if (!sourceHandle || !targetHandle) {
     return { isValid: true };
   }
-  
+
   const isSourceExec = isExecHandle(sourceHandle);
   const isTargetExec = isExecHandle(targetHandle);
-  
+
   // Execution pins: exec-out can only have 1 outgoing connection
   if (isSourceExec) {
     const existingFromSource = existingEdges.filter(
@@ -162,7 +159,7 @@ export function validateConnectionCount(
       };
     }
   }
-  
+
   // Data pins: data input can only have 1 incoming connection
   if (!isTargetExec) {
     const existingToTarget = existingEdges.filter(
@@ -175,7 +172,7 @@ export function validateConnectionCount(
       };
     }
   }
-  
+
   return { isValid: true };
 }
 
@@ -203,7 +200,7 @@ export function validateConnection(
   existingEdges?: { source: string; sourceHandle: string | null; target: string; targetHandle: string | null }[]
 ): ConnectionValidationResult {
   const { source, sourceHandle, target, targetHandle } = connection;
-  
+
   // Basic validation - ensure all required fields are present
   if (!source || !sourceHandle || !target || !targetHandle) {
     return {
@@ -211,7 +208,7 @@ export function validateConnection(
       errorMessage: 'Invalid connection: missing source or target information',
     };
   }
-  
+
   // Prevent self-connections
   if (source === target) {
     return {
@@ -219,7 +216,7 @@ export function validateConnection(
       errorMessage: 'Cannot connect a node to itself',
     };
   }
-  
+
   // Validate connection count constraints if edges are provided
   if (existingEdges) {
     const countResult = validateConnectionCount(connection, existingEdges);
@@ -230,18 +227,18 @@ export function validateConnection(
       };
     }
   }
-  
+
   // Check that we're not mixing execution and data pins
   const isSourceExec = isExecHandle(sourceHandle);
   const isTargetExec = isExecHandle(targetHandle);
-  
+
   if (isSourceExec !== isTargetExec) {
     return {
       isValid: false,
       errorMessage: 'Cannot connect execution pins to data pins',
     };
   }
-  
+
   // For execution pins, no type checking needed
   if (isSourceExec && isTargetExec) {
     return {
@@ -250,29 +247,29 @@ export function validateConnection(
       targetType: 'exec',
     };
   }
-  
+
   // Find source and target nodes
   const sourceNode = nodes.find(n => n.id === source);
   const targetNode = nodes.find(n => n.id === target);
-  
+
   if (!sourceNode) {
     return {
       isValid: false,
       errorMessage: 'Source node not found',
     };
   }
-  
+
   if (!targetNode) {
     return {
       isValid: false,
       errorMessage: 'Target node not found',
     };
   }
-  
+
   // Get type constraints for both ports
   const sourceType = getPortTypeConstraint(sourceNode, sourceHandle, true, resolvedTypes);
   const targetType = getPortTypeConstraint(targetNode, targetHandle, false, resolvedTypes);
-  
+
   // If we can't determine types, allow the connection (permissive mode)
   if (!sourceType || !targetType) {
     return {
@@ -281,7 +278,7 @@ export function validateConnection(
       targetType: targetType || 'unknown',
     };
   }
-  
+
   // Check type compatibility
   // The source type must satisfy the target's type constraint
   if (isCompatible(sourceType, targetType)) {
@@ -291,25 +288,25 @@ export function validateConnection(
       targetType,
     };
   }
-  
+
   // Generate helpful error message
   const sourceConcreteTypes = getConcreteTypes(sourceType);
   const targetConcreteTypes = getConcreteTypes(targetType);
-  
+
   let errorMessage = `Type mismatch: '${sourceType}' is not compatible with '${targetType}'`;
-  
+
   // Add more detail if types are abstract
   if (sourceConcreteTypes.length > 1 || targetConcreteTypes.length > 1) {
-    const sourceTypesStr = sourceConcreteTypes.length > 3 
-      ? `${sourceConcreteTypes.slice(0, 3).join(', ')}...` 
+    const sourceTypesStr = sourceConcreteTypes.length > 3
+      ? `${sourceConcreteTypes.slice(0, 3).join(', ')}...`
       : sourceConcreteTypes.join(', ');
-    const targetTypesStr = targetConcreteTypes.length > 3 
-      ? `${targetConcreteTypes.slice(0, 3).join(', ')}...` 
+    const targetTypesStr = targetConcreteTypes.length > 3
+      ? `${targetConcreteTypes.slice(0, 3).join(', ')}...`
       : targetConcreteTypes.join(', ');
-    
+
     errorMessage += `. Source accepts [${sourceTypesStr}], target requires [${targetTypesStr}]`;
   }
-  
+
   return {
     isValid: false,
     errorMessage,
@@ -350,29 +347,29 @@ export function getNodeErrors(
   edges: { source: string; sourceHandle: string; target: string; targetHandle: string }[]
 ): string[] {
   const errors: string[] = [];
-  
+
   if (node.type !== 'operation') {
     return errors;
   }
-  
+
   const data = node.data as BlueprintNodeData;
   const operation = data.operation;
-  
+
   // Check each required operand (input port)
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand' && !arg.isOptional) {
       const portId = `input-${arg.name}`;
-      
+
       // Check if port is connected
       const isConnected = edges.some(
         e => e.target === node.id && e.targetHandle === portId
       );
-      
+
       if (!isConnected) {
         errors.push(`Required input '${arg.name}' is not connected`);
       }
     }
   }
-  
+
   return errors;
 }

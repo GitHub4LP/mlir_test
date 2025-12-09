@@ -1,12 +1,12 @@
 /**
- * Project Hydration Service
+ * 项目 Hydration 服务
  * 
  * Handles conversion between stored format (JSON files) and runtime format (in memory).
  * - Dehydrate: Strip operation definitions before saving (runtime -> stored)
  * - Hydrate: Fill operation definitions after loading (stored -> runtime)
  */
 
-import { useDialectStore, extractDialectNames } from '../stores/dialectStore';
+import { useDialectStore } from '../stores/dialectStore';
 import type {
   Project,
   StoredProject,
@@ -44,11 +44,11 @@ export function hydrateNodeData(
   getOperation: (fullName: string) => OperationDef | undefined
 ): BlueprintNodeData {
   const operation = getOperation(data.fullName);
-  
+
   if (!operation) {
     throw new Error(`Unknown operation: ${data.fullName}. Make sure the dialect is loaded.`);
   }
-  
+
   return {
     operation,
     attributes: data.attributes,
@@ -158,7 +158,7 @@ export function hydrateProject(
   return {
     ...project,
     mainFunction: hydrateFunctionDef(project.mainFunction, getOperation),
-    customFunctions: project.customFunctions.map(func => 
+    customFunctions: project.customFunctions.map(func =>
       hydrateFunctionDef(func, getOperation)
     ),
   };
@@ -169,7 +169,7 @@ export function hydrateProject(
  */
 export function extractOperationFullNames(project: StoredProject): string[] {
   const fullNames: string[] = [];
-  
+
   const extractFromGraph = (graph: StoredGraphState) => {
     for (const node of graph.nodes) {
       if (node.type === 'operation') {
@@ -178,12 +178,12 @@ export function extractOperationFullNames(project: StoredProject): string[] {
       }
     }
   };
-  
+
   extractFromGraph(project.mainFunction.graph);
   for (const func of project.customFunctions) {
     extractFromGraph(func.graph);
   }
-  
+
   return fullNames;
 }
 
@@ -195,14 +195,14 @@ export function extractOperationFullNames(project: StoredProject): string[] {
  */
 export async function loadAndHydrateProject(storedProject: StoredProject): Promise<Project> {
   const dialectStore = useDialectStore.getState();
-  
+
   // 使用后端计算的方言列表加载所需方言
   const dialects = storedProject.dialects || [];
-  
+
   if (dialects.length > 0) {
     await dialectStore.loadDialects(dialects);
   }
-  
+
   // Hydrate the project
   return hydrateProject(storedProject, dialectStore.getOperation);
 }

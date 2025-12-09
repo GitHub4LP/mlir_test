@@ -1,9 +1,7 @@
 /**
- * Palette Utility Functions
+ * 面板工具函数
  * 
- * Helper functions for filtering and grouping operations in the NodePalette.
- * 
- * Requirements: 4.2
+ * NodePalette 中用于过滤和分组操作的辅助函数
  */
 
 import type { DialectInfo, OperationDef } from '../types';
@@ -19,10 +17,10 @@ export function filterOperations(
   if (!query.trim()) {
     return operations;
   }
-  
+
   const lowerQuery = query.toLowerCase().trim();
-  
-  return operations.filter(op => 
+
+  return operations.filter(op =>
     op.opName.toLowerCase().includes(lowerQuery) ||
     op.fullName.toLowerCase().includes(lowerQuery) ||
     op.summary.toLowerCase().includes(lowerQuery)
@@ -36,11 +34,11 @@ export function groupByDialect(
   dialects: DialectInfo[]
 ): Map<string, OperationDef[]> {
   const grouped = new Map<string, OperationDef[]>();
-  
+
   for (const dialect of dialects) {
     const existing = grouped.get(dialect.name) || [];
     grouped.set(dialect.name, [...existing, ...dialect.operations]);
   }
-  
+
   return grouped;
 }

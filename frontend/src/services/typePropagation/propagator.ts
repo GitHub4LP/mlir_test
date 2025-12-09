@@ -1,12 +1,8 @@
 /**
- * Type Propagator
+ * 类型传播器
  * 
- * 实现类型传播算法：从用户选择的类型源，沿着 Trait 和连线传播到其他端口。
- * 
- * 支持：
- * - 操作节点的 Traits（如 SameOperandsAndResultType）
- * - 函数级别的 Traits（如 SameType）
- * - 跨函数边界传播（通过 function-call 节点）
+ * 从用户选择的类型源，沿着 Trait 和连线传播到其他端口。
+ * 支持操作节点 Traits、函数级 Traits、跨函数边界传播。
  */
 
 import type { Node, Edge } from '@xyflow/react';
@@ -37,12 +33,12 @@ function getFixedType(constraint: string): string | null {
  * @param currentFunction - 当前函数定义（用于获取函数级别 Traits）
  */
 export function buildPropagationGraph(
-  nodes: Node[], 
+  nodes: Node[],
   edges: Edge[],
   currentFunction?: FunctionDef
 ): PropagationGraph {
   const graph: PropagationGraph = new Map();
-  
+
   // 辅助函数：添加边（确保双向）
   const addEdge = (from: VariableId, to: VariableId) => {
     if (!graph.has(from)) {
@@ -50,25 +46,25 @@ export function buildPropagationGraph(
     }
     graph.get(from)!.add(to);
   };
-  
+
   // 辅助函数：添加双向边
   const addBidirectionalEdge = (a: VariableId, b: VariableId) => {
     addEdge(a, b);
     addEdge(b, a);
   };
-  
+
   // 1. 从操作 Traits 构建节点内传播边
   for (const node of nodes) {
     if (node.type !== 'operation') continue;
-    
+
     const data = node.data as BlueprintNodeData;
     const operation = data.operation;
     const variadicCounts = data.variadicCounts || {};
-    
+
     // SameOperandsAndResultType：所有数据端口类型相同
     if (hasSameOperandsAndResultTypeTrait(operation)) {
       const ports: VariableId[] = [];
-      
+
       // 收集所有数据端口（包括 variadic 展开的实例）
       for (const arg of operation.arguments) {
         if (arg.kind === 'operand') {
@@ -93,7 +89,7 @@ export function buildPropagationGraph(
           ports.push(makeVariableId(node.id, `output-${result.name}`));
         }
       }
-      
+
       // 任意两个端口之间双向传播
       for (let i = 0; i < ports.length; i++) {
         for (let j = i + 1; j < ports.length; j++) {
@@ -102,17 +98,17 @@ export function buildPropagationGraph(
       }
     }
   }
-  
+
   // 2. 从函数级别 Traits 构建传播边
   if (currentFunction?.traits) {
     // 找到 Entry 和 Return 节点
     const entryNode = nodes.find(n => n.type === 'function-entry');
     const returnNode = nodes.find(n => n.type === 'function-return');
-    
+
     for (const trait of currentFunction.traits) {
       if (trait.kind === 'SameType') {
         const ports: VariableId[] = [];
-        
+
         for (const portName of trait.ports) {
           if (portName.startsWith('return:')) {
             // 返回值端口
@@ -127,7 +123,7 @@ export function buildPropagationGraph(
             }
           }
         }
-        
+
         // 任意两个端口之间双向传播
         for (let i = 0; i < ports.length; i++) {
           for (let j = i + 1; j < ports.length; j++) {
@@ -137,22 +133,22 @@ export function buildPropagationGraph(
       }
     }
   }
-  
+
   // 3. 从连线构建节点间传播边（双向）
   for (const edge of edges) {
     // 跳过执行边
     if (edge.sourceHandle?.startsWith('exec-') || edge.targetHandle?.startsWith('exec-')) {
       continue;
     }
-    
+
     if (!edge.sourceHandle || !edge.targetHandle) continue;
-    
+
     const sourceVar = makeVariableId(edge.source, edge.sourceHandle);
     const targetVar = makeVariableId(edge.target, edge.targetHandle);
-    
+
     addBidirectionalEdge(sourceVar, targetVar);
   }
-  
+
   return graph;
 }
 
@@ -170,7 +166,7 @@ export function propagateTypes(
   const types = new Map<VariableId, string>();
   const sourceMap = new Map<VariableId, VariableId | null>();
   const queue: VariableId[] = [];
-  
+
   // 初始化：将所有源加入队列
   for (const source of sources) {
     const varId = makeVariableId(source.nodeId, source.portId);
@@ -178,16 +174,16 @@ export function propagateTypes(
     sourceMap.set(varId, null);  // 源的来源是 null（用户选择）
     queue.push(varId);
   }
-  
+
   // BFS 传播
   while (queue.length > 0) {
     const varId = queue.shift()!;
     const type = types.get(varId)!;
-    
+
     // 获取所有可以传播到的邻居
     const neighbors = graph.get(varId);
     if (!neighbors) continue;
-    
+
     for (const neighbor of neighbors) {
       // 如果邻居还没有类型，传播过去
       if (!types.has(neighbor)) {
@@ -198,7 +194,7 @@ export function propagateTypes(
       // 如果邻居已有类型，检查是否冲突（可选：记录冲突）
     }
   }
-  
+
   return { types, sources: sourceMap };
 }
 
@@ -219,7 +215,7 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
   const sources: TypeSource[] = [];
   // 用于去重：同一端口只添加一次
   const addedPorts = new Set<string>();
-  
+
   const addSource = (nodeId: string, portId: string, type: string) => {
     const key = `${nodeId}:${portId}`;
     if (!addedPorts.has(key)) {
@@ -227,7 +223,7 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
       sources.push({ nodeId, portId, type });
     }
   };
-  
+
   for (const node of nodes) {
     switch (node.type) {
       case 'operation': {
@@ -235,20 +231,20 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
         const operation = data.operation;
         const pinnedTypes = data.pinnedTypes || {};
         const variadicCounts = data.variadicCounts || {};
-        
+
         // 1. 用户显式选择的类型
         for (const [portId, type] of Object.entries(pinnedTypes)) {
           if (type) {
             addSource(node.id, portId, type);
           }
         }
-        
+
         // 2. 自动解析约束固定类型（输入端口）
         for (const arg of operation.arguments) {
           if (arg.kind !== 'operand') continue;
-          
+
           const fixedType = getFixedType(arg.typeConstraint);
-          
+
           if (arg.isVariadic) {
             // Variadic 端口：为每个实例添加源
             const count = variadicCounts[arg.name] ?? 1;
@@ -267,11 +263,11 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
             }
           }
         }
-        
+
         // 3. 自动解析约束固定类型（输出端口）
         for (const result of operation.results) {
           const fixedType = getFixedType(result.typeConstraint);
-          
+
           if (result.isVariadic) {
             const count = variadicCounts[result.name] ?? 1;
             for (let i = 0; i < count; i++) {
@@ -291,7 +287,7 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
         }
         break;
       }
-      
+
       case 'function-entry': {
         const data = node.data as FunctionEntryData;
         for (const port of data.outputs) {
@@ -303,7 +299,7 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
         }
         break;
       }
-      
+
       case 'function-return': {
         const data = node.data as FunctionReturnData;
         for (const port of data.inputs) {
@@ -314,7 +310,7 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
         }
         break;
       }
-      
+
       case 'function-call': {
         const data = node.data as FunctionCallData;
         for (const port of data.inputs) {
@@ -333,7 +329,7 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
       }
     }
   }
-  
+
   return sources;
 }
 
@@ -355,13 +351,13 @@ export function computeDisplayTypes(
 ): Map<VariableId, string> {
   // 1. 构建传播图（包含函数级别 Traits）
   const graph = buildPropagationGraph(nodes, edges, currentFunction);
-  
+
   // 2. 提取类型源
   const sources = extractTypeSources(nodes);
-  
+
   // 3. 传播类型
   const result = propagateTypes(graph, sources);
-  
+
   return result.types;
 }
 
@@ -386,11 +382,11 @@ export function applyPropagationResult(
         const variadicCounts = nodeData.variadicCounts || {};
         const newInputTypes: Record<string, string> = {};
         const newOutputTypes: Record<string, string> = {};
-        
+
         // 输入端口
         for (const arg of operation.arguments) {
           if (arg.kind !== 'operand') continue;
-          
+
           if (arg.isVariadic) {
             // Variadic 端口：检查所有实例，使用第一个有传播结果的类型
             const count = variadicCounts[arg.name] ?? 1;
@@ -410,7 +406,7 @@ export function applyPropagationResult(
             newInputTypes[arg.name] = propagatedType || arg.typeConstraint;
           }
         }
-        
+
         // 输出端口
         for (const result of operation.results) {
           if (result.isVariadic) {
@@ -431,7 +427,7 @@ export function applyPropagationResult(
             newOutputTypes[result.name] = propagatedType || result.typeConstraint;
           }
         }
-        
+
         return {
           ...node,
           data: {
@@ -441,7 +437,7 @@ export function applyPropagationResult(
           },
         };
       }
-      
+
       case 'function-entry': {
         const nodeData = node.data as FunctionEntryData;
         const newOutputs = nodeData.outputs.map(port => {
@@ -452,7 +448,7 @@ export function applyPropagationResult(
             concreteType: propagatedType || port.concreteType,
           };
         });
-        
+
         return {
           ...node,
           data: {
@@ -461,7 +457,7 @@ export function applyPropagationResult(
           },
         };
       }
-      
+
       case 'function-return': {
         const nodeData = node.data as FunctionReturnData;
         const newInputs = nodeData.inputs.map(port => {
@@ -472,7 +468,7 @@ export function applyPropagationResult(
             concreteType: propagatedType || port.concreteType,
           };
         });
-        
+
         return {
           ...node,
           data: {
@@ -481,7 +477,7 @@ export function applyPropagationResult(
           },
         };
       }
-      
+
       case 'function-call': {
         const nodeData = node.data as FunctionCallData;
         const newInputs = nodeData.inputs.map(port => {
@@ -500,7 +496,7 @@ export function applyPropagationResult(
             concreteType: propagatedType || port.concreteType,
           };
         });
-        
+
         return {
           ...node,
           data: {
@@ -510,7 +506,7 @@ export function applyPropagationResult(
           },
         };
       }
-      
+
       default:
         return node;
     }

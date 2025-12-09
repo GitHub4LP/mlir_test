@@ -1,10 +1,7 @@
 /**
- * Project Persistence Service
+ * 项目持久化服务
  * 
- * Handles saving and loading projects to/from the backend API.
- * Uses hydration/dehydration to convert between stored and runtime formats.
- * 
- * Requirements: 1.2, 1.3
+ * 处理项目的保存/加载，通过 hydration/dehydration 转换存储格式和运行时格式
  */
 
 import type { Project, StoredProject } from '../types';
@@ -50,7 +47,7 @@ export interface ApiError {
 export class ProjectPersistenceError extends Error {
   readonly statusCode?: number;
   readonly detail?: string;
-  
+
   constructor(
     message: string,
     statusCode?: number,
@@ -100,18 +97,18 @@ export async function saveProject(
   path?: string
 ): Promise<SaveProjectResponse> {
   const savePath = path || project.path;
-  
+
   if (!savePath) {
     throw new ProjectPersistenceError('Project path is required for saving');
   }
-  
+
   // Dehydrate project to strip operation definitions before saving
   // Update project path if different
   const projectToSave = savePath !== project.path
     ? { ...project, path: savePath }
     : project;
   const storedProject = dehydrateProject(projectToSave);
-  
+
   // 使用 POST + 请求体传递路径，避免 URL 编码问题
   const response = await fetch(
     `${API_BASE_URL}/projects/save`,
@@ -123,7 +120,7 @@ export async function saveProject(
       body: JSON.stringify({ project: storedProject }),
     }
   );
-  
+
   return handleResponse<SaveProjectResponse>(response);
 }
 
@@ -141,7 +138,7 @@ export async function loadProject(path: string): Promise<Project> {
   if (!path) {
     throw new ProjectPersistenceError('Project path is required for loading');
   }
-  
+
   // 使用 POST + 请求体传递路径，避免 URL 编码问题
   const response = await fetch(
     `${API_BASE_URL}/projects/load`,
@@ -153,9 +150,9 @@ export async function loadProject(path: string): Promise<Project> {
       body: JSON.stringify({ projectPath: path }),
     }
   );
-  
+
   const data = await handleResponse<LoadProjectResponse>(response);
-  
+
   // Hydrate project to fill operation definitions from dialectStore
   return loadAndHydrateProject(data.project);
 }
@@ -176,11 +173,11 @@ export async function createProject(
   if (!name) {
     throw new ProjectPersistenceError('Project name is required');
   }
-  
+
   if (!path) {
     throw new ProjectPersistenceError('Project path is required');
   }
-  
+
   const response = await fetch(`${API_BASE_URL}/projects/`, {
     method: 'POST',
     headers: {
@@ -188,7 +185,7 @@ export async function createProject(
     },
     body: JSON.stringify({ name, path }),
   });
-  
+
   return handleResponse<CreateProjectResponse>(response);
 }
 
@@ -202,7 +199,7 @@ export async function deleteProject(path: string): Promise<void> {
   if (!path) {
     throw new ProjectPersistenceError('Project path is required for deletion');
   }
-  
+
   // 使用 POST + 请求体传递路径，避免 URL 编码问题
   const response = await fetch(
     `${API_BASE_URL}/projects/delete`,
@@ -214,7 +211,7 @@ export async function deleteProject(path: string): Promise<void> {
       body: JSON.stringify({ projectPath: path }),
     }
   );
-  
+
   await handleResponse<{ status: string; path: string }>(response);
 }
 

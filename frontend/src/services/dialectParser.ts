@@ -1,16 +1,11 @@
 /**
- * Dialect Parser Service
+ * 方言解析服务
  * 
- * Parses MLIR dialect JSON files and extracts operation definitions.
- * Converts raw JSON data into structured OperationDef objects.
+ * 解析 MLIR 方言 JSON 文件，提取操作定义。
  * 
  * 设计原则：
  * - 所有 JSON 解析逻辑集中在此模块
  * - 代码可在浏览器前端或 Node.js 后端运行
- * - 后端可选择直接返回原始 JSON，由前端解析
- * - 或后端调用此模块解析后返回结构化数据
- * 
- * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5
  */
 
 import type { DialectInfo, OperationDef, ArgumentDef, ResultDef } from '../types';
@@ -108,39 +103,39 @@ interface EnumInfo {
  */
 export function buildEnumMap(jsonData: RawDialectJson): Map<string, EnumInfo> {
   const enumMap = new Map<string, EnumInfo>();
-  
+
   // Pass 1: Find all definitions with direct enumerants
   for (const [name, value] of Object.entries(jsonData)) {
     if (name.startsWith('!')) continue;
     if (typeof value !== 'object' || value === null) continue;
-    
+
     const info = value as RawDefinition;
     if (!info.enumerants) continue;
-    
+
     const options = extractEnumerants(info.enumerants, jsonData);
     if (options.length > 0) {
       enumMap.set(name, { options });
     }
   }
-  
+
   // Pass 2: Handle DefaultValuedAttr and other wrappers
   for (const [name, value] of Object.entries(jsonData)) {
     if (name.startsWith('!')) continue;
     if (typeof value !== 'object' || value === null) continue;
     if (enumMap.has(name)) continue;  // Already processed
-    
+
     const info = value as RawDefinition;
     const baseAttr = info.baseAttr;
     if (!baseAttr?.def) continue;
-    
+
     const baseName = baseAttr.def;
-    
+
     // Extract default value (clean up C++ namespace)
     let defaultValue = info.defaultValue;
     if (typeof defaultValue === 'string' && defaultValue.includes('::')) {
       defaultValue = defaultValue.split('::').pop();
     }
-    
+
     // Case 1: baseAttr is directly in enumMap
     if (enumMap.has(baseName)) {
       enumMap.set(name, {
@@ -149,7 +144,7 @@ export function buildEnumMap(jsonData: RawDialectJson): Map<string, EnumInfo> {
       });
       continue;
     }
-    
+
     // Case 2: baseAttr has an 'enum' reference (BitEnumAttr pattern)
     const baseInfo = jsonData[baseName] as RawDefinition | undefined;
     if (baseInfo?.enum?.def) {
@@ -162,7 +157,7 @@ export function buildEnumMap(jsonData: RawDialectJson): Map<string, EnumInfo> {
       }
     }
   }
-  
+
   return enumMap;
 }
 
@@ -174,10 +169,10 @@ function extractEnumerants(
   jsonData: RawDialectJson
 ): EnumOptionInfo[] {
   const options: EnumOptionInfo[] = [];
-  
+
   for (const e of enumerants) {
     if (!e.def) continue;
-    
+
     const enumDef = jsonData[e.def] as RawDefinition | undefined;
     if (enumDef?.str !== undefined && enumDef?.symbol !== undefined && enumDef?.value !== undefined) {
       options.push({
@@ -188,7 +183,7 @@ function extractEnumerants(
       });
     }
   }
-  
+
   return options;
 }
 
@@ -221,17 +216,17 @@ function isAttributeType(
   if (attrTypes.has(typeConstraint)) {
     return true;
   }
-  
+
   // Check for common attribute patterns
   if (typeConstraint.endsWith('Attr')) {
     return true;
   }
-  
+
   // Check for property types (also treated as attributes in the UI)
   if (typeConstraint.endsWith('Property') || typeConstraint.endsWith('Prop')) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -239,9 +234,9 @@ function isAttributeType(
  * Checks if an argument is optional based on its type constraint
  */
 function isOptionalArgument(typeConstraint: string): boolean {
-  return typeConstraint.startsWith('Optional') || 
-         typeConstraint.includes('Optional') ||
-         typeConstraint.startsWith('Variadic');
+  return typeConstraint.startsWith('Optional') ||
+    typeConstraint.includes('Optional') ||
+    typeConstraint.startsWith('Variadic');
 }
 
 /**
@@ -257,7 +252,7 @@ function extractDialectName(opDef: RawOperationDef): string {
       return match[1].toLowerCase();
     }
   }
-  
+
   // Try to extract from !name
   // Format: "Arith_AddIOp" -> "arith"
   const name = opDef['!name'];
@@ -265,7 +260,7 @@ function extractDialectName(opDef: RawOperationDef): string {
   if (match) {
     return match[1].toLowerCase();
   }
-  
+
   return 'unknown';
 }
 
@@ -284,16 +279,16 @@ function parseArguments(
   if (!rawArgs?.args) {
     return [];
   }
-  
+
   return rawArgs.args.map(([typeInfo, name], idx) => {
     const typeConstraint = typeInfo.def;
     const kind = isAttributeType(typeConstraint, attrTypes) ? 'attribute' : 'operand';
     const argName = name || `arg_${idx}`;
-    
+
     // Extract enum options for attributes
     let enumOptions: EnumOptionInfo[] | undefined;
     let defaultValue: string | undefined;
-    
+
     if (kind === 'attribute') {
       const enumInfo = getEnumInfo(typeConstraint, enumMap);
       if (enumInfo) {
@@ -301,7 +296,7 @@ function parseArguments(
         defaultValue = enumInfo.defaultValue;
       }
     }
-    
+
     return {
       name: argName,
       kind,
@@ -323,7 +318,7 @@ function parseResults(rawResults: RawArgumentEntry | undefined): ResultDef[] {
   if (!rawResults?.args) {
     return [];
   }
-  
+
   return rawResults.args.map(([typeInfo, name], idx) => {
     const typeConstraint = typeInfo.def;
     return {
@@ -344,7 +339,7 @@ function parseTraits(rawTraits: RawTrait[] | undefined): string[] {
   if (!rawTraits) {
     return [];
   }
-  
+
   return rawTraits.map(trait => trait.def);
 }
 
@@ -356,13 +351,13 @@ function isOperation(key: string, value: unknown, opNames: Set<string>): boolean
   if (opNames.has(key)) {
     return true;
   }
-  
+
   // Additional check: must have opName field
   if (typeof value === 'object' && value !== null) {
     const obj = value as Record<string, unknown>;
     return typeof obj.opName === 'string';
   }
-  
+
   return false;
 }
 
@@ -376,54 +371,54 @@ function isOperation(key: string, value: unknown, opNames: Set<string>): boolean
  */
 export function parseDialectJson(json: RawDialectJson, dialectName?: string): DialectInfo {
   const operations: OperationDef[] = [];
-  
+
   // Build set of attribute types from !instanceof
   const attrTypes = new Set<string>();
   const attrCategories = ['Attr', 'AttrConstraint', 'AttrDef', 'EnumAttr', 'EnumAttrInfo'];
-  
+
   for (const category of attrCategories) {
     const types = json['!instanceof']?.[category];
     if (Array.isArray(types)) {
       types.forEach(t => attrTypes.add(t));
     }
   }
-  
+
   // Build enum map for attribute enum extraction
   const enumMap = buildEnumMap(json);
-  
+
   // Build set of operation names from !instanceof.Op
   const opNames = new Set<string>(json['!instanceof']?.['Op'] || []);
-  
+
   // Determine dialect name
   let detectedDialectName = dialectName || 'unknown';
-  
+
   // Iterate through all entries to find operations
   for (const [key, value] of Object.entries(json)) {
     // Skip metadata entries
     if (key.startsWith('!')) {
       continue;
     }
-    
+
     // Check if this is an operation
     if (!isOperation(key, value, opNames)) {
       continue;
     }
-    
+
     const opDef = value as RawOperationDef;
-    
+
     // Skip if no opName (not a real operation)
     if (!opDef.opName) {
       continue;
     }
-    
+
     // Extract dialect name from first operation if not provided
     if (detectedDialectName === 'unknown') {
       detectedDialectName = extractDialectName(opDef);
     }
-    
+
     const dialect = extractDialectName(opDef);
     const fullName = `${dialect}.${opDef.opName}`;
-    
+
     const traits = parseTraits(opDef.traits);
     const operation: OperationDef = {
       dialect,
@@ -440,10 +435,10 @@ export function parseDialectJson(json: RawDialectJson, dialectName?: string): Di
       isTerminator: traits.some(t => t.includes('Terminator') || t === 'ReturnLike'),
       isPure: traits.includes('Pure') || (traits.includes('NoMemoryEffect') && traits.includes('AlwaysSpeculatableImplTrait')),
     };
-    
+
     operations.push(operation);
   }
-  
+
   return {
     name: detectedDialectName,
     operations,
@@ -461,7 +456,7 @@ export async function fetchDialect(dialectName: string): Promise<DialectInfo> {
   if (!response.ok) {
     throw new Error(`Failed to fetch dialect ${dialectName}: ${response.statusText}`);
   }
-  
+
   // Backend returns fully parsed DialectInfo, use directly
   return response.json();
 }
@@ -474,12 +469,12 @@ export async function fetchAllDialects(): Promise<DialectInfo[]> {
   if (!response.ok) {
     throw new Error(`Failed to fetch dialects list: ${response.statusText}`);
   }
-  
+
   const dialectNames: string[] = await response.json();
   const dialects = await Promise.all(
     dialectNames.map(name => fetchDialect(name))
   );
-  
+
   return dialects;
 }
 
@@ -512,19 +507,19 @@ export function getAllTypesMatchPorts(operation: OperationDef): string[] | null 
   // AllTypesMatch trait is typically defined with specific port names
   // For now, we check for the trait and return all operand/result names
   // In a more complete implementation, we'd parse the trait parameters
-  
-  const hasAllTypesMatch = operation.traits.some(t => 
+
+  const hasAllTypesMatch = operation.traits.some(t =>
     t === 'AllTypesMatch' || t.includes('AllTypesMatch')
   );
-  
+
   if (!hasAllTypesMatch) {
     return null;
   }
-  
+
   // Return all operand and result names
   const operandNames = getOperands(operation).map(o => o.name);
   const resultNames = operation.results.map(r => r.name);
-  
+
   return [...operandNames, ...resultNames];
 }
 
