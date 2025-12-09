@@ -2,33 +2,23 @@
 TableGen JSON 数据获取
 """
 
-from pathlib import Path
-import subprocess
 import json
-from typing import Optional
+import subprocess
+from pathlib import Path
+
+from .paths import get_include_dir, find_tool
 
 
-def get_mlir_paths() -> tuple[Path, Path]:
-    """获取 MLIR 的 include 和 bin 目录"""
-    import mlir._mlir_libs as libs
-    mlir_dir = Path(libs.__file__).parent
-    include_dir = mlir_dir / 'include'
-    bin_dir = mlir_dir.parent / 'bin'
-    return include_dir, bin_dir
-
-
-def generate_json(td_file: Path, include_dir: Optional[Path] = None) -> dict:
-    """
-    使用 llvm-tblgen --dump-json 生成 JSON 数据
-    """
+def generate_json(td_file: Path, include_dir: Path | None = None) -> dict:
+    """使用 llvm-tblgen --dump-json 生成 JSON 数据"""
     if include_dir is None:
-        include_dir, bin_dir = get_mlir_paths()
-    else:
-        _, bin_dir = get_mlir_paths()
+        include_dir = get_include_dir()
+        if not include_dir:
+            raise RuntimeError("MLIR include directory not found")
     
-    tool = bin_dir / 'llvm-tblgen.exe'
-    if not tool.exists():
-        tool = bin_dir / 'llvm-tblgen'
+    tool = find_tool('llvm-tblgen')
+    if not tool:
+        raise RuntimeError("llvm-tblgen not found")
     
     cmd = [str(tool), str(td_file), f'-I{include_dir}', '--dump-json']
     result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -39,7 +29,7 @@ def generate_json(td_file: Path, include_dir: Optional[Path] = None) -> dict:
     return json.loads(result.stdout)
 
 
-def _get_dialect_from_json(data: dict, td_file: Path) -> Optional[str]:
+def _get_dialect_from_json(data: dict, td_file: Path) -> str | None:
     """从 JSON 数据中提取方言名称"""
     instanceof = data.get('!instanceof', {})
     dialect_records = instanceof.get('Dialect', [])
@@ -91,7 +81,7 @@ _DIALECT_MAPPINGS = {
 }
 
 
-def _try_get_td_file(dialect: str, include_dir: Path) -> Optional[Path]:
+def _try_get_td_file(dialect: str, include_dir: Path) -> Path | None:
     """尝试快速获取方言 TD 文件路径（不扫描）"""
     # 检查特殊映射
     if dialect in _DIALECT_MAPPINGS:
@@ -157,7 +147,9 @@ def _scan_all_dialects(include_dir: Path) -> dict[str, Path]:
 
 def get_dialect_td_file(dialect: str) -> Path:
     """获取方言的 TableGen 文件路径"""
-    include_dir, _ = get_mlir_paths()
+    include_dir = get_include_dir()
+    if not include_dir:
+        raise RuntimeError("MLIR include directory not found")
     
     # 快速查找
     td_file = _try_get_td_file(dialect, include_dir)
@@ -174,7 +166,9 @@ def get_dialect_td_file(dialect: str) -> Path:
 
 def discover_dialect_td_files() -> dict[str, Path]:
     """自动发现所有方言的 TD 文件"""
-    include_dir, _ = get_mlir_paths()
+    include_dir = get_include_dir()
+    if not include_dir:
+        raise RuntimeError("MLIR include directory not found")
     return _scan_all_dialects(include_dir)
 
 

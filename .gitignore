@@ -16,3 +16,13 @@ mlir_data
 uv.lock
 .python-version
 .vscode
+.kiro
+WARP.md
+.pytest_cache
+
+frontend/dist
+frontend/node_modules
+
+mlir_data
+docs
+projects/
