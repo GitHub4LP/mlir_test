@@ -71,7 +71,7 @@ function createOperationNode(
 ): Node {
   const inputTypes: Record<string, string> = {};
   const outputTypes: Record<string, string> = {};
-  
+
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand') {
       inputTypes[arg.name] = arg.typeConstraint;
@@ -80,15 +80,17 @@ function createOperationNode(
   for (const result of operation.results) {
     outputTypes[result.name] = result.typeConstraint;
   }
-  
+
   const data: BlueprintNodeData = {
     operation,
     attributes: {},
     inputTypes,
     outputTypes,
     pinnedTypes,
+    execOuts: [],
+    regionPins: [],
   };
-  
+
   return {
     id,
     type: 'operation',
@@ -106,16 +108,16 @@ describe('extractTypeSources', () => {
       ['SameOperandsAndResultType']
     );
     const node = createOperationNode('node1', op, { 'input-lhs': 'I32' });
-    
+
     const sources = extractTypeSources([node]);
-    
+
     expect(sources).toContainEqual({
       nodeId: 'node1',
       portId: 'input-lhs',
       type: 'I32',
     });
   });
-  
+
   it('should auto-resolve single-type constraints (BoolLike → I1)', () => {
     const op = createMockOperation(
       'arith.cmpi',
@@ -123,9 +125,9 @@ describe('extractTypeSources', () => {
       [{ name: 'result', typeConstraint: 'BoolLike' }]  // 单一类型约束
     );
     const node = createOperationNode('node1', op);
-    
+
     const sources = extractTypeSources([node]);
-    
+
     // BoolLike 应该自动解析为 I1
     expect(sources).toContainEqual({
       nodeId: 'node1',
@@ -133,7 +135,7 @@ describe('extractTypeSources', () => {
       type: 'I1',
     });
   });
-  
+
   it('should auto-resolve Index constraint', () => {
     const op = createMockOperation(
       'arith.index_cast',
@@ -141,16 +143,16 @@ describe('extractTypeSources', () => {
       [{ name: 'out', typeConstraint: 'Index' }]  // 单一类型约束
     );
     const node = createOperationNode('node1', op);
-    
+
     const sources = extractTypeSources([node]);
-    
+
     expect(sources).toContainEqual({
       nodeId: 'node1',
       portId: 'output-out',
       type: 'Index',
     });
   });
-  
+
   it('should NOT auto-resolve multi-type constraints', () => {
     const op = createMockOperation(
       'arith.addi',
@@ -158,9 +160,9 @@ describe('extractTypeSources', () => {
       [{ name: 'result', typeConstraint: 'SignlessIntegerLike' }]
     );
     const node = createOperationNode('node1', op);
-    
+
     const sources = extractTypeSources([node]);
-    
+
     // SignlessIntegerLike 有多个类型，不应该自动解析
     expect(sources).not.toContainEqual(
       expect.objectContaining({ portId: 'input-lhs' })
@@ -169,7 +171,7 @@ describe('extractTypeSources', () => {
       expect.objectContaining({ portId: 'output-result' })
     );
   });
-  
+
   it('should prefer pinned type over auto-resolved type', () => {
     const op = createMockOperation(
       'test.op',
@@ -178,9 +180,9 @@ describe('extractTypeSources', () => {
     );
     // 用户显式选择了 I1（虽然 BoolLike 也会解析为 I1）
     const node = createOperationNode('node1', op, { 'input-in': 'I1' });
-    
+
     const sources = extractTypeSources([node]);
-    
+
     // 应该只有一个源（不重复）
     const inSources = sources.filter(s => s.portId === 'input-in');
     expect(inSources).toHaveLength(1);
@@ -197,7 +199,7 @@ describe('type propagation with auto-resolved types', () => {
       [{ name: 'result', typeConstraint: 'BoolLike' }]
     );
     const cmpiNode = createOperationNode('cmpi', cmpiOp);
-    
+
     const selectOp = createMockOperation(
       'arith.select',
       [
@@ -207,7 +209,7 @@ describe('type propagation with auto-resolved types', () => {
       [{ name: 'result', typeConstraint: 'SignlessIntegerLike' }]
     );
     const selectNode = createOperationNode('select', selectOp);
-    
+
     const nodes = [cmpiNode, selectNode];
     const edges = [{
       id: 'e1',
@@ -216,12 +218,12 @@ describe('type propagation with auto-resolved types', () => {
       target: 'select',
       targetHandle: 'input-condition',
     }];
-    
+
     // 构建传播图并传播
     const graph = buildPropagationGraph(nodes, edges);
     const sources = extractTypeSources(nodes);
     const result = propagateTypes(graph, sources);
-    
+
     // cmpi 的输出应该是 I1（自动解析）
     expect(result.types.get('cmpi:output-result')).toBe('I1');
     // select 的 condition 输入应该通过连接传播得到 I1

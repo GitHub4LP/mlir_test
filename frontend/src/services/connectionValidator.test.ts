@@ -7,8 +7,8 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import type { Node, Connection } from '@xyflow/react';
-import { 
-  validateConnection, 
+import {
+  validateConnection,
   getPortTypeConstraint,
   getNodeErrors,
 } from './connectionValidator';
@@ -54,19 +54,32 @@ function createOperationNode(
       name: a.name,
       kind: a.kind,
       typeConstraint: inputTypes[a.name] || 'AnyType',
+      displayName: inputTypes[a.name] || 'AnyType',
+      description: '',
       isOptional: a.isOptional,
+      isVariadic: false,
     })) : Object.keys(inputTypes).map(name => ({
       name,
       kind: 'operand' as const,
       typeConstraint: inputTypes[name],
+      displayName: inputTypes[name],
+      description: '',
       isOptional: false,
+      isVariadic: false,
     })),
     results: Object.keys(outputTypes).map(name => ({
       name,
       typeConstraint: outputTypes[name],
+      displayName: outputTypes[name],
+      description: '',
+      isVariadic: false,
     })),
     traits: [],
     assemblyFormat: '',
+    regions: [],
+    hasRegions: false,
+    isTerminator: false,
+    isPure: true,
   };
 
   const data: BlueprintNodeData = {
@@ -94,6 +107,7 @@ function createFunctionEntryNode(
 ): Node {
   const data: FunctionEntryData = {
     functionId: 'test-func',
+    functionName: 'test-func',
     outputs: outputs.map(o => ({
       id: o.id,
       name: o.name,
@@ -102,6 +116,8 @@ function createFunctionEntryNode(
       concreteType: o.concreteType,
       color: '#fff',
     })),
+    execOut: { id: 'exec-out', label: '' },
+    isMain: false,
   };
 
   return {
@@ -119,6 +135,7 @@ function createFunctionReturnNode(
 ): Node {
   const data: FunctionReturnData = {
     functionId: 'test-func',
+    functionName: 'test-func',
     inputs: inputs.map(i => ({
       id: i.id,
       name: i.name,
@@ -127,6 +144,9 @@ function createFunctionReturnNode(
       concreteType: i.concreteType,
       color: '#fff',
     })),
+    branchName: '',
+    execIn: { id: 'exec-in', label: '' },
+    isMain: false,
   };
 
   return {
@@ -181,14 +201,14 @@ describe('connectionValidator', () => {
     it('should allow connection between compatible concrete types', () => {
       const sourceNode = createOperationNode('source', {}, { result: 'I32' });
       const targetNode = createOperationNode('target', { input: 'I32' }, {});
-      
+
       const connection: Connection = {
         source: 'source',
         sourceHandle: 'output-result',
         target: 'target',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [sourceNode, targetNode]);
       expect(result.isValid).toBe(true);
     });
@@ -196,14 +216,14 @@ describe('connectionValidator', () => {
     it('should allow connection when concrete type satisfies abstract constraint', () => {
       const sourceNode = createOperationNode('source', {}, { result: 'I32' });
       const targetNode = createOperationNode('target', { input: 'SignlessIntegerLike' }, {});
-      
+
       const connection: Connection = {
         source: 'source',
         sourceHandle: 'output-result',
         target: 'target',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [sourceNode, targetNode]);
       expect(result.isValid).toBe(true);
     });
@@ -211,14 +231,14 @@ describe('connectionValidator', () => {
     it('should reject connection between incompatible types', () => {
       const sourceNode = createOperationNode('source', {}, { result: 'F32' });
       const targetNode = createOperationNode('target', { input: 'SignlessIntegerLike' }, {});
-      
+
       const connection: Connection = {
         source: 'source',
         sourceHandle: 'output-result',
         target: 'target',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [sourceNode, targetNode]);
       expect(result.isValid).toBe(false);
       expect(result.errorMessage).toContain('Type mismatch');
@@ -226,14 +246,14 @@ describe('connectionValidator', () => {
 
     it('should reject self-connections', () => {
       const node = createOperationNode('node1', { input: 'I32' }, { result: 'I32' });
-      
+
       const connection: Connection = {
         source: 'node1',
         sourceHandle: 'output-result',
         target: 'node1',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [node]);
       expect(result.isValid).toBe(false);
       expect(result.errorMessage).toContain('Cannot connect a node to itself');
@@ -241,14 +261,14 @@ describe('connectionValidator', () => {
 
     it('should reject connection with missing source node', () => {
       const targetNode = createOperationNode('target', { input: 'I32' }, {});
-      
+
       const connection: Connection = {
         source: 'nonexistent',
         sourceHandle: 'output-result',
         target: 'target',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [targetNode]);
       expect(result.isValid).toBe(false);
       expect(result.errorMessage).toContain('Source node not found');
@@ -256,14 +276,14 @@ describe('connectionValidator', () => {
 
     it('should reject connection with missing target node', () => {
       const sourceNode = createOperationNode('source', {}, { result: 'I32' });
-      
+
       const connection: Connection = {
         source: 'source',
         sourceHandle: 'output-result',
         target: 'nonexistent',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [sourceNode]);
       expect(result.isValid).toBe(false);
       expect(result.errorMessage).toContain('Target node not found');
@@ -272,20 +292,20 @@ describe('connectionValidator', () => {
     it('should use resolved types when available', () => {
       const sourceNode = createOperationNode('source', {}, { result: 'SignlessIntegerLike' });
       const targetNode = createOperationNode('target', { input: 'I32' }, {});
-      
+
       // Without resolved types, abstract -> concrete might not work
       // With resolved types showing I32, it should work
       const resolvedTypes = new Map([
         ['source', new Map([['output-result', 'I32']])],
       ]);
-      
+
       const connection: Connection = {
         source: 'source',
         sourceHandle: 'output-result',
         target: 'target',
         targetHandle: 'input-input',
       };
-      
+
       const result = validateConnection(connection, [sourceNode, targetNode], resolvedTypes);
       expect(result.isValid).toBe(true);
     });
@@ -295,14 +315,14 @@ describe('connectionValidator', () => {
         { id: 'param-x', name: 'x', typeConstraint: 'I32', concreteType: 'I32' },
       ]);
       const opNode = createOperationNode('op', { lhs: 'SignlessIntegerLike' }, {});
-      
+
       const connection: Connection = {
         source: 'entry',
         sourceHandle: 'param-x',
         target: 'op',
         targetHandle: 'input-lhs',
       };
-      
+
       const result = validateConnection(connection, [entryNode, opNode]);
       expect(result.isValid).toBe(true);
     });
@@ -312,14 +332,14 @@ describe('connectionValidator', () => {
       const returnNode = createFunctionReturnNode('return', [
         { id: 'ret-0', name: 'result', typeConstraint: 'SignlessIntegerLike' },
       ]);
-      
+
       const connection: Connection = {
         source: 'op',
         sourceHandle: 'output-result',
         target: 'return',
         targetHandle: 'ret-0',
       };
-      
+
       const result = validateConnection(connection, [opNode, returnNode]);
       expect(result.isValid).toBe(true);
     });
@@ -336,11 +356,11 @@ describe('connectionValidator', () => {
           { name: 'rhs', kind: 'operand', isOptional: false },
         ]
       );
-      
+
       const edges = [
         { source: 'other', sourceHandle: 'out', target: 'node1', targetHandle: 'input-lhs' },
       ];
-      
+
       const errors = getNodeErrors(node, edges);
       expect(errors).toHaveLength(1);
       expect(errors[0]).toContain('rhs');
@@ -357,12 +377,12 @@ describe('connectionValidator', () => {
           { name: 'rhs', kind: 'operand', isOptional: false },
         ]
       );
-      
+
       const edges = [
         { source: 'other1', sourceHandle: 'out', target: 'node1', targetHandle: 'input-lhs' },
         { source: 'other2', sourceHandle: 'out', target: 'node1', targetHandle: 'input-rhs' },
       ];
-      
+
       const errors = getNodeErrors(node, edges);
       expect(errors).toHaveLength(0);
     });
@@ -377,11 +397,11 @@ describe('connectionValidator', () => {
           { name: 'optional', kind: 'operand', isOptional: true },
         ]
       );
-      
+
       const edges = [
         { source: 'other', sourceHandle: 'out', target: 'node1', targetHandle: 'input-lhs' },
       ];
-      
+
       const errors = getNodeErrors(node, edges);
       expect(errors).toHaveLength(0);
     });

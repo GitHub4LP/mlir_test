@@ -7,8 +7,8 @@
  */
 
 import { memo } from 'react';
-import { 
-  BaseEdge, 
+import {
+  BaseEdge,
   getBezierPath,
   type EdgeProps,
   type Edge,
@@ -75,6 +75,7 @@ export const ExecutionEdge = memo(function ExecutionEdge({
  */
 export interface DataEdgeData {
   color?: string;
+  [key: string]: unknown;
 }
 
 export type DataEdgeType = Edge<DataEdgeData, 'data'>;

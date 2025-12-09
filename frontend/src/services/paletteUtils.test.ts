@@ -26,6 +26,10 @@ function createMockOperation(
     results: [],
     traits: [],
     assemblyFormat: '',
+    regions: [],
+    hasRegions: false,
+    isTerminator: false,
+    isPure: true,
   };
 }
 
@@ -104,7 +108,7 @@ describe('groupByDialect', () => {
     ];
 
     const grouped = groupByDialect(dialects);
-    
+
     expect(grouped.size).toBe(2);
     expect(grouped.get('arith')).toHaveLength(2);
     expect(grouped.get('func')).toHaveLength(2);
@@ -123,7 +127,7 @@ describe('groupByDialect', () => {
     ];
 
     const grouped = groupByDialect(dialects);
-    
+
     expect(grouped.size).toBe(1);
     expect(grouped.get('arith')).toHaveLength(2);
   });

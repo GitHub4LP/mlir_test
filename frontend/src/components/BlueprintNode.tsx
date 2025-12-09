@@ -129,10 +129,10 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
       // 3. 统一更新所有节点的显示类型
       return applyPropagationResult(updatedNodes, propagationResult);
     });
-  }, [id, edges, setNodes]);
+  }, [id, edges, setNodes, getCurrentFunction]);
 
   // Variadic 端口实例数量
-  const variadicCounts = data.variadicCounts || {};
+  const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);
 
   // 计算端口数量约束
   const getQuantity = (isOptional: boolean, isVariadic: boolean): 'required' | 'optional' | 'variadic' => {

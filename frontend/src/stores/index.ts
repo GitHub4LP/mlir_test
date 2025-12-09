@@ -6,9 +6,7 @@
 
 export { useProjectStore, type ProjectStore } from './projectStore';
 export { useDialectStore } from './dialectStore';
-export { 
-  useTypeStore, 
+export {
+  useTypeStore,
   type TypeStore,
-  serializeTypeState,
-  deserializeTypeState,
 } from './typeStore';

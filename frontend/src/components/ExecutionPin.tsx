@@ -7,10 +7,10 @@
 
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import type { ExecutionPinConfig } from '../types';
+import type { ExecPin } from '../types';
 
 interface ExecutionPinProps {
-  pin: ExecutionPinConfig;
+  pin: ExecPin;
   position: Position;
   isConnectable?: boolean;
 }
@@ -24,7 +24,7 @@ export const ExecutionPin = memo(function ExecutionPin({
   isConnectable = true,
 }: ExecutionPinProps) {
   const isInput = position === Position.Left;
-  
+
   return (
     <div className={`flex items-center gap-1 py-1 ${isInput ? 'flex-row' : 'flex-row-reverse'}`}>
       <Handle
@@ -37,7 +37,7 @@ export const ExecutionPin = memo(function ExecutionPin({
           height: 0,
           borderStyle: 'solid',
           borderWidth: isInput ? '6px 8px 6px 0' : '6px 0 6px 8px',
-          borderColor: isInput 
+          borderColor: isInput
             ? 'transparent white transparent transparent'
             : 'transparent transparent transparent white',
           backgroundColor: 'transparent',
