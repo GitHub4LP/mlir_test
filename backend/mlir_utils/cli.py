@@ -5,7 +5,7 @@
 import argparse
 from pathlib import Path
 
-from .generator import generate_dialect_json, generate_all_dialects, get_lowerable_dialects
+from .generator import generate_dialect_json, generate_all, get_lowerable_dialects
 from .tblgen import list_available_dialects
 
 
@@ -47,7 +47,7 @@ def main():
         return
     
     if args.dialect == 'all':
-        generate_all_dialects(args.output)
+        generate_all(args.output)
     else:
         generate_dialect_json(args.dialect, args.output)
 

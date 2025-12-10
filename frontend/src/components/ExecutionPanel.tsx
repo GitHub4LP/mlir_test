@@ -7,9 +7,6 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-/** 执行方式 */
-type ExecutionMode = 'compile' | 'mlir-run' | 'jit';
-
 /** 日志条目类型 */
 type LogType = 'info' | 'success' | 'error' | 'output';
 
@@ -46,7 +43,6 @@ export function ExecutionPanel({
   onToggleExpand 
 }: ExecutionPanelProps) {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [executionMode, setExecutionMode] = useState<ExecutionMode>('jit');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [mlirCode, setMlirCode] = useState<string>('');
   const [showCode, setShowCode] = useState(false);
@@ -155,13 +151,13 @@ export function ExecutionPanel({
     }
 
     setIsProcessing(true);
-    addLog('info', `Executing with ${executionMode} mode...`);
+    addLog('info', 'Executing with JIT mode...');
 
     try {
       const response = await fetch(`${API_BASE_URL}/build/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath, mode: executionMode }),
+        body: JSON.stringify({ projectPath }),
       });
       
       const data = await response.json();
@@ -191,7 +187,7 @@ export function ExecutionPanel({
     } finally {
       setIsProcessing(false);
     }
-  }, [projectPath, executionMode, addLog]);
+  }, [projectPath, addLog]);
 
   /** 复制到剪贴板 */
   const copyToClipboard = useCallback(async (text: string) => {
@@ -242,21 +238,11 @@ export function ExecutionPanel({
             {isProcessing ? '...' : 'Build'}
           </button>
 
-          <select
-            value={executionMode}
-            onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
-            className="px-2 py-1 text-sm bg-gray-700 text-white rounded border border-gray-600"
-            disabled={isProcessing}
-          >
-            <option value="jit">JIT</option>
-            <option value="compile">lli</option>
-            <option value="mlir-run">mlir-runner</option>
-          </select>
-
           <button
             onClick={handleRun}
             disabled={isProcessing || !projectPath}
             className="px-4 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Execute with JIT"
           >
             {isProcessing ? '...' : '▶ Run'}
           </button>

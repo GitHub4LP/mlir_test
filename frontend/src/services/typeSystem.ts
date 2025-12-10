@@ -14,6 +14,7 @@
 
 import type { OperationDef } from '../types';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { PortRef, PortKind } from './port';
 
 // ============================================================================
 // 类型约束查询（委托给 store）
@@ -79,7 +80,8 @@ export function getConcreteTypes(constraint: string): string[] {
  * Checks if a type constraint is abstract (has multiple concrete types)
  */
 export function isAbstractConstraint(constraint: string): boolean {
-  return useTypeConstraintStore.getState().isAbstractConstraint(constraint);
+  const types = useTypeConstraintStore.getState().getConcreteTypes(constraint);
+  return types.length > 1;
 }
 
 /**
@@ -119,31 +121,113 @@ export function analyzeConstraint(constraint: string): ConstraintAnalysis {
     return { kind: 'multi', resolvedType: null };
   }
   
-  // 检查约束是否在 constraintMap 中有映射
-  const { constraintMap, buildableTypes } = useTypeConstraintStore.getState();
-  const hasMapping = constraint in constraintMap;
-  const isBuildableType = buildableTypes.includes(constraint);
+  const { buildableTypes, isLoaded, getConcreteTypes: storeGetConcreteTypes } = useTypeConstraintStore.getState();
   
-  // 如果约束不在 constraintMap 中且不是 BuildableType，说明是合成约束
-  // 应该允许选择
-  if (!hasMapping && !isBuildableType) {
+  // 如果数据还没加载，默认允许选择
+  if (!isLoaded) {
     return { kind: 'multi', resolvedType: null };
   }
   
-  const types = getConcreteTypes(constraint);
+  const isBuildableType = buildableTypes.includes(constraint);
+  const types = storeGetConcreteTypes(constraint);
+  
+  // 空类型列表：允许选择任意类型
+  if (types.length === 0) {
+    return { kind: 'multi', resolvedType: null };
+  }
   
   if (types.length === 1) {
-    if (types[0] === constraint) {
-      // 约束映射到自身：固定类型
+    const resolvedType = types[0];
+    // 检查解析出的类型是否是 BuildableType
+    const resolvedIsBuildable = buildableTypes.includes(resolvedType);
+    
+    if (resolvedType === constraint && isBuildableType) {
+      // 约束本身是具体类型：固定类型
       return { kind: 'fixed', resolvedType: constraint };
+    } else if (resolvedIsBuildable) {
+      // 约束映射到一个具体类型：单一映射
+      return { kind: 'single', resolvedType };
     } else {
-      // 约束映射到其他类型：单一映射
-      return { kind: 'single', resolvedType: types[0] };
+      // 解析出的类型不是 BuildableType（如 TypedAttrInterface → TypedAttrInterface）
+      // 这种情况应该视为多选
+      return { kind: 'multi', resolvedType: null };
     }
   }
   
   // 多个选项
   return { kind: 'multi', resolvedType: null };
+}
+
+/**
+ * 判断端口的类型状态
+ * 
+ * @param portId - 端口ID（如 "data-in-lhs", "data-out-result"）
+ * @param nodeId - 节点ID
+ * @param pinnedTypes - 用户选择的类型
+ * @param propagatedTypes - 传播得到的类型（inputTypes 或 outputTypes）
+ * @param edges - 图中的连线
+ * @returns 类型状态
+ */
+export function getPortTypeState(
+  portId: string,
+  nodeId: string,
+  pinnedTypes: Record<string, string>,
+  inputTypes: Record<string, string>,
+  outputTypes: Record<string, string>,
+  edges: Array<{source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null}>
+): {
+  displayType: string | null;
+  canEdit: boolean;
+} {
+  const isPinned = !!pinnedTypes[portId];
+  
+  // 获取传播类型
+  let propagated: string | undefined;
+  const parsed = PortRef.parseHandleId(portId);
+  if (parsed) {
+    const name = parsed.name.replace(/_\d+$/, '');
+    if (parsed.kind === PortKind.DataIn) {
+      propagated = inputTypes[name];
+    } else if (parsed.kind === PortKind.DataOut) {
+      propagated = outputTypes[name];
+    }
+  }
+  
+  // 检查是否有连线
+  const isConnected = edges.some(e => 
+    (e.source === nodeId && e.sourceHandle === portId) ||
+    (e.target === nodeId && e.targetHandle === portId)
+  );
+  
+  // 情况1：用户已选择且有连线 → 禁用
+  if (isPinned && isConnected) {
+    return {
+      displayType: pinnedTypes[portId],
+      canEdit: false
+    };
+  }
+  
+  // 情况2：用户已选择但无连线 → 可编辑
+  if (isPinned) {
+    return {
+      displayType: pinnedTypes[portId],
+      canEdit: true
+    };
+  }
+  
+  // 情况3：有传播类型 → 禁用
+  if (propagated) {
+    return {
+      displayType: propagated,
+      canEdit: false
+    };
+  }
+  
+  // 情况4：都没有 → 可选择
+  return {
+    displayType: null,
+    canEdit: true
+  };
 }
 
 /**

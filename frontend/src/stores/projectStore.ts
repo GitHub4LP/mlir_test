@@ -9,6 +9,7 @@ import type { Project, FunctionDef, ParameterDef, TypeDef, GraphState, FunctionT
 import * as projectPersistence from '../services/projectPersistence';
 import { getTypeColor } from '../services/typeSystem';
 import { syncFunctionSignatureChange, syncFunctionRemoval } from '../services/functionSyncService';
+import { dataInHandle, dataOutHandle } from '../services/port';
 
 import type { FunctionEntryData, FunctionReturnData, PortConfig } from '../types';
 
@@ -19,7 +20,7 @@ import type { FunctionEntryData, FunctionReturnData, PortConfig } from '../types
 function createParameterPorts(parameters: ParameterDef[]): PortConfig[] {
   return parameters.map((param) => {
     return {
-      id: `param-${param.name}`,
+      id: dataOutHandle(param.name),  // 统一格式：data-out-{name}
       name: param.name,
       kind: 'output' as const,
       typeConstraint: param.type,
@@ -36,7 +37,7 @@ function createParameterPorts(parameters: ParameterDef[]): PortConfig[] {
 function createReturnPorts(returnTypes: TypeDef[]): PortConfig[] {
   return returnTypes.map((ret, idx) => {
     return {
-      id: `return-${ret.name || `ret_${idx}`}`,
+      id: dataInHandle(ret.name || `result_${idx}`),  // 统一格式：data-in-{name}
       name: ret.name || `result_${idx}`,
       kind: 'input' as const,
       typeConstraint: ret.type,

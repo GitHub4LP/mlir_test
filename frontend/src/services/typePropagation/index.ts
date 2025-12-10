@@ -9,5 +9,11 @@
  * - 派生类型：通过传播计算得到，不持久化
  */
 
-export { propagateTypes, buildPropagationGraph } from './propagator';
+export { 
+  propagateTypes, 
+  buildPropagationGraph,
+  extractPortConstraints,
+  computeNarrowedConstraints,
+  computePropagationWithNarrowing,
+} from './propagator';
 export type { PropagationGraph, TypeSource, PropagationResult } from './types';

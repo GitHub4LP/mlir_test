@@ -7,18 +7,32 @@ import type { Node } from '@xyflow/react';
 import { extractTypeSources, buildPropagationGraph, propagateTypes } from './propagator';
 import type { BlueprintNodeData, OperationDef } from '../../types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
+import type { ConstraintDef } from '../../stores/typeConstraintStore';
+
+// 构建 mock constraintDefs
+function buildMockConstraintDefs(): Map<string, ConstraintDef> {
+  const buildableTypes = ['I1', 'I8', 'I16', 'I32', 'I64', 'Index'];
+  const constraintMap: Record<string, string[]> = {
+    'SignlessIntegerLike': ['I1', 'I8', 'I16', 'I32', 'I64'],
+    'BoolLike': ['I1'],
+  };
+  
+  const defs = new Map<string, ConstraintDef>();
+  for (const t of buildableTypes) {
+    defs.set(t, { name: t, summary: '', rule: { kind: 'type', name: t } });
+  }
+  for (const [name, types] of Object.entries(constraintMap)) {
+    defs.set(name, { name, summary: '', rule: { kind: 'oneOf', types } });
+  }
+  return defs;
+}
 
 // 初始化类型约束 store
 beforeAll(() => {
   useTypeConstraintStore.setState({
     buildableTypes: ['I1', 'I8', 'I16', 'I32', 'I64', 'Index'],
-    constraintMap: {
-      'SignlessIntegerLike': ['I1', 'I8', 'I16', 'I32', 'I64'],
-      'BoolLike': ['I1'],  // 单一类型约束
-      'Index': ['Index'],   // 单一类型约束
-      'I1': ['I1'],
-      'I32': ['I32'],
-    },
+    constraintDefs: buildMockConstraintDefs(),
+    typeDefinitions: [],
     isLoaded: true,
     isLoading: false,
     error: null,
@@ -107,15 +121,11 @@ describe('extractTypeSources', () => {
       [{ name: 'result', typeConstraint: 'SignlessIntegerLike' }],
       ['SameOperandsAndResultType']
     );
-    const node = createOperationNode('node1', op, { 'input-lhs': 'I32' });
+    const node = createOperationNode('node1', op, { 'data-in-lhs': 'I32' });
 
     const sources = extractTypeSources([node]);
 
-    expect(sources).toContainEqual({
-      nodeId: 'node1',
-      portId: 'input-lhs',
-      type: 'I32',
-    });
+    expect(sources.some(s => s.portRef.key === 'node1:data-in:lhs' && s.type === 'I32')).toBe(true);
   });
 
   it('should auto-resolve single-type constraints (BoolLike → I1)', () => {
@@ -129,11 +139,7 @@ describe('extractTypeSources', () => {
     const sources = extractTypeSources([node]);
 
     // BoolLike 应该自动解析为 I1
-    expect(sources).toContainEqual({
-      nodeId: 'node1',
-      portId: 'output-result',
-      type: 'I1',
-    });
+    expect(sources.some(s => s.portRef.key === 'node1:data-out:result' && s.type === 'I1')).toBe(true);
   });
 
   it('should auto-resolve Index constraint', () => {
@@ -146,11 +152,7 @@ describe('extractTypeSources', () => {
 
     const sources = extractTypeSources([node]);
 
-    expect(sources).toContainEqual({
-      nodeId: 'node1',
-      portId: 'output-out',
-      type: 'Index',
-    });
+    expect(sources.some(s => s.portRef.key === 'node1:data-out:out' && s.type === 'Index')).toBe(true);
   });
 
   it('should NOT auto-resolve multi-type constraints', () => {
@@ -164,12 +166,8 @@ describe('extractTypeSources', () => {
     const sources = extractTypeSources([node]);
 
     // SignlessIntegerLike 有多个类型，不应该自动解析
-    expect(sources).not.toContainEqual(
-      expect.objectContaining({ portId: 'input-lhs' })
-    );
-    expect(sources).not.toContainEqual(
-      expect.objectContaining({ portId: 'output-result' })
-    );
+    expect(sources.some(s => s.portRef.key === 'node1:data-in:lhs')).toBe(false);
+    expect(sources.some(s => s.portRef.key === 'node1:data-out:result')).toBe(false);
   });
 
   it('should prefer pinned type over auto-resolved type', () => {
@@ -179,12 +177,12 @@ describe('extractTypeSources', () => {
       []
     );
     // 用户显式选择了 I1（虽然 BoolLike 也会解析为 I1）
-    const node = createOperationNode('node1', op, { 'input-in': 'I1' });
+    const node = createOperationNode('node1', op, { 'data-in-in': 'I1' });
 
     const sources = extractTypeSources([node]);
 
     // 应该只有一个源（不重复）
-    const inSources = sources.filter(s => s.portId === 'input-in');
+    const inSources = sources.filter(s => s.portRef.handleId === 'data-in-in');
     expect(inSources).toHaveLength(1);
     expect(inSources[0].type).toBe('I1');
   });
@@ -214,9 +212,9 @@ describe('type propagation with auto-resolved types', () => {
     const edges = [{
       id: 'e1',
       source: 'cmpi',
-      sourceHandle: 'output-result',
+      sourceHandle: 'data-out-result',
       target: 'select',
-      targetHandle: 'input-condition',
+      targetHandle: 'data-in-condition',
     }];
 
     // 构建传播图并传播
@@ -225,8 +223,8 @@ describe('type propagation with auto-resolved types', () => {
     const result = propagateTypes(graph, sources);
 
     // cmpi 的输出应该是 I1（自动解析）
-    expect(result.types.get('cmpi:output-result')).toBe('I1');
+    expect(result.types.get('cmpi:data-out:result')).toBe('I1');
     // select 的 condition 输入应该通过连接传播得到 I1
-    expect(result.types.get('select:input-condition')).toBe('I1');
+    expect(result.types.get('select:data-in:condition')).toBe('I1');
   });
 });

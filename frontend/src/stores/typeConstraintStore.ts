@@ -1,10 +1,18 @@
 /**
  * 类型约束 Store
  * 
- * 从后端加载类型约束数据：buildableTypes、constraintMap、dialectConstraints、typeDefinitions
+ * 从后端加载结构化约束规则，前端按需展开
  */
 
 import { create } from 'zustand';
+import type { ConstraintDef, ConstraintRule } from '../services/constraintResolver';
+import { 
+  getConcreteTypes as resolveConcreteTypes,
+  isShapedConstraint as checkIsShapedConstraint,
+  getAllowedContainers as getContainers,
+} from '../services/constraintResolver';
+
+export type { ConstraintDef, ConstraintRule };
 
 export interface TypeParameter {
   name: string;
@@ -12,29 +20,27 @@ export interface TypeParameter {
 }
 
 export interface TypeDefinition {
-  name: string;       // TableGen 名称
-  typeName: string;   // MLIR 类型名
-  dialect: string;    // 所属方言
-  summary: string;    // 描述
+  name: string;
+  typeName: string;
+  dialect: string;
+  summary: string;
   parameters: TypeParameter[];
-  isScalar: boolean;  // 是否标量
+  isScalar: boolean;
 }
 
-interface TypeConstraintsData {
+interface TypeConstraintsResponse {
   buildableTypes: string[];
-  constraintMap: Record<string, string[]>;
-  dialectConstraints: Record<string, Record<string, string[]>>;
+  constraintDefs: ConstraintDef[];
   typeDefinitions: TypeDefinition[];
-  allConstraints: string[];
+  constraintEquivalences: Record<string, string[]>;  // 类型集合 → 等价约束名
 }
 
 interface TypeConstraintState {
   // 数据
   buildableTypes: string[];
-  constraintMap: Record<string, string[]>;
-  dialectConstraints: Record<string, Record<string, string[]>>;
+  constraintDefs: Map<string, ConstraintDef>;
   typeDefinitions: TypeDefinition[];
-  allConstraints: string[];  // 所有可选约束名（包括复合类型约束）
+  constraintEquivalences: Map<string, string[]>;  // 类型集合key → 等价约束名
 
   // 状态
   isLoading: boolean;
@@ -47,31 +53,28 @@ interface TypeConstraintState {
   // 查询方法
   getConcreteTypes: (constraint: string) => string[];
   isConcreteType: (type: string) => boolean;
-  isAbstractConstraint: (constraint: string) => boolean;
-  getDialectNames: () => string[];
+  isShapedConstraint: (constraint: string) => boolean;
+  getAllowedContainers: (constraint: string) => string[];
+  getConstraintDef: (name: string) => ConstraintDef | undefined;
   getTypeDefinition: (typeName: string) => TypeDefinition | undefined;
-  getParameterizedTypes: () => TypeDefinition[];
-  getScalarTypes: () => TypeDefinition[];
-  getAllConstraints: () => string[];
-  isConstraint: (name: string) => boolean;
+  getAllConstraintNames: () => string[];
+  getEquivalentConstraints: (types: string[]) => string[];  // 新增
+  pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;  // 新增
 }
 
 export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => ({
   // 初始状态
   buildableTypes: [],
-  constraintMap: {},
-  dialectConstraints: {},
+  constraintDefs: new Map(),
   typeDefinitions: [],
-  allConstraints: [],
+  constraintEquivalences: new Map(),
   isLoading: false,
   isLoaded: false,
   error: null,
 
   loadTypeConstraints: async () => {
     const state = get();
-    if (state.isLoaded || state.isLoading) {
-      return;
-    }
+    if (state.isLoaded || state.isLoading) return;
 
     set({ isLoading: true, error: null });
 
@@ -81,48 +84,51 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
         throw new Error(`Failed to load type constraints: ${response.statusText}`);
       }
 
-      const data: TypeConstraintsData = await response.json();
+      const data: TypeConstraintsResponse = await response.json();
+      
+      // 构建 constraintDefs Map
+      const defsMap = new Map<string, ConstraintDef>();
+      for (const def of data.constraintDefs) {
+        defsMap.set(def.name, def);
+      }
+
+      // 构建 constraintEquivalences Map
+      const equivMap = new Map<string, string[]>();
+      for (const [key, names] of Object.entries(data.constraintEquivalences || {})) {
+        equivMap.set(key, names);
+      }
 
       set({
         buildableTypes: data.buildableTypes,
-        constraintMap: data.constraintMap,
-        dialectConstraints: data.dialectConstraints || {},
+        constraintDefs: defsMap,
         typeDefinitions: data.typeDefinitions || [],
-        allConstraints: data.allConstraints || [],
+        constraintEquivalences: equivMap,
         isLoading: false,
         isLoaded: true,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to load type constraints:', message);
-      set({
-        isLoading: false,
-        error: message,
-      });
+      set({ isLoading: false, error: message });
     }
   },
 
   getConcreteTypes: (constraint: string) => {
-    const { constraintMap, buildableTypes } = get();
-
-    // 先查约束映射
-    const types = constraintMap[constraint];
-    if (types && types.length > 0) {
-      return [...types];
-    }
-
-    // 尝试规范化（处理小写形式）
+    const { constraintDefs, buildableTypes } = get();
+    
+    // 尝试规范化
     const normalized = normalizeType(constraint);
-    const normalizedTypes = constraintMap[normalized];
-    if (normalizedTypes && normalizedTypes.length > 0) {
-      return [...normalizedTypes];
+    
+    // 使用 resolver 展开
+    const types = resolveConcreteTypes(normalized, constraintDefs, buildableTypes);
+    if (types.length > 0) return types;
+    
+    // 尝试原始名称
+    if (normalized !== constraint) {
+      const origTypes = resolveConcreteTypes(constraint, constraintDefs, buildableTypes);
+      if (origTypes.length > 0) return origTypes;
     }
-
-    // 如果是具体类型，返回自身
-    if (buildableTypes.includes(constraint) || buildableTypes.includes(normalized)) {
-      return [normalized];
-    }
-
+    
     // 未知约束，返回自身
     return [constraint];
   },
@@ -133,26 +139,19 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     return buildableTypes.includes(type) || buildableTypes.includes(normalized);
   },
 
-  isAbstractConstraint: (constraint: string) => {
-    const { constraintMap, dialectConstraints } = get();
-    // 检查内置约束
-    const types = constraintMap[constraint];
-    if (types !== undefined && types.length > 1) {
-      return true;
-    }
-    // 检查方言约束
-    for (const dialectMap of Object.values(dialectConstraints)) {
-      const dialectTypes = dialectMap[constraint];
-      if (dialectTypes !== undefined && dialectTypes.length > 1) {
-        return true;
-      }
-    }
-    return false;
+  isShapedConstraint: (constraint: string) => {
+    const { constraintDefs } = get();
+    return checkIsShapedConstraint(constraint, constraintDefs);
   },
 
-  getDialectNames: () => {
-    const { dialectConstraints } = get();
-    return Object.keys(dialectConstraints).sort();
+  getAllowedContainers: (constraint: string) => {
+    const { constraintDefs } = get();
+    return getContainers(constraint, constraintDefs);
+  },
+
+  getConstraintDef: (name: string) => {
+    const { constraintDefs } = get();
+    return constraintDefs.get(name) || constraintDefs.get(normalizeType(name));
   },
 
   getTypeDefinition: (typeName: string) => {
@@ -160,24 +159,56 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     return typeDefinitions.find(td => td.typeName === typeName || td.name === typeName);
   },
 
-  getParameterizedTypes: () => {
-    const { typeDefinitions } = get();
-    return typeDefinitions.filter(td => !td.isScalar);
+  getAllConstraintNames: () => {
+    const { constraintDefs } = get();
+    return [...constraintDefs.keys()].sort();
   },
 
-  getScalarTypes: () => {
-    const { typeDefinitions } = get();
-    return typeDefinitions.filter(td => td.isScalar);
+  getEquivalentConstraints: (types: string[]) => {
+    const { constraintEquivalences } = get();
+    if (types.length === 0) return [];
+    const key = [...types].sort().join(',');
+    return constraintEquivalences.get(key) || [];
   },
 
-  getAllConstraints: () => {
-    const { allConstraints } = get();
-    return allConstraints;
-  },
-
-  isConstraint: (name: string) => {
-    const { allConstraints } = get();
-    return allConstraints.includes(name);
+  pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => {
+    const { buildableTypes, constraintEquivalences } = get();
+    if (types.length === 0) return null;
+    
+    const key = [...types].sort().join(',');
+    const equivalents = constraintEquivalences.get(key);
+    if (!equivalents || equivalents.length === 0) return null;
+    
+    // 1. 用户 pin 优先
+    if (pinnedName && equivalents.includes(pinnedName)) {
+      return pinnedName;
+    }
+    
+    // 2. BuildableType 优先（单一具体类型）
+    for (const name of equivalents) {
+      if (buildableTypes.includes(name)) {
+        return name;
+      }
+    }
+    
+    // 3. 节点方言匹配
+    if (nodeDialect) {
+      const dialectPrefix = `${nodeDialect}_`;
+      // 尝试精确前缀匹配
+      const match = equivalents.find(n => n.startsWith(dialectPrefix));
+      if (match) return match;
+      // 尝试大写前缀匹配 (arith -> Arith_)
+      const upperPrefix = nodeDialect.charAt(0).toUpperCase() + nodeDialect.slice(1) + '_';
+      const upperMatch = equivalents.find(n => n.startsWith(upperPrefix));
+      if (upperMatch) return upperMatch;
+    }
+    
+    // 4. 无前缀的内置约束
+    const builtin = equivalents.find(n => !n.includes('_'));
+    if (builtin) return builtin;
+    
+    // 5. 兜底
+    return equivalents[0];
   },
 }));
 
@@ -187,44 +218,30 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
 function normalizeType(type: string): string {
   // i32 -> I32
   const intMatch = type.match(/^i(\d+)$/);
-  if (intMatch) {
-    return `I${intMatch[1]}`;
-  }
+  if (intMatch) return `I${intMatch[1]}`;
 
   // si32 -> SI32
   const sintMatch = type.match(/^si(\d+)$/);
-  if (sintMatch) {
-    return `SI${sintMatch[1]}`;
-  }
+  if (sintMatch) return `SI${sintMatch[1]}`;
 
   // ui32 -> UI32
   const uintMatch = type.match(/^ui(\d+)$/);
-  if (uintMatch) {
-    return `UI${uintMatch[1]}`;
-  }
+  if (uintMatch) return `UI${uintMatch[1]}`;
 
   // f32 -> F32
   const floatMatch = type.match(/^f(\d+)$/);
-  if (floatMatch) {
-    return `F${floatMatch[1]}`;
-  }
+  if (floatMatch) return `F${floatMatch[1]}`;
 
   // bf16 -> BF16
   const bfloatMatch = type.match(/^bf(\d+)$/);
-  if (bfloatMatch) {
-    return `BF${bfloatMatch[1]}`;
-  }
+  if (bfloatMatch) return `BF${bfloatMatch[1]}`;
 
   // tf32 -> TF32
   const tfloatMatch = type.match(/^tf(\d+)$/);
-  if (tfloatMatch) {
-    return `TF${tfloatMatch[1]}`;
-  }
+  if (tfloatMatch) return `TF${tfloatMatch[1]}`;
 
   // index -> Index
-  if (type === 'index') {
-    return 'Index';
-  }
+  if (type === 'index') return 'Index';
 
   return type;
 }

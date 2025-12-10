@@ -120,15 +120,14 @@ export interface StoredBlueprintNodeData {
   fullName: string;
   /** User-set attribute values in MLIR attribute string format */
   attributes: Record<string, string>;
-  /** User-selected concrete types for input ports */
-  inputTypes: Record<string, string>;
-  /** User-selected concrete types for output ports */
-  outputTypes: Record<string, string>;
+  /** 用户显式选择的类型（pinned）- 传播的源 */
+  pinnedTypes?: Record<string, string>;
   /** Variadic 端口实例数 */
   variadicCounts?: Record<string, number>;
   execIn?: ExecPin;
   execOuts: ExecPin[];
   regionPins: RegionPinConfig[];
+  // 注意：inputTypes/outputTypes 是传播派生数据，不保存，加载后重新计算
 }
 
 /** 运行时格式的 BlueprintNodeData（包含完整 OperationDef） */
@@ -142,7 +141,7 @@ export interface BlueprintNodeData {
   attributes: Record<string, string>;
   /**
    * 用户显式选择的类型（pinned）
-   * 键为端口 ID（如 "input-lhs", "output-result"），值为具体类型（如 "I32"）
+   * 键为端口 ID（如 "data-in-lhs", "data-out-result"），值为具体类型（如 "I32"）
    * 这是类型传播的"源"，会持久化保存
    */
   pinnedTypes?: Record<string, string>;
@@ -157,6 +156,12 @@ export interface BlueprintNodeData {
    * 键为结果名称，值为类型字符串
    */
   outputTypes: Record<string, string>;
+  /**
+   * 连接导致的约束收窄
+   * 键为端口名称，值为收窄后的约束名
+   * 用于计算可编辑选项范围
+   */
+  narrowedConstraints?: Record<string, string>;
   /**
    * Variadic 端口的实例数量
    * 键为端口定义名（如 "initArgs"），值为实例数量
@@ -335,6 +340,8 @@ export interface FunctionCallData {
   outputs: PortConfig[];        // Return value outputs (data pins)
   execIn: ExecPin;              // Execution input pin
   execOuts: ExecPin[];          // Execution output pins (one per Return node in function)
+  /** 用户选择的类型（与 BlueprintNodeData 相同） */
+  pinnedTypes?: Record<string, string>;
 }
 
 // Project Types
@@ -349,7 +356,6 @@ export interface Project {
 // Execution Types
 export interface ExecutionRequest {
   mlirCode: string;
-  mode: 'compile' | 'mlir-run' | 'jit';
 }
 
 export interface ExecutionResult {

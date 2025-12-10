@@ -10,6 +10,7 @@ import type { PropagationGraph, PropagationResult, VariableId, TypeSource } from
 import { makeVariableId } from './types';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, FunctionDef } from '../../types';
 import { hasSameOperandsAndResultTypeTrait, analyzeConstraint } from '../typeSystem';
+import { PortRef, dataIn, dataOut } from '../port';
 
 /**
  * 获取约束的固定类型（如果是固定类型）
@@ -17,7 +18,11 @@ import { hasSameOperandsAndResultTypeTrait, analyzeConstraint } from '../typeSys
  */
 function getFixedType(constraint: string): string | null {
   const analysis = analyzeConstraint(constraint);
-  return analysis.kind === 'fixed' ? analysis.resolvedType : null;
+  // 'fixed' 和 'single' 都应该自动解析
+  if (analysis.kind === 'fixed' || analysis.kind === 'single') {
+    return analysis.resolvedType;
+  }
+  return null;
 }
 
 /**
@@ -72,10 +77,10 @@ export function buildPropagationGraph(
             // Variadic 端口：展开为多个实例
             const count = variadicCounts[arg.name] ?? 1;
             for (let i = 0; i < count; i++) {
-              ports.push(makeVariableId(node.id, `input-${arg.name}_${i}`));
+              ports.push(makeVariableId(dataIn(node.id, `${arg.name}_${i}`)));
             }
           } else {
-            ports.push(makeVariableId(node.id, `input-${arg.name}`));
+            ports.push(makeVariableId(dataIn(node.id, arg.name)));
           }
         }
       }
@@ -83,10 +88,10 @@ export function buildPropagationGraph(
         if (result.isVariadic) {
           const count = variadicCounts[result.name] ?? 1;
           for (let i = 0; i < count; i++) {
-            ports.push(makeVariableId(node.id, `output-${result.name}_${i}`));
+            ports.push(makeVariableId(dataOut(node.id, `${result.name}_${i}`)));
           }
         } else {
-          ports.push(makeVariableId(node.id, `output-${result.name}`));
+          ports.push(makeVariableId(dataOut(node.id, result.name)));
         }
       }
 
@@ -111,15 +116,15 @@ export function buildPropagationGraph(
 
         for (const portName of trait.ports) {
           if (portName.startsWith('return:')) {
-            // 返回值端口
+            // 返回值端口（FunctionReturn 的输入）
             const returnName = portName.slice(7);
             if (returnNode) {
-              ports.push(makeVariableId(returnNode.id, `return-${returnName}`));
+              ports.push(makeVariableId(dataIn(returnNode.id, returnName)));
             }
           } else {
-            // 参数端口
+            // 参数端口（FunctionEntry 的输出）
             if (entryNode) {
-              ports.push(makeVariableId(entryNode.id, `param-${portName}`));
+              ports.push(makeVariableId(dataOut(entryNode.id, portName)));
             }
           }
         }
@@ -143,10 +148,13 @@ export function buildPropagationGraph(
 
     if (!edge.sourceHandle || !edge.targetHandle) continue;
 
-    const sourceVar = makeVariableId(edge.source, edge.sourceHandle);
-    const targetVar = makeVariableId(edge.target, edge.targetHandle);
-
-    addBidirectionalEdge(sourceVar, targetVar);
+    // 使用 PortRef 从 handle 创建变量 ID
+    const sourceRef = PortRef.fromHandle(edge.source, edge.sourceHandle);
+    const targetRef = PortRef.fromHandle(edge.target, edge.targetHandle);
+    
+    if (sourceRef && targetRef) {
+      addBidirectionalEdge(sourceRef.key, targetRef.key);
+    }
   }
 
   return graph;
@@ -165,11 +173,12 @@ export function propagateTypes(
 ): PropagationResult {
   const types = new Map<VariableId, string>();
   const sourceMap = new Map<VariableId, VariableId | null>();
+  const narrowedConstraints = new Map<VariableId, string>();
   const queue: VariableId[] = [];
 
   // 初始化：将所有源加入队列
   for (const source of sources) {
-    const varId = makeVariableId(source.nodeId, source.portId);
+    const varId = source.portRef.key;
     types.set(varId, source.type);
     sourceMap.set(varId, null);  // 源的来源是 null（用户选择）
     queue.push(varId);
@@ -195,7 +204,7 @@ export function propagateTypes(
     }
   }
 
-  return { types, sources: sourceMap };
+  return { types, sources: sourceMap, narrowedConstraints };
 }
 
 /**
@@ -216,11 +225,11 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
   // 用于去重：同一端口只添加一次
   const addedPorts = new Set<string>();
 
-  const addSource = (nodeId: string, portId: string, type: string) => {
-    const key = `${nodeId}:${portId}`;
+  const addSource = (portRef: PortRef, type: string) => {
+    const key = portRef.key;
     if (!addedPorts.has(key)) {
       addedPorts.add(key);
-      sources.push({ nodeId, portId, type });
+      sources.push({ portRef, type });
     }
   };
 
@@ -233,9 +242,12 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
         const variadicCounts = data.variadicCounts || {};
 
         // 1. 用户显式选择的类型
-        for (const [portId, type] of Object.entries(pinnedTypes)) {
+        for (const [handleId, type] of Object.entries(pinnedTypes)) {
           if (type) {
-            addSource(node.id, portId, type);
+            const portRef = PortRef.fromHandle(node.id, handleId);
+            if (portRef) {
+              addSource(portRef, type);
+            }
           }
         }
 
@@ -249,17 +261,17 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
             // Variadic 端口：为每个实例添加源
             const count = variadicCounts[arg.name] ?? 1;
             for (let i = 0; i < count; i++) {
-              const portId = `input-${arg.name}_${i}`;
-              if (pinnedTypes[portId]) continue;
+              const portRef = dataIn(node.id, `${arg.name}_${i}`);
+              if (pinnedTypes[portRef.handleId]) continue;
               if (fixedType) {
-                addSource(node.id, portId, fixedType);
+                addSource(portRef, fixedType);
               }
             }
           } else {
-            const portId = `input-${arg.name}`;
-            if (pinnedTypes[portId]) continue;
+            const portRef = dataIn(node.id, arg.name);
+            if (pinnedTypes[portRef.handleId]) continue;
             if (fixedType) {
-              addSource(node.id, portId, fixedType);
+              addSource(portRef, fixedType);
             }
           }
         }
@@ -271,17 +283,17 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
           if (result.isVariadic) {
             const count = variadicCounts[result.name] ?? 1;
             for (let i = 0; i < count; i++) {
-              const portId = `output-${result.name}_${i}`;
-              if (pinnedTypes[portId]) continue;
+              const portRef = dataOut(node.id, `${result.name}_${i}`);
+              if (pinnedTypes[portRef.handleId]) continue;
               if (fixedType) {
-                addSource(node.id, portId, fixedType);
+                addSource(portRef, fixedType);
               }
             }
           } else {
-            const portId = `output-${result.name}`;
-            if (pinnedTypes[portId]) continue;
+            const portRef = dataOut(node.id, result.name);
+            if (pinnedTypes[portRef.handleId]) continue;
             if (fixedType) {
-              addSource(node.id, portId, fixedType);
+              addSource(portRef, fixedType);
             }
           }
         }
@@ -294,7 +306,9 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
           // 优先使用 concreteType，否则尝试解析约束固定类型
           const type = port.concreteType || getFixedType(port.typeConstraint);
           if (type) {
-            addSource(node.id, port.id, type);
+            // FunctionEntry 的输出端口使用 data-out
+            const portRef = dataOut(node.id, port.name);
+            addSource(portRef, type);
           }
         }
         break;
@@ -305,7 +319,9 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
         for (const port of data.inputs) {
           const type = port.concreteType || getFixedType(port.typeConstraint);
           if (type) {
-            addSource(node.id, port.id, type);
+            // FunctionReturn 的输入端口使用 data-in
+            const portRef = dataIn(node.id, port.name);
+            addSource(portRef, type);
           }
         }
         break;
@@ -313,16 +329,34 @@ export function extractTypeSources(nodes: Node[]): TypeSource[] {
 
       case 'function-call': {
         const data = node.data as FunctionCallData;
-        for (const port of data.inputs) {
-          const type = port.concreteType || getFixedType(port.typeConstraint);
+        const pinnedTypes = data.pinnedTypes || {};
+
+        // 1. 用户选择的类型优先
+        for (const [handleId, type] of Object.entries(pinnedTypes)) {
           if (type) {
-            addSource(node.id, port.id, type);
+            const portRef = PortRef.fromHandle(node.id, handleId);
+            if (portRef) {
+              addSource(portRef, type);
+            }
           }
         }
+
+        // 2. 只从固定类型约束提取源（不从 concreteType，因为它是传播派生的）
+        for (const port of data.inputs) {
+          const portRef = dataIn(node.id, port.name);
+          if (pinnedTypes[portRef.handleId]) continue;
+          const fixedType = getFixedType(port.typeConstraint);
+          if (fixedType) {
+            addSource(portRef, fixedType);
+          }
+        }
+
         for (const port of data.outputs) {
-          const type = port.concreteType || getFixedType(port.typeConstraint);
-          if (type) {
-            addSource(node.id, port.id, type);
+          const portRef = dataOut(node.id, port.name);
+          if (pinnedTypes[portRef.handleId]) continue;
+          const fixedType = getFixedType(port.typeConstraint);
+          if (fixedType) {
+            addSource(portRef, fixedType);
           }
         }
         break;
@@ -362,6 +396,54 @@ export function computeDisplayTypes(
 }
 
 /**
+ * 计算类型传播和约束收窄
+ * 
+ * 这是一个高级封装函数，整合了：
+ * 1. 构建传播图
+ * 2. 提取类型源
+ * 3. 传播类型
+ * 4. 计算约束收窄
+ * 
+ * @param nodes - 当前函数图的节点
+ * @param edges - 当前函数图的边
+ * @param currentFunction - 当前函数定义
+ * @param getConcreteTypes - 获取约束的具体类型列表（来自 store）
+ * @param pickConstraintName - 选择约束名称（来自 store）
+ */
+export function computePropagationWithNarrowing(
+  nodes: Node[],
+  edges: Edge[],
+  currentFunction: FunctionDef | undefined,
+  getConcreteTypes: (constraint: string) => string[],
+  pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null
+): PropagationResult {
+  // 1. 构建传播图（包含 trait 和连线）
+  const graph = buildPropagationGraph(nodes, edges, currentFunction);
+
+  // 2. 提取类型源
+  const sources = extractTypeSources(nodes);
+
+  // 3. 传播类型
+  const result = propagateTypes(graph, sources);
+
+  // 4. 计算约束收窄
+  const portConstraints = extractPortConstraints(nodes);
+  // 构建源集合
+  const sourceSet = new Set(sources.map(s => s.portRef.key));
+  const narrowed = computeNarrowedConstraints(
+    graph,
+    portConstraints, 
+    result.types,
+    sourceSet,
+    getConcreteTypes, 
+    pickConstraintName
+  );
+  result.narrowedConstraints = narrowed;
+
+  return result;
+}
+
+/**
  * 根据传播结果更新所有节点的显示类型
  * 
  * 统一处理所有节点类型：
@@ -374,6 +456,18 @@ export function applyPropagationResult(
   nodes: Node[],
   propagationResult: PropagationResult
 ): Node[] {
+  const { types, narrowedConstraints } = propagationResult;
+  
+  // 辅助函数：获取端口的显示类型
+  // 优先级：传播的具体类型 > 收窄后的约束 > 原始约束
+  const getDisplayType = (portRef: PortRef, originalConstraint: string): string => {
+    const propagatedType = types.get(portRef.key);
+    if (propagatedType) return propagatedType;
+    const narrowed = narrowedConstraints.get(portRef.key);
+    if (narrowed) return narrowed;
+    return originalConstraint;
+  };
+
   return nodes.map(node => {
     switch (node.type) {
       case 'operation': {
@@ -388,22 +482,21 @@ export function applyPropagationResult(
           if (arg.kind !== 'operand') continue;
 
           if (arg.isVariadic) {
-            // Variadic 端口：检查所有实例，使用第一个有传播结果的类型
+            // Variadic 端口：检查所有实例，使用第一个有结果的类型
             const count = variadicCounts[arg.name] ?? 1;
-            let propagatedType: string | undefined;
+            let displayType: string | undefined;
             for (let i = 0; i < count; i++) {
-              const varId = makeVariableId(node.id, `input-${arg.name}_${i}`);
-              const type = propagationResult.types.get(varId);
+              const portRef = dataIn(node.id, `${arg.name}_${i}`);
+              const type = types.get(portRef.key) || narrowedConstraints.get(portRef.key);
               if (type) {
-                propagatedType = type;
+                displayType = type;
                 break;
               }
             }
-            newInputTypes[arg.name] = propagatedType || arg.typeConstraint;
+            newInputTypes[arg.name] = displayType || arg.typeConstraint;
           } else {
-            const varId = makeVariableId(node.id, `input-${arg.name}`);
-            const propagatedType = propagationResult.types.get(varId);
-            newInputTypes[arg.name] = propagatedType || arg.typeConstraint;
+            const portRef = dataIn(node.id, arg.name);
+            newInputTypes[arg.name] = getDisplayType(portRef, arg.typeConstraint);
           }
         }
 
@@ -411,20 +504,51 @@ export function applyPropagationResult(
         for (const result of operation.results) {
           if (result.isVariadic) {
             const count = variadicCounts[result.name] ?? 1;
-            let propagatedType: string | undefined;
+            let displayType: string | undefined;
             for (let i = 0; i < count; i++) {
-              const varId = makeVariableId(node.id, `output-${result.name}_${i}`);
-              const type = propagationResult.types.get(varId);
+              const portRef = dataOut(node.id, `${result.name}_${i}`);
+              const type = types.get(portRef.key) || narrowedConstraints.get(portRef.key);
               if (type) {
-                propagatedType = type;
+                displayType = type;
                 break;
               }
             }
-            newOutputTypes[result.name] = propagatedType || result.typeConstraint;
+            newOutputTypes[result.name] = displayType || result.typeConstraint;
           } else {
-            const varId = makeVariableId(node.id, `output-${result.name}`);
-            const propagatedType = propagationResult.types.get(varId);
-            newOutputTypes[result.name] = propagatedType || result.typeConstraint;
+            const portRef = dataOut(node.id, result.name);
+            newOutputTypes[result.name] = getDisplayType(portRef, result.typeConstraint);
+          }
+        }
+
+        // 收集该节点的收窄约束
+        const nodeNarrowedConstraints: Record<string, string> = {};
+        for (const arg of operation.arguments) {
+          if (arg.kind !== 'operand') continue;
+          if (arg.isVariadic) {
+            const count = variadicCounts[arg.name] ?? 1;
+            for (let i = 0; i < count; i++) {
+              const portRef = dataIn(node.id, `${arg.name}_${i}`);
+              const narrowed = narrowedConstraints.get(portRef.key);
+              if (narrowed) nodeNarrowedConstraints[arg.name] = narrowed;
+            }
+          } else {
+            const portRef = dataIn(node.id, arg.name);
+            const narrowed = narrowedConstraints.get(portRef.key);
+            if (narrowed) nodeNarrowedConstraints[arg.name] = narrowed;
+          }
+        }
+        for (const result of operation.results) {
+          if (result.isVariadic) {
+            const count = variadicCounts[result.name] ?? 1;
+            for (let i = 0; i < count; i++) {
+              const portRef = dataOut(node.id, `${result.name}_${i}`);
+              const narrowed = narrowedConstraints.get(portRef.key);
+              if (narrowed) nodeNarrowedConstraints[result.name] = narrowed;
+            }
+          } else {
+            const portRef = dataOut(node.id, result.name);
+            const narrowed = narrowedConstraints.get(portRef.key);
+            if (narrowed) nodeNarrowedConstraints[result.name] = narrowed;
           }
         }
 
@@ -434,6 +558,7 @@ export function applyPropagationResult(
             ...nodeData,
             inputTypes: newInputTypes,
             outputTypes: newOutputTypes,
+            narrowedConstraints: nodeNarrowedConstraints,
           },
         };
       }
@@ -441,8 +566,9 @@ export function applyPropagationResult(
       case 'function-entry': {
         const nodeData = node.data as FunctionEntryData;
         const newOutputs = nodeData.outputs.map(port => {
-          const varId = makeVariableId(node.id, port.id);
-          const propagatedType = propagationResult.types.get(varId);
+          // FunctionEntry 的输出端口使用 data-out
+          const portRef = dataOut(node.id, port.name);
+          const propagatedType = propagationResult.types.get(portRef.key);
           return {
             ...port,
             concreteType: propagatedType || port.concreteType,
@@ -461,8 +587,9 @@ export function applyPropagationResult(
       case 'function-return': {
         const nodeData = node.data as FunctionReturnData;
         const newInputs = nodeData.inputs.map(port => {
-          const varId = makeVariableId(node.id, port.id);
-          const propagatedType = propagationResult.types.get(varId);
+          // FunctionReturn 的输入端口使用 data-in
+          const portRef = dataIn(node.id, port.name);
+          const propagatedType = propagationResult.types.get(portRef.key);
           return {
             ...port,
             concreteType: propagatedType || port.concreteType,
@@ -481,19 +608,19 @@ export function applyPropagationResult(
       case 'function-call': {
         const nodeData = node.data as FunctionCallData;
         const newInputs = nodeData.inputs.map(port => {
-          const varId = makeVariableId(node.id, port.id);
-          const propagatedType = propagationResult.types.get(varId);
+          const portRef = dataIn(node.id, port.name);
+          const propagatedType = propagationResult.types.get(portRef.key);
           return {
             ...port,
-            concreteType: propagatedType || port.concreteType,
+            concreteType: propagatedType,  // 无传播结果时恢复为 undefined
           };
         });
         const newOutputs = nodeData.outputs.map(port => {
-          const varId = makeVariableId(node.id, port.id);
-          const propagatedType = propagationResult.types.get(varId);
+          const portRef = dataOut(node.id, port.name);
+          const propagatedType = propagationResult.types.get(portRef.key);
           return {
             ...port,
-            concreteType: propagatedType || port.concreteType,
+            concreteType: propagatedType,  // 无传播结果时恢复为 undefined
           };
         });
 
@@ -511,4 +638,180 @@ export function applyPropagationResult(
         return node;
     }
   });
+}
+
+
+/**
+ * 提取每个端口的原始约束
+ * 
+ * @param nodes - 当前函数图的节点
+ * @returns varId → 原始约束名
+ */
+export function extractPortConstraints(nodes: Node[]): Map<VariableId, string> {
+  const constraints = new Map<VariableId, string>();
+
+  for (const node of nodes) {
+    switch (node.type) {
+      case 'operation': {
+        const data = node.data as BlueprintNodeData;
+        const operation = data.operation;
+        const variadicCounts = data.variadicCounts || {};
+
+        // 输入端口
+        for (const arg of operation.arguments) {
+          if (arg.kind !== 'operand') continue;
+          if (arg.isVariadic) {
+            const count = variadicCounts[arg.name] ?? 1;
+            for (let i = 0; i < count; i++) {
+              const portRef = dataIn(node.id, `${arg.name}_${i}`);
+              constraints.set(portRef.key, arg.typeConstraint);
+            }
+          } else {
+            const portRef = dataIn(node.id, arg.name);
+            constraints.set(portRef.key, arg.typeConstraint);
+          }
+        }
+
+        // 输出端口
+        for (const result of operation.results) {
+          if (result.isVariadic) {
+            const count = variadicCounts[result.name] ?? 1;
+            for (let i = 0; i < count; i++) {
+              const portRef = dataOut(node.id, `${result.name}_${i}`);
+              constraints.set(portRef.key, result.typeConstraint);
+            }
+          } else {
+            const portRef = dataOut(node.id, result.name);
+            constraints.set(portRef.key, result.typeConstraint);
+          }
+        }
+        break;
+      }
+
+      case 'function-entry': {
+        const data = node.data as FunctionEntryData;
+        for (const port of data.outputs) {
+          const portRef = dataOut(node.id, port.name);
+          constraints.set(portRef.key, port.typeConstraint);
+        }
+        break;
+      }
+
+      case 'function-return': {
+        const data = node.data as FunctionReturnData;
+        for (const port of data.inputs) {
+          const portRef = dataIn(node.id, port.name);
+          constraints.set(portRef.key, port.typeConstraint);
+        }
+        break;
+      }
+
+      case 'function-call': {
+        const data = node.data as FunctionCallData;
+        for (const port of data.inputs) {
+          const portRef = dataIn(node.id, port.name);
+          constraints.set(portRef.key, port.typeConstraint);
+        }
+        for (const port of data.outputs) {
+          const portRef = dataOut(node.id, port.name);
+          constraints.set(portRef.key, port.typeConstraint);
+        }
+        break;
+      }
+    }
+  }
+
+  return constraints;
+}
+
+/**
+ * 计算约束收窄
+ * 
+ * 本端 options = 本端原始约束 ∩ 邻居有效类型
+ * 邻居有效类型：
+ * - 如果邻居能到达的源只有自己（或无源）→ 用邻居原始约束
+ * - 如果邻居能到达其他源 → 用邻居传播结果
+ * 
+ * @param graph - 传播图（包含连线边和 trait 边）
+ * @param portConstraints - 每个端口的原始约束
+ * @param propagatedTypes - 传播结果（含用户选择）
+ * @param sourceSet - 所有源端口的集合（用户 pinned 的端口）
+ * @param getConcreteTypes - 获取约束的具体类型列表
+ * @param pickConstraintName - 选择约束名称
+ * @returns varId → 收窄后的约束名
+ */
+export function computeNarrowedConstraints(
+  graph: PropagationGraph,
+  portConstraints: Map<VariableId, string>,
+  propagatedTypes: Map<VariableId, string>,
+  sourceSet: Set<VariableId>,
+  getConcreteTypes: (constraint: string) => string[],
+  pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null
+): Map<VariableId, string> {
+  const narrowed = new Map<VariableId, string>();
+
+  // 辅助函数：从 start 出发，在传播图中找到所有能到达的源（排除 exclude）
+  const findReachableSources = (start: VariableId, exclude: VariableId): Set<VariableId> => {
+    const reachable = new Set<VariableId>();
+    const visited = new Set<VariableId>();
+    const queue = [start];
+    
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      
+      // 如果是源且不是排除的，加入结果
+      if (sourceSet.has(current) && current !== exclude) {
+        reachable.add(current);
+      }
+      
+      // 继续遍历邻居
+      const neighbors = graph.get(current);
+      if (neighbors) {
+        for (const neighbor of neighbors) {
+          if (!visited.has(neighbor)) {
+            queue.push(neighbor);
+          }
+        }
+      }
+    }
+    return reachable;
+  };
+
+  // 遍历每个端口
+  for (const [portKey, originalConstraint] of portConstraints) {
+    const neighbors = graph.get(portKey);
+    if (!neighbors || neighbors.size === 0) continue;
+
+    const originalTypes = getConcreteTypes(originalConstraint);
+    let intersection = originalTypes;
+
+    // 与所有邻居的有效类型求交集
+    for (const neighborKey of neighbors) {
+      const neighborConstraint = portConstraints.get(neighborKey);
+      if (!neighborConstraint) continue;
+
+      // 邻居能到达的其他源（排除自己）
+      const otherSources = findReachableSources(neighborKey, portKey);
+      
+      // 邻居有效类型：如果能到达其他源，用传播结果；否则用原始约束
+      const neighborEffective = otherSources.size > 0
+        ? (propagatedTypes.get(neighborKey) || neighborConstraint)
+        : neighborConstraint;
+      const neighborTypes = getConcreteTypes(neighborEffective);
+
+      intersection = intersection.filter(t => neighborTypes.includes(t));
+    }
+
+    // 检查是否发生收窄
+    if (intersection.length > 0 && intersection.length < originalTypes.length) {
+      const constraintName = pickConstraintName(intersection, null, null);
+      if (constraintName) {
+        narrowed.set(portKey, constraintName);
+      }
+    }
+  }
+
+  return narrowed;
 }

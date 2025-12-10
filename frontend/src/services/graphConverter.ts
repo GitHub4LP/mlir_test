@@ -16,6 +16,7 @@
  */
 
 import type { GraphNode, GraphEdge, BlueprintNodeData, OperationDef, FunctionEntryData, FunctionReturnData } from '../types';
+import { PortRef, PortKind } from './port';
 
 /**
  * 后端图节点模型
@@ -51,15 +52,16 @@ export interface BackendGraph {
  * 从 handle 字符串解析端口索引
  * 
  * Handle 格式：
- * - "output-{name}" -> 输出端口
- * - "input-{name}" -> 输入端口
+ * - "data-out-{name}" -> 输出端口
+ * - "data-in-{name}" -> 输入端口
  */
 function parseOutputIndex(handle: string, operation: OperationDef): number {
-  if (!handle.startsWith('output-')) {
+  const parsed = PortRef.parseHandleId(handle);
+  if (!parsed || parsed.kind !== PortKind.DataOut) {
     throw new Error(`Invalid output handle: ${handle}`);
   }
   
-  const name = handle.slice('output-'.length);
+  const name = parsed.name;
   const index = operation.results.findIndex(r => r.name === name);
   
   if (index === -1) {
@@ -70,11 +72,12 @@ function parseOutputIndex(handle: string, operation: OperationDef): number {
 }
 
 function parseInputIndex(handle: string, operation: OperationDef): number {
-  if (!handle.startsWith('input-')) {
+  const parsed = PortRef.parseHandleId(handle);
+  if (!parsed || parsed.kind !== PortKind.DataIn) {
     throw new Error(`Invalid input handle: ${handle}`);
   }
   
-  const name = handle.slice('input-'.length);
+  const name = parsed.name;
   const operands = operation.arguments.filter(a => a.kind === 'operand');
   const index = operands.findIndex(o => o.name === name);
   
@@ -327,7 +330,6 @@ export function convertToBackendGraph(
 export interface ExecuteGraphRequest {
   graph: BackendGraph;
   func_name: string;
-  mode: 'jit' | 'compile';
 }
 
 /**
@@ -341,13 +343,12 @@ export interface ExecuteGraphResponse {
 }
 
 /**
- * 调用后端执行图
+ * 调用后端执行图（JIT 模式）
  */
 export async function executeGraph(
   nodes: GraphNode[],
   edges: GraphEdge[],
-  funcName: string = 'main',
-  mode: 'jit' | 'compile' = 'jit'
+  funcName: string = 'main'
 ): Promise<ExecuteGraphResponse> {
   const graph = convertToBackendGraph(nodes, edges);
   
@@ -357,7 +358,6 @@ export async function executeGraph(
     body: JSON.stringify({
       graph,
       func_name: funcName,
-      mode,
     }),
   });
   
@@ -384,7 +384,6 @@ export async function buildGraph(
     body: JSON.stringify({
       graph,
       func_name: funcName,
-      mode: 'jit',
     }),
   });
   

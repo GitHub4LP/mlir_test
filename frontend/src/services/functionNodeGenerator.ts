@@ -6,19 +6,15 @@
 
 import type { FunctionDef, FunctionCallData, FunctionReturnData, PortConfig, GraphNode, ExecPin } from '../types';
 import { getTypeColor } from './typeSystem';
+import { dataInHandle, dataOutHandle } from './port';
+import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 
 /**
- * Generates a unique port ID for function parameters
+ * 判断类型是否是具体类型（而非约束）
  */
-function generateParamPortId(functionId: string, paramName: string): string {
-  return `${functionId}_param_${paramName}`;
-}
-
-/**
- * Generates a unique port ID for function return values
- */
-function generateReturnPortId(functionId: string, returnName: string, index: number): string {
-  return `${functionId}_return_${returnName || `result_${index}`}`;
+function getConcreteTypeOrUndefined(type: string): string | undefined {
+  const { isConcreteType } = useTypeConstraintStore.getState();
+  return isConcreteType(type) ? type : undefined;
 }
 
 /**
@@ -26,11 +22,11 @@ function generateReturnPortId(functionId: string, returnName: string, index: num
  */
 export function createInputPortsFromParams(func: FunctionDef): PortConfig[] {
   return func.parameters.map((param) => ({
-    id: generateParamPortId(func.id, param.name),
+    id: dataInHandle(param.name),  // 统一格式：data-in-{name}
     name: param.name,
     kind: 'input' as const,
     typeConstraint: param.type,
-    concreteType: param.type,
+    concreteType: getConcreteTypeOrUndefined(param.type),
     color: getTypeColor(param.type),
   }));
 }
@@ -40,11 +36,11 @@ export function createInputPortsFromParams(func: FunctionDef): PortConfig[] {
  */
 export function createOutputPortsFromReturns(func: FunctionDef): PortConfig[] {
   return func.returnTypes.map((ret, index) => ({
-    id: generateReturnPortId(func.id, ret.name, index),
+    id: dataOutHandle(ret.name || `result_${index}`),  // 统一格式：data-out-{name}
     name: ret.name || `result_${index}`,
     kind: 'output' as const,
     typeConstraint: ret.type,
-    concreteType: ret.type,
+    concreteType: getConcreteTypeOrUndefined(ret.type),
     color: getTypeColor(ret.type),
   }));
 }

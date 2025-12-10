@@ -36,22 +36,22 @@ cd frontend && npm run dev
 
 ```
 ├── backend/          # FastAPI 后端
-│   └── api/          # API 路由 (dialects, projects, execution)
+│   ├── api/          # API 路由 (dialects, projects, execution)
+│   └── mlir_utils/   # MLIR 工具 (CLI, JSON 生成)
 ├── frontend/         # React + TypeScript 前端
 │   └── src/
 │       ├── components/   # React 组件
 │       ├── services/     # 业务逻辑
 │       └── stores/       # Zustand 状态
-├── mlir_utils/       # MLIR 工具 (CLI, JSON 生成)
 └── mlir_data/        # 方言 JSON 数据
 ```
 
 ## CLI
 
 ```bash
-python -m mlir_utils.cli --list          # 列出方言
-python -m mlir_utils.cli arith -o out    # 生成单个方言
-python -m mlir_utils.cli all -o out      # 生成所有方言
+python -m backend.mlir_utils.cli --list          # 列出方言
+python -m backend.mlir_utils.cli arith -o out    # 生成单个方言
+python -m backend.mlir_utils.cli all -o out      # 生成所有方言
 ```
 
 ## 技术栈

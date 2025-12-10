@@ -12,7 +12,8 @@ import pkgutil
 import json
 import re
 
-from .tblgen import get_mlir_paths, generate_json
+from .tblgen import generate_json
+from .paths import get_include_dir
 
 
 # 不需要 lowering 但应该包含的方言
@@ -36,7 +37,10 @@ KEEP_AS_SOURCE = {"nvvm", "spirv"}
 
 def get_all_passes_td_files() -> List[Path]:
     """获取所有 Passes.td 文件路径"""
-    include_dir, _ = get_mlir_paths()
+    include_dir = get_include_dir()
+    if not include_dir:
+        return []
+    
     td_files = []
 
     # 1. Conversion/Passes.td

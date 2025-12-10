@@ -24,6 +24,16 @@ import type {
   ExecPin,
 } from '../types';
 import { getTypeColor } from './typeSystem';
+import { dataInHandle, dataOutHandle } from './port';
+import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+
+/**
+ * 判断类型是否是具体类型（而非约束）
+ */
+function getConcreteTypeOrUndefined(type: string): string | undefined {
+  const { isConcreteType } = useTypeConstraintStore.getState();
+  return isConcreteType(type) ? type : undefined;
+}
 
 /**
  * Creates input port configurations from function parameters
@@ -31,11 +41,11 @@ import { getTypeColor } from './typeSystem';
  */
 function createCallInputPorts(func: FunctionDef): PortConfig[] {
   return func.parameters.map((param) => ({
-    id: `${func.id}_param_${param.name}`,
+    id: dataInHandle(param.name),  // 统一格式：data-in-{name}
     name: param.name,
     kind: 'input' as const,
     typeConstraint: param.type,
-    concreteType: param.type,
+    concreteType: getConcreteTypeOrUndefined(param.type),
     color: getTypeColor(param.type),
   }));
 }
@@ -46,11 +56,11 @@ function createCallInputPorts(func: FunctionDef): PortConfig[] {
  */
 function createCallOutputPorts(func: FunctionDef): PortConfig[] {
   return func.returnTypes.map((ret, index) => ({
-    id: `${func.id}_return_${ret.name || `result_${index}`}`,
+    id: dataOutHandle(ret.name || `result_${index}`),  // 统一格式：data-out-{name}
     name: ret.name || `result_${index}`,
     kind: 'output' as const,
     typeConstraint: ret.type,
-    concreteType: ret.type,
+    concreteType: getConcreteTypeOrUndefined(ret.type),
     color: getTypeColor(ret.type),
   }));
 }
@@ -61,11 +71,11 @@ function createCallOutputPorts(func: FunctionDef): PortConfig[] {
  */
 function createEntryOutputPorts(func: FunctionDef): PortConfig[] {
   return func.parameters.map((param) => ({
-    id: `param-${param.name}`,
+    id: dataOutHandle(param.name),  // 统一格式：data-out-{name}
     name: param.name,
     kind: 'output' as const,
     typeConstraint: param.type,
-    concreteType: param.type,
+    concreteType: getConcreteTypeOrUndefined(param.type),
     color: getTypeColor(param.type),
   }));
 }
@@ -76,11 +86,11 @@ function createEntryOutputPorts(func: FunctionDef): PortConfig[] {
  */
 function createReturnInputPorts(func: FunctionDef): PortConfig[] {
   return func.returnTypes.map((ret, idx) => ({
-    id: `return-${ret.name || `ret_${idx}`}`,
+    id: dataInHandle(ret.name || `result_${idx}`),  // 统一格式：data-in-{name}
     name: ret.name || `result_${idx}`,
     kind: 'input' as const,
     typeConstraint: ret.type,
-    concreteType: ret.type,
+    concreteType: getConcreteTypeOrUndefined(ret.type),
     color: getTypeColor(ret.type),
   }));
 }

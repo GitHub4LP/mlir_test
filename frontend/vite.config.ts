@@ -13,11 +13,19 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: false,
+    allowedHosts: true,  // 允许所有域名
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 5173,
   },
 })

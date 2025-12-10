@@ -7,11 +7,8 @@ MLIR 操作注册表
 
 import importlib
 import inspect
-import pkgutil
 from dataclasses import dataclass
 from typing import Any
-
-import mlir.dialects as dialects_pkg
 
 
 @dataclass
@@ -23,10 +20,9 @@ class OpInfo:
 
 
 class OpRegistry:
-    """操作注册表，单例模式"""
+    """操作注册表，按需加载方言"""
     
     _instance: "OpRegistry | None" = None
-    _initialized: bool = False
     
     def __new__(cls) -> "OpRegistry":
         if cls._instance is None:
@@ -34,24 +30,24 @@ class OpRegistry:
         return cls._instance
     
     def __init__(self) -> None:
-        if OpRegistry._initialized:
+        if hasattr(self, '_initialized'):
             return
         
         self._registry: dict[str, OpInfo] = {}
-        self._build_registry()
-        OpRegistry._initialized = True
+        self._loaded_dialects: set[str] = set()
+        self._initialized = True
     
-    def _build_registry(self) -> None:
-        """遍历所有方言模块，收集 ODS 操作类"""
-        for _, modname, _ in pkgutil.iter_modules(dialects_pkg.__path__):
-            if modname.startswith("_"):
-                continue
-            
-            try:
-                mod = importlib.import_module(f"mlir.dialects.{modname}")
-                self._collect_ops_from_module(mod)
-            except Exception:
-                pass  # 忽略加载失败的模块
+    def _load_dialect(self, dialect_name: str) -> None:
+        """按需加载单个方言的所有操作"""
+        if dialect_name in self._loaded_dialects:
+            return
+        
+        try:
+            mod = importlib.import_module(f"mlir.dialects.{dialect_name}")
+            self._collect_ops_from_module(mod)
+            self._loaded_dialects.add(dialect_name)
+        except Exception:
+            pass  # 忽略加载失败的方言
     
     def _collect_ops_from_module(self, mod: Any) -> None:
         """从模块中收集所有 Op 类"""
@@ -82,10 +78,23 @@ class OpRegistry:
             return []
     
     def get(self, full_name: str) -> OpInfo | None:
-        """通过 fullName 获取操作信息"""
+        """通过 fullName 获取操作信息，按需加载方言"""
+        dialect = full_name.split('.')[0]
+        
+        # 按需加载方言
+        if dialect not in self._loaded_dialects:
+            self._load_dialect(dialect)
+            
         return self._registry.get(full_name)
     
     def __contains__(self, full_name: str) -> bool:
+        """检查操作是否存在，按需加载方言"""
+        dialect = full_name.split('.')[0]
+        
+        # 按需加载方言
+        if dialect not in self._loaded_dialects:
+            self._load_dialect(dialect)
+            
         return full_name in self._registry
     
     def __len__(self) -> int:

@@ -1,27 +1,53 @@
 """
 Build API Routes
 
-将项目构建为 MLIR 文件。
+将项目构建为 MLIR 文件和 LLVM IR。
 
 设计原则：
 - 项目级构建，支持多函数和函数调用
 - 利用 ProjectBuilder 统一处理所有节点类型
 - 自动依赖分析和拓扑排序
 - 项目路径放在请求体中，避免 URL 编码问题
+- 生成 MLIR 和 LLVM IR，可选编译（需系统 clang）
 """
 
 import json
 import platform
+import asyncio
+import subprocess
 from pathlib import Path
-from typing import Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.project_builder import build_project_from_dict
-from backend.api.execution import find_tool, run_command
 
 router = APIRouter()
+
+
+# ============== 工具函数 ==============
+
+async def run_command(cmd: list[str], input_data: str | None = None, timeout: float = 30.0) -> tuple[int, str, str]:
+    """运行命令并返回 (returncode, stdout, stderr)"""
+    try:
+        loop = asyncio.get_event_loop()
+        
+        def _run():
+            result = subprocess.run(
+                cmd,
+                input=input_data.encode('utf-8') if input_data else None,
+                capture_output=True,
+                timeout=timeout,
+            )
+            return result.returncode, result.stdout.decode('utf-8', errors='replace'), result.stderr.decode('utf-8', errors='replace')
+        
+        return await loop.run_in_executor(None, _run)
+    except subprocess.TimeoutExpired:
+        return -1, "", "Command timed out"
+    except FileNotFoundError as e:
+        return -1, "", f"Command not found: {e}"
+    except Exception as e:
+        return -1, "", f"Error running command: {e}"
 
 
 # ============== 请求/响应模型 ==============
@@ -35,13 +61,12 @@ class BuildRequest(BaseModel):
     """构建请求"""
     projectPath: str
     generateLlvm: bool = True
-    generateExecutable: bool = True
+    generateExecutable: bool = False  # 默认不编译，因为需要系统 clang
 
 
 class ExecuteRequest(BaseModel):
     """执行请求"""
     projectPath: str
-    mode: Literal["compile", "mlir-run", "jit"] = "jit"
 
 
 class PreviewResponse(BaseModel):
@@ -206,14 +231,11 @@ async def preview_project(request: ProjectRequest):
 @router.post("/execute", response_model=ExecuteResponse)
 async def execute_project(request: ExecuteRequest):
     """
-    执行项目
+    执行项目（仅支持 JIT 模式）
     
-    支持三种执行方式：
-    - compile: 编译到 LLVM IR 后用 lli 执行
-    - mlir-run: 使用 mlir-runner 执行
-    - jit: 使用 MLIR Python bindings JIT 执行（默认）
+    使用 MLIR Python bindings JIT 执行，用于编辑器内快速验证。
     """
-    from backend.api.execution import _execute_jit, _execute_compile, _execute_mlir_run
+    from backend.api.execution import _execute_jit
     
     try:
         project_dict = load_project_dict(request.projectPath)
@@ -229,13 +251,8 @@ async def execute_project(request: ExecuteRequest):
                 error="MLIR verification failed",
             )
         
-        # 根据执行方式选择执行函数
-        if request.mode == "compile":
-            result = await _execute_compile(mlir_code)
-        elif request.mode == "mlir-run":
-            result = await _execute_mlir_run(mlir_code)
-        else:
-            result = await _execute_jit(mlir_code)
+        # JIT 执行
+        result = await _execute_jit(mlir_code)
         
         return ExecuteResponse(
             success=result.success,
@@ -341,7 +358,13 @@ async def get_build_info(request: ProjectRequest):
 # ============== 内部函数 ==============
 
 async def generate_llvm_ir(mlir_code: str, output_path: Path) -> tuple[bool, str]:
-    """将 MLIR 代码转换为 LLVM IR"""
+    """
+    将 MLIR 代码转换为 LLVM IR
+    
+    使用 mlir-opt 和 mlir-translate（来自 mlir_wheel）
+    """
+    from backend.mlir_utils.paths import find_tool
+    
     mlir_opt = find_tool("mlir-opt")
     mlir_translate = find_tool("mlir-translate")
     
@@ -361,7 +384,7 @@ async def generate_llvm_ir(mlir_code: str, output_path: Path) -> tuple[bool, str
     ]
     
     returncode, stdout, stderr = await run_command(
-        [mlir_opt] + lowering_passes,
+        [str(mlir_opt)] + lowering_passes,
         input_data=mlir_code
     )
     
@@ -371,7 +394,7 @@ async def generate_llvm_ir(mlir_code: str, output_path: Path) -> tuple[bool, str
     lowered_mlir = stdout
     
     returncode, stdout, stderr = await run_command(
-        [mlir_translate, "--mlir-to-llvmir"],
+        [str(mlir_translate), "--mlir-to-llvmir"],
         input_data=lowered_mlir
     )
     
@@ -387,61 +410,39 @@ async def generate_llvm_ir(mlir_code: str, output_path: Path) -> tuple[bool, str
 
 async def generate_executable(
     llvm_ir_path: Path,
-    output_path: Path,
+    output_dir: Path,
     project_name: str,
     version: str,
 ) -> tuple[bool, str]:
-    """将 LLVM IR 编译为可执行文件"""
-    llc = find_tool("llc")
-    if not llc:
-        return False, "llc not found"
+    """
+    尝试将 LLVM IR 编译为可执行文件（可选功能）
+    
+    需要系统安装 clang。如果不可用，返回友好提示。
+    """
+    import shutil
+    
+    # 检查系统是否有 clang
+    clang = shutil.which("clang")
+    if not clang:
+        return False, "clang not found in system PATH. Please compile manually:\n  clang output.ll -o program"
     
     os_name, arch = get_platform_info()
     
     if os_name == "windows":
         exe_name = f"{project_name}-{version}-{os_name}-{arch}.exe"
-        linker = find_tool("lld-link")
-        if not linker:
-            return False, "lld-link not found"
     else:
         exe_name = f"{project_name}-{version}-{os_name}-{arch}"
-        linker = find_tool("ld.lld") or find_tool("clang")
-        if not linker:
-            return False, "ld.lld or clang not found"
     
-    exe_path = output_path / exe_name
-    output_path.mkdir(parents=True, exist_ok=True)
+    exe_path = output_dir / exe_name
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    obj_path = output_path / f"{project_name}.o"
-    
+    # 使用 clang 直接编译 LLVM IR
     returncode, _, stderr = await run_command(
-        [llc, "-filetype=obj", "-o", str(obj_path), str(llvm_ir_path)]
+        [clang, str(llvm_ir_path), "-o", str(exe_path)]
     )
     
     if returncode != 0:
-        return False, f"llc compilation failed: {stderr}"
-    
-    if os_name == "windows":
-        returncode, _, stderr = await run_command([
-            linker, "/entry:main", "/subsystem:console",
-            f"/out:{exe_path}", str(obj_path),
-        ])
-    else:
-        if "clang" in linker:
-            returncode, _, stderr = await run_command(
-                [linker, "-o", str(exe_path), str(obj_path)]
-            )
-        else:
-            returncode, _, stderr = await run_command([
-                linker, "-e", "main", "-o", str(exe_path), str(obj_path),
-            ])
-    
-    if returncode != 0:
-        return False, f"Linking failed: {stderr}"
-    
-    try:
-        obj_path.unlink()
-    except Exception:
-        pass
+        return False, f"clang compilation failed: {stderr}\nYou can try compiling manually:\n  clang {llvm_ir_path} -o {exe_name}"
     
     return True, str(exe_path)
+

@@ -5,12 +5,17 @@
  */
 
 import { memo, useCallback, useState, useMemo } from 'react';
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionEntryData, DataPin, FunctionTrait } from '../types';
 import { getTypeColor } from '../services/typeSystem';
 import { useProjectStore } from '../stores/projectStore';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
 import { FunctionTraitsEditor } from './FunctionTraitsEditor';
+import { 
+  getInternalConnectedConstraints, 
+  getExternalConnectedConstraints,
+  computeSignaturePortOptions 
+} from '../services/typeSystemService';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
@@ -49,8 +54,11 @@ const dataPinStyle = (color: string) => ({
   border: '2px solid #1a1a2e', borderRadius: '50%'
 });
 
-export const FunctionEntryNode = memo(function FunctionEntryNode({ data, selected }: FunctionEntryNodeProps) {
+export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, selected }: FunctionEntryNodeProps) {
   const { functionId, functionName, outputs, execOut, isMain } = data;
+  const edges = useEdges();
+  const nodes = useNodes();
+  const project = useProjectStore(state => state.project);
   const addParameter = useProjectStore(state => state.addParameter);
   const removeParameter = useProjectStore(state => state.removeParameter);
   const updateParameter = useProjectStore(state => state.updateParameter);
@@ -91,6 +99,19 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ data, selecte
     if (param) updateParameter(functionId, oldName, { ...param, name: newName });
   }, [functionId, updateParameter, getCurrentFunction]);
 
+  // 计算端口的可选类型
+  const getPortOptions = useCallback((portId: string, paramName: string): string[] | null => {
+    if (isMain || !project) return null;
+    
+    // 获取内部约束（函数内连接的操作约束）
+    const internalConstraints = getInternalConnectedConstraints(portId, id, nodes, edges);
+    
+    // 获取外部约束（调用处连接的类型/约束）
+    const externalConstraints = getExternalConnectedConstraints(functionId, paramName, 'param', project);
+    
+    return computeSignaturePortOptions(internalConstraints, externalConstraints);
+  }, [isMain, project, id, nodes, edges, functionId]);
+
   const dataPins: DataPin[] = useMemo(() => outputs.map((port) => ({
     id: port.id, label: port.name, typeConstraint: port.typeConstraint,
     displayName: port.typeConstraint,
@@ -112,24 +133,31 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ data, selecte
           <Handle type="source" position={Position.Right} id={execOut.id} isConnectable={true}
             className="!absolute !right-0 !top-1/2 !-translate-y-1/2 !translate-x-1/2" style={execPinStyle} />
         </div>
-        {dataPins.map((pin) => (
-          <div key={pin.id} className="relative flex items-center justify-end py-1.5 min-h-7 group">
-            {!isMain && <button onClick={() => handleRemoveParameter(pin.label)}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 mr-1" title="Remove">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>}
-            <div className="mr-4 flex flex-col items-end">
-              {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameParameter(pin.label, n)} />
-                : <span className="text-xs text-gray-300">{pin.label}</span>}
-              <UnifiedTypeSelector selectedType={pin.typeConstraint}
-                onTypeSelect={(t) => handleParameterTypeChange(pin.label, t)} disabled={isMain} />
+        {dataPins.map((pin) => {
+          const options = getPortOptions(pin.id, pin.label);
+          return (
+            <div key={pin.id} className="relative flex items-center justify-end py-1.5 min-h-7 group">
+              {!isMain && <button onClick={() => handleRemoveParameter(pin.label)}
+                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 mr-1" title="Remove">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>}
+              <div className="mr-4 flex flex-col items-end">
+                {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameParameter(pin.label, n)} />
+                  : <span className="text-xs text-gray-300">{pin.label}</span>}
+                <UnifiedTypeSelector 
+                  selectedType={pin.typeConstraint}
+                  onTypeSelect={(t) => handleParameterTypeChange(pin.label, t)} 
+                  constraint="AnyType"
+                  allowedTypes={options ?? undefined}
+                  disabled={isMain} />
+              </div>
+              <Handle type="source" position={Position.Right} id={pin.id} isConnectable={true}
+                className="!absolute !right-0 !top-1/2 !-translate-y-1/2 !translate-x-1/2"
+                style={dataPinStyle(pin.color || getTypeColor(pin.typeConstraint))} />
             </div>
-            <Handle type="source" position={Position.Right} id={pin.id} isConnectable={true}
-              className="!absolute !right-0 !top-1/2 !-translate-y-1/2 !translate-x-1/2"
-              style={dataPinStyle(pin.color || getTypeColor(pin.typeConstraint))} />
-          </div>
-        ))}
+          );
+        })}
         {!isMain && <div className="relative flex items-center justify-end py-1.5 min-h-7">
           <button onClick={handleAddParameter} className="mr-4 text-gray-500 hover:text-white" title="Add parameter">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

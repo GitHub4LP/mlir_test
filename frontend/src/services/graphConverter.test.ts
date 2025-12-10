@@ -133,8 +133,8 @@ describe('convertToBackendGraph', () => {
   describe('节点转换', () => {
     it('应该转换函数入口节点', () => {
       const entryNode = createEntryNode('entry', [
-        { id: 'param-a', name: 'a', concreteType: 'I32' },
-        { id: 'param-b', name: 'b', concreteType: 'I32' },
+        { id: 'data-out-a', name: 'a', concreteType: 'I32' },
+        { id: 'data-out-b', name: 'b', concreteType: 'I32' },
       ]);
       
       const result = convertToBackendGraph([entryNode], []);
@@ -151,7 +151,7 @@ describe('convertToBackendGraph', () => {
 
     it('应该转换函数返回节点', () => {
       const returnNode = createReturnNode('return', [
-        { id: 'return-result', name: 'result', concreteType: 'I32' },
+        { id: 'data-in-result', name: 'result', concreteType: 'I32' },
       ]);
       
       const result = convertToBackendGraph([returnNode], []);
@@ -237,8 +237,8 @@ describe('convertToBackendGraph', () => {
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'const1', target: 'add', sourceHandle: 'output-result', targetHandle: 'input-lhs' },
-        { id: 'e2', source: 'const2', target: 'add', sourceHandle: 'output-result', targetHandle: 'input-rhs' },
+        { id: 'e1', source: 'const1', target: 'add', sourceHandle: 'data-out-result', targetHandle: 'data-in-lhs' },
+        { id: 'e2', source: 'const2', target: 'add', sourceHandle: 'data-out-result', targetHandle: 'data-in-rhs' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -267,15 +267,15 @@ describe('convertToBackendGraph', () => {
       
       const nodes: GraphNode[] = [
         createEntryNode('entry', [
-          { id: 'param-a', name: 'a', concreteType: 'I32' },
-          { id: 'param-b', name: 'b', concreteType: 'I32' },
+          { id: 'data-out-a', name: 'a', concreteType: 'I32' },
+          { id: 'data-out-b', name: 'b', concreteType: 'I32' },
         ]),
         createOperationNode('add', operation, { result: 'I32' }),
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'entry', target: 'add', sourceHandle: 'param-a', targetHandle: 'input-lhs' },
-        { id: 'e2', source: 'entry', target: 'add', sourceHandle: 'param-b', targetHandle: 'input-rhs' },
+        { id: 'e1', source: 'entry', target: 'add', sourceHandle: 'data-out-a', targetHandle: 'data-in-lhs' },
+        { id: 'e2', source: 'entry', target: 'add', sourceHandle: 'data-out-b', targetHandle: 'data-in-rhs' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -304,11 +304,11 @@ describe('convertToBackendGraph', () => {
       
       const nodes: GraphNode[] = [
         createOperationNode('add', operation, { result: 'I32' }),
-        createReturnNode('return', [{ id: 'return-result', name: 'result', concreteType: 'I32' }]),
+        createReturnNode('return', [{ id: 'data-in-result', name: 'result', concreteType: 'I32' }]),
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'add', target: 'return', sourceHandle: 'output-result', targetHandle: 'return-result' },
+        { id: 'e1', source: 'add', target: 'return', sourceHandle: 'data-out-result', targetHandle: 'data-in-result' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -356,17 +356,17 @@ describe('convertToBackendGraph', () => {
       
       const nodes: GraphNode[] = [
         createEntryNode('entry', [
-          { id: 'param-a', name: 'a', concreteType: 'I32' },
-          { id: 'param-b', name: 'b', concreteType: 'I32' },
+          { id: 'data-out-a', name: 'a', concreteType: 'I32' },
+          { id: 'data-out-b', name: 'b', concreteType: 'I32' },
         ]),
         createOperationNode('add', addiOp, { result: 'I32' }),
-        createReturnNode('return', [{ id: 'return-result', name: 'result', concreteType: 'I32' }]),
+        createReturnNode('return', [{ id: 'data-in-result', name: 'result', concreteType: 'I32' }]),
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'entry', target: 'add', sourceHandle: 'param-a', targetHandle: 'input-lhs' },
-        { id: 'e2', source: 'entry', target: 'add', sourceHandle: 'param-b', targetHandle: 'input-rhs' },
-        { id: 'e3', source: 'add', target: 'return', sourceHandle: 'output-result', targetHandle: 'return-result' },
+        { id: 'e1', source: 'entry', target: 'add', sourceHandle: 'data-out-a', targetHandle: 'data-in-lhs' },
+        { id: 'e2', source: 'entry', target: 'add', sourceHandle: 'data-out-b', targetHandle: 'data-in-rhs' },
+        { id: 'e3', source: 'add', target: 'return', sourceHandle: 'data-out-result', targetHandle: 'data-in-result' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);

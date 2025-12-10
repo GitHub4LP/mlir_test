@@ -6,11 +6,16 @@
  */
 
 import { memo, useCallback, useState, useMemo } from 'react';
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionReturnData, DataPin } from '../types';
 import { getTypeColor } from '../services/typeSystem';
 import { useProjectStore } from '../stores/projectStore';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
+import { 
+  getInternalConnectedConstraints, 
+  getExternalConnectedConstraints,
+  computeSignaturePortOptions 
+} from '../services/typeSystemService';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
@@ -49,8 +54,11 @@ const dataPinStyle = (color: string) => ({
   border: '2px solid #1a1a2e', borderRadius: '50%'
 });
 
-export const FunctionReturnNode = memo(function FunctionReturnNode({ data, selected }: FunctionReturnNodeProps) {
+export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, selected }: FunctionReturnNodeProps) {
   const { functionId, branchName, inputs, execIn, isMain } = data;
+  const edges = useEdges();
+  const nodes = useNodes();
+  const project = useProjectStore(state => state.project);
   const addReturnType = useProjectStore(state => state.addReturnType);
   const removeReturnType = useProjectStore(state => state.removeReturnType);
   const updateReturnType = useProjectStore(state => state.updateReturnType);
@@ -80,6 +88,19 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ data, selec
     if (ret) updateReturnType(functionId, oldName, { ...ret, name: newName });
   }, [functionId, updateReturnType, getFunctionById]);
 
+  // 计算端口的可选类型
+  const getPortOptions = useCallback((portId: string, returnName: string): string[] | null => {
+    if (isMain || !project) return null;
+    
+    // 获取内部约束（函数内连接的操作约束）
+    const internalConstraints = getInternalConnectedConstraints(portId, id, nodes, edges);
+    
+    // 获取外部约束（调用处连接的类型/约束）
+    const externalConstraints = getExternalConnectedConstraints(functionId, returnName, 'return', project);
+    
+    return computeSignaturePortOptions(internalConstraints, externalConstraints);
+  }, [isMain, project, id, nodes, edges, functionId]);
+
   const dataPins: DataPin[] = useMemo(() => inputs.map((port) => ({
     id: port.id, label: port.name, typeConstraint: port.typeConstraint,
     displayName: port.typeConstraint,
@@ -102,24 +123,31 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ data, selec
             className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2" style={execPinStyle} />
           <div className="ml-4" />
         </div>
-        {dataPins.map((pin) => (
-          <div key={pin.id} className="relative flex items-center py-1.5 min-h-7 group">
-            <Handle type="target" position={Position.Left} id={pin.id} isConnectable={true}
-              className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2"
-              style={dataPinStyle(pin.color || getTypeColor(pin.typeConstraint))} />
-            <div className="ml-4 flex flex-col items-start flex-1">
-              {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameReturnType(pin.label, n)} />
-                : <span className="text-xs text-gray-300">{pin.label}</span>}
-              <UnifiedTypeSelector selectedType={pin.typeConstraint}
-                onTypeSelect={(t) => handleReturnTypeChange(pin.label, t)} disabled={isMain} />
+        {dataPins.map((pin) => {
+          const options = getPortOptions(pin.id, pin.label);
+          return (
+            <div key={pin.id} className="relative flex items-center py-1.5 min-h-7 group">
+              <Handle type="target" position={Position.Left} id={pin.id} isConnectable={true}
+                className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2"
+                style={dataPinStyle(pin.color || getTypeColor(pin.typeConstraint))} />
+              <div className="ml-4 flex flex-col items-start flex-1">
+                {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameReturnType(pin.label, n)} />
+                  : <span className="text-xs text-gray-300">{pin.label}</span>}
+                <UnifiedTypeSelector 
+                  selectedType={pin.typeConstraint}
+                  onTypeSelect={(t) => handleReturnTypeChange(pin.label, t)} 
+                  constraint="AnyType"
+                  allowedTypes={options ?? undefined}
+                  disabled={isMain} />
+              </div>
+              {!isMain && <button onClick={() => handleRemoveReturnType(pin.label)}
+                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 ml-1" title="Remove">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>}
             </div>
-            {!isMain && <button onClick={() => handleRemoveReturnType(pin.label)}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 ml-1" title="Remove">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>}
-          </div>
-        ))}
+          );
+        })}
         {!isMain && <div className="relative flex items-center py-1.5 min-h-7">
           <div className="ml-4">
             <button onClick={handleAddReturnType} className="text-gray-500 hover:text-white" title="Add return value">

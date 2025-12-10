@@ -81,9 +81,12 @@ def generate_type_constraints_json(output_dir: Optional[Path] = None) -> dict:
     """
     生成类型约束 JSON（从 BuiltinTypes.td）
     """
-    from .tblgen import get_mlir_paths
+    from .paths import get_include_dir
     
-    include_dir, _ = get_mlir_paths()
+    include_dir = get_include_dir()
+    if not include_dir:
+        raise RuntimeError("MLIR include directory not found")
+    
     td_file = include_dir / 'mlir' / 'IR' / 'BuiltinTypes.td'
     
     data = generate_json(td_file)

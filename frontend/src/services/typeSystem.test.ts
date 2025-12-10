@@ -21,56 +21,70 @@ import {
   normalizeType,
 } from './typeSystem';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import type { ConstraintDef } from '../stores/typeConstraintStore';
 import type { OperationDef } from '../types';
+
+// ============================================================================
+// 测试辅助：构建 mock constraintDefs
+// ============================================================================
+
+function buildMockConstraintDefs(): Map<string, ConstraintDef> {
+  const buildableTypes = [
+    'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
+    'SI1', 'SI8', 'SI16', 'SI32', 'SI64',
+    'UI1', 'UI8', 'UI16', 'UI32', 'UI64',
+    'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
+    'Index', 'NoneType',
+  ];
+  
+  const constraintMap: Record<string, string[]> = {
+    'SignlessIntegerLike': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128'],
+    'SignlessIntegerOrIndexLike': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128', 'Index'],
+    'AnySignlessInteger': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128'],
+    'AnyFloat': ['F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32'],
+    'FloatLike': ['F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32'],
+    'SignlessIntegerOrFloatLike': [
+      'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
+      'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
+    ],
+    'BoolLike': ['I1'],
+    'AnyType': buildableTypes,
+  };
+  
+  const defs = new Map<string, ConstraintDef>();
+  
+  // 添加 BuildableType
+  for (const t of buildableTypes) {
+    defs.set(t, { name: t, summary: '', rule: { kind: 'type', name: t } });
+  }
+  
+  // 添加约束
+  for (const [name, types] of Object.entries(constraintMap)) {
+    if (!defs.has(name)) {
+      defs.set(name, { name, summary: '', rule: { kind: 'oneOf', types } });
+    }
+  }
+  
+  return defs;
+}
 
 // ============================================================================
 // 测试前初始化 store（模拟后端数据）
 // ============================================================================
 
 beforeAll(() => {
-  // 直接设置 store 状态，模拟后端返回的数据
+  const buildableTypes = [
+    'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
+    'SI1', 'SI8', 'SI16', 'SI32', 'SI64',
+    'UI1', 'UI8', 'UI16', 'UI32', 'UI64',
+    'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
+    'Index', 'NoneType',
+  ];
+  
   useTypeConstraintStore.setState({
-    buildableTypes: [
-      'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
-      'SI1', 'SI8', 'SI16', 'SI32', 'SI64',
-      'UI1', 'UI8', 'UI16', 'UI32', 'UI64',
-      'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
-      'Index', 'NoneType',
-    ],
-    constraintMap: {
-      // Signless Integer Types
-      'SignlessIntegerLike': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128'],
-      'SignlessIntegerOrIndexLike': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128', 'Index'],
-      'AnySignlessInteger': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128'],
-      
-      // Float Types
-      'AnyFloat': ['F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32'],
-      'FloatLike': ['F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32'],
-      
-      // Combined
-      'SignlessIntegerOrFloatLike': [
-        'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
-        'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
-      ],
-      
-      // Boolean
-      'BoolLike': ['I1'],
-      
-      // Index
-      'Index': ['Index'],
-      
-      // Concrete types map to themselves
-      'I1': ['I1'], 'I8': ['I8'], 'I16': ['I16'], 'I32': ['I32'], 'I64': ['I64'], 'I128': ['I128'],
-      'F16': ['F16'], 'F32': ['F32'], 'F64': ['F64'], 'F80': ['F80'], 'F128': ['F128'],
-      'BF16': ['BF16'], 'TF32': ['TF32'],
-      
-      // AnyType
-      'AnyType': [
-        'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
-        'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
-        'Index',
-      ],
-    },
+    buildableTypes,
+    constraintDefs: buildMockConstraintDefs(),
+    typeDefinitions: [],
     isLoaded: true,
     isLoading: false,
     error: null,

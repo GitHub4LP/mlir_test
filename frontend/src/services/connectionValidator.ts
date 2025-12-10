@@ -13,6 +13,7 @@ import type {
   PortConfig,
 } from '../types';
 import { isCompatible, getConcreteTypes } from './typeSystem';
+import { PortRef, PortKind } from './port';
 
 /**
  * Result of a connection validation
@@ -55,28 +56,31 @@ export function getPortTypeConstraint(
   }
 
   const data = node.data;
+  
+  // 使用 PortRef 解析端口 ID
+  const parsed = PortRef.parseHandleId(handleId);
 
   // Handle operation nodes (BlueprintNode)
   if (node.type === 'operation') {
     const blueprintData = data as BlueprintNodeData;
 
-    if (isSource) {
-      // Output port - check outputTypes
-      const portName = handleId.replace('output-', '');
-      return blueprintData.outputTypes[portName] || null;
-    } else {
-      // Input port - check inputTypes
-      const portName = handleId.replace('input-', '');
-      return blueprintData.inputTypes[portName] || null;
+    if (parsed) {
+      const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
+      if (parsed.kind === PortKind.DataOut) {
+        return blueprintData.outputTypes[portName] || null;
+      } else if (parsed.kind === PortKind.DataIn) {
+        return blueprintData.inputTypes[portName] || null;
+      }
     }
+    return null;
   }
 
   // Handle function entry nodes
   if (node.type === 'function-entry') {
     const entryData = data as FunctionEntryData;
     // Function entry only has output ports (parameters)
-    if (isSource) {
-      const port = entryData.outputs.find((p: PortConfig) => p.id === handleId);
+    if (isSource && parsed) {
+      const port = entryData.outputs.find((p: PortConfig) => p.name === parsed.name);
       return port?.concreteType || port?.typeConstraint || null;
     }
     return null;
@@ -86,8 +90,8 @@ export function getPortTypeConstraint(
   if (node.type === 'function-return') {
     const returnData = data as FunctionReturnData;
     // Function return only has input ports (return values)
-    if (!isSource) {
-      const port = returnData.inputs.find((p: PortConfig) => p.id === handleId);
+    if (!isSource && parsed) {
+      const port = returnData.inputs.find((p: PortConfig) => p.name === parsed.name);
       return port?.concreteType || port?.typeConstraint || null;
     }
     return null;
@@ -96,12 +100,14 @@ export function getPortTypeConstraint(
   // Handle function call nodes
   if (node.type === 'function-call') {
     const callData = data as unknown as FunctionCallData;
-    if (isSource) {
-      const port = callData.outputs.find((p: PortConfig) => p.id === handleId);
-      return port?.concreteType || port?.typeConstraint || null;
-    } else {
-      const port = callData.inputs.find((p: PortConfig) => p.id === handleId);
-      return port?.concreteType || port?.typeConstraint || null;
+    if (parsed) {
+      if (parsed.kind === PortKind.DataOut) {
+        const port = callData.outputs.find((p: PortConfig) => p.name === parsed.name);
+        return port?.concreteType || port?.typeConstraint || null;
+      } else if (parsed.kind === PortKind.DataIn) {
+        const port = callData.inputs.find((p: PortConfig) => p.name === parsed.name);
+        return port?.concreteType || port?.typeConstraint || null;
+      }
     }
   }
 
@@ -112,7 +118,8 @@ export function getPortTypeConstraint(
  * Checks if a handle is an execution pin
  */
 function isExecHandle(handleId: string): boolean {
-  return handleId.startsWith('exec-');
+  const parsed = PortRef.parseHandleId(handleId);
+  return parsed !== null && (parsed.kind === PortKind.ExecIn || parsed.kind === PortKind.ExecOut);
 }
 
 /**
@@ -358,7 +365,7 @@ export function getNodeErrors(
   // Check each required operand (input port)
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand' && !arg.isOptional) {
-      const portId = `input-${arg.name}`;
+      const portId = `${PortKind.DataIn}-${arg.name}`;
 
       // Check if port is connected
       const isConnected = edges.some(

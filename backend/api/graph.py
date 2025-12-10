@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.services.graph_builder import GraphBuilder, Graph, GraphNode, GraphEdge
-from backend.api.execution import _execute_compile, _execute_jit
+from backend.api.execution import _execute_jit
 
 router = APIRouter()
 
@@ -43,7 +43,6 @@ class ExecuteGraphRequest(BaseModel):
     """执行图请求"""
     graph: GraphModel
     func_name: str = "main"
-    mode: str = "jit"  # "jit" | "compile"
 
 
 class ExecuteGraphResponse(BaseModel):
@@ -87,11 +86,11 @@ def _convert_graph(model: GraphModel) -> Graph:
 @router.post("/execute", response_model=ExecuteGraphResponse)
 async def execute_graph(request: ExecuteGraphRequest):
     """
-    执行图
+    执行图（仅支持 JIT 模式）
     
     1. 将图 JSON 转换为 MLIR Module
     2. 验证 Module
-    3. 执行并返回结果
+    3. JIT 执行并返回结果
     """
     try:
         # 转换图
@@ -112,11 +111,8 @@ async def execute_graph(request: ExecuteGraphRequest):
         
         mlir_code = str(module)
         
-        # 执行
-        if request.mode == "jit":
-            result = await _execute_jit(mlir_code)
-        else:
-            result = await _execute_compile(mlir_code)
+        # JIT 执行
+        result = await _execute_jit(mlir_code)
         
         return ExecuteGraphResponse(
             success=result.success,

@@ -14,13 +14,16 @@ import { memo, useCallback, useMemo } from 'react';
 import { type NodeProps, type Node, useReactFlow, useEdges } from '@xyflow/react';
 import type { BlueprintNodeData, DataPin } from '../types';
 import { getTypeColor, isAbstractConstraint } from '../services/typeSystem';
+import { computePortTypeState, isPortConnected, getPropagatedType } from '../services/typeSystemService';
 import { getOperands, getAttributes } from '../services/dialectParser';
 import { AttributeEditor } from './AttributeEditor';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
 import { NodePins } from './NodePins';
 import { buildPinRows } from '../services/pinUtils';
-import { buildPropagationGraph, propagateTypes, extractTypeSources, applyPropagationResult } from '../services/typePropagation/propagator';
+import { applyPropagationResult, computePropagationWithNarrowing } from '../services/typePropagation/propagator';
 import { useProjectStore } from '../stores/projectStore';
+import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
@@ -35,12 +38,14 @@ function getDialectColor(dialect: string): string {
 }
 
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
-  const { operation, attributes, inputTypes, outputTypes, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
+  const { operation, attributes, inputTypes, outputTypes, execIn, execOuts, regionPins, pinnedTypes = {}, narrowedConstraints = {} } = data;
   const dialectColor = getDialectColor(operation.dialect);
 
   const { setNodes } = useReactFlow();
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
   const operands = getOperands(operation);
   const attrs = getAttributes(operation);
@@ -85,8 +90,6 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     // 3. 其他情况 → pin
     const shouldPin = type && type !== originalConstraint && !isAbstractConstraint(type);
 
-    console.log('handleTypeChange:', { portId, type, originalConstraint, shouldPin });
-
     // 更新节点数据并触发传播
     setNodes(currentNodes => {
       // 1. 更新当前节点的 pinnedTypes
@@ -96,13 +99,9 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
           const newPinnedTypes = { ...(nodeData.pinnedTypes || {}) };
 
           if (shouldPin) {
-            // 添加到 pinnedTypes
             newPinnedTypes[portId] = type;
-            console.log('Pinned:', { portId, type });
           } else {
-            // 从 pinnedTypes 移除
             delete newPinnedTypes[portId];
-            console.log('Unpinned:', { portId });
           }
 
           return {
@@ -116,20 +115,16 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         return node;
       });
 
-      // 2. 重新计算传播结果并更新所有节点（包含函数级别 Traits）
+      // 2. 重新计算传播结果并更新所有节点（包含函数级别 Traits 和约束收窄）
       const currentFunction = getCurrentFunction();
-      const graph = buildPropagationGraph(updatedNodes, edges, currentFunction ?? undefined);
-      const sources = extractTypeSources(updatedNodes);
-      const propagationResult = propagateTypes(graph, sources);
-
-      console.log('Propagation result:', {
-        types: [...propagationResult.types.entries()]
-      });
+      const propagationResult = computePropagationWithNarrowing(
+        updatedNodes, edges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+      );
 
       // 3. 统一更新所有节点的显示类型
       return applyPropagationResult(updatedNodes, propagationResult);
     });
-  }, [id, edges, setNodes, getCurrentFunction]);
+  }, [id, edges, setNodes, getCurrentFunction, getConcreteTypes, pickConstraintName]);
 
   // Variadic 端口实例数量
   const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);
@@ -144,7 +139,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   // Build pin rows using unified model
   const pinRows = useMemo(() => {
     const dataInputs: DataPin[] = operands.map((operand) => {
-      const portId = `input-${operand.name}`;
+      const portId = dataInHandle(operand.name);  // 统一格式：data-in-{name}
       const quantity = getQuantity(operand.isOptional, operand.isVariadic);
       // typeConstraint 始终是操作定义的原始约束（用于判断是否可编辑）
       // selectedType 通过 getPortTypeWrapper 获取（用于显示当前选择）
@@ -161,7 +156,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     });
 
     const dataOutputs: DataPin[] = results.map((result, idx) => {
-      const portId = `output-${result.name || `result_${idx}`}`;
+      const portId = dataOutHandle(result.name || `result_${idx}`);  // 统一格式：data-out-{name}
       const quantity = getQuantity(false, result.isVariadic);
       return {
         id: portId,
@@ -186,17 +181,35 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   }, [operands, results, inputTypes, outputTypes, execIn, execOuts, regionPins, variadicCounts]);
 
   // Render type selector for data pins
-  // 传播模型：可选类型始终基于原始约束，不会收缩
-  const renderTypeSelector = useCallback((pin: DataPin, selectedType?: string) => {
+  const renderTypeSelector = useCallback((pin: DataPin) => {
+    const propagatedType = getPropagatedType(pin.id, inputTypes, outputTypes);
+    const connected = isPortConnected(id, pin.id, edges);
+    
+    // 从 pin.id 解析端口名（移除 variadic 后缀）
+    const parsed = PortRef.parseHandleId(pin.id);
+    const portName = parsed ? parsed.name.replace(/_\d+$/, '') : '';
+    const narrowedConstraint = narrowedConstraints[portName] || null;
+    
+    const state = computePortTypeState({
+      portId: pin.id,
+      nodeId: id,
+      constraint: pin.typeConstraint,
+      pinnedTypes,
+      propagatedType,
+      narrowedConstraint,
+      isConnected: connected,
+    });
+    
     return (
       <UnifiedTypeSelector
-        selectedType={selectedType || pin.typeConstraint}
+        selectedType={state.displayType}
         onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
         constraint={pin.typeConstraint}
-        allowedTypes={pin.allowedTypes}
+        allowedTypes={state.options ?? undefined}
+        disabled={!state.canEdit}
       />
     );
-  }, [handleTypeChange]);
+  }, [handleTypeChange, id, pinnedTypes, inputTypes, outputTypes, narrowedConstraints, edges]);
 
   // Get port type: 从节点数据中获取显示类型
   const getPortTypeWrapper = useCallback((pinId: string) => {
@@ -205,18 +218,19 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     if (pinnedType) return pinnedType;
 
     // 否则使用传播结果（存储在 inputTypes/outputTypes 中）
-    // 处理 variadic 端口：input-name_0 → name
-    if (pinId.startsWith('input-')) {
-      let inputName = pinId.slice('input-'.length);
-      // 移除 variadic 索引后缀
-      const match = inputName.match(/^(.+)_\d+$/);
-      if (match) inputName = match[1];
-      return inputTypes[inputName];
-    } else if (pinId.startsWith('output-')) {
-      let outputName = pinId.slice('output-'.length);
-      const match = outputName.match(/^(.+)_\d+$/);
-      if (match) outputName = match[1];
-      return outputTypes[outputName];
+    // 使用 PortRef 解析端口 ID
+    const parsed = PortRef.parseHandleId(pinId);
+    if (!parsed) return undefined;
+    
+    let portName = parsed.name;
+    // 移除 variadic 索引后缀：name_0 → name
+    const match = portName.match(/^(.+)_\d+$/);
+    if (match) portName = match[1];
+    
+    if (parsed.kind === 'data-in') {
+      return inputTypes[portName];
+    } else if (parsed.kind === 'data-out') {
+      return outputTypes[portName];
     }
     return undefined;
   }, [pinnedTypes, inputTypes, outputTypes]);

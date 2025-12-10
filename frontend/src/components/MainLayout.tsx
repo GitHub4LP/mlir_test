@@ -38,10 +38,11 @@ import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, Function
 import { validateConnection, type ConnectionValidationResult } from '../services/connectionValidator';
 import { getTypeColor } from '../services/typeSystem';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
-import { useTypeStore } from '../stores/typeStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
-import { buildPropagationGraph, propagateTypes, extractTypeSources, applyPropagationResult } from '../services/typePropagation/propagator';
+import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { applyPropagationResult, computePropagationWithNarrowing } from '../services/typePropagation/propagator';
+import { PortRef, PortKind } from '../services/port';
 
 /**
  * Props for MainLayout component
@@ -269,9 +270,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
-  // Get resolved types from type store for connection validation
-  const resolvedTypes = useTypeStore(state => state.resolvedTypes);
-
   // Get project state and actions
   const project = useProjectStore(state => state.project);
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
@@ -292,6 +290,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   useEffect(() => {
     initializeDialects();
   }, [initializeDialects]);
+
+  // Get type constraint store methods for narrowing calculation
+  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
   // Initialize a default project if none exists
   useEffect(() => {
@@ -324,9 +326,16 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       isLoadingFromStoreRef.current = true;
       const graphNodes = currentGraph.nodes as Node[];
       const graphEdges = currentGraph.edges as Edge[];
-      setNodes(graphNodes);
+      
+      // 初始加载时触发类型传播（包含约束收窄）
+      const propagationResult = computePropagationWithNarrowing(
+        graphNodes, graphEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+      );
+      const nodesWithTypes = applyPropagationResult(graphNodes, propagationResult);
+      
+      setNodes(nodesWithTypes);
       setEdges(graphEdges);
-      // 传播模型：无需初始化，类型传播是无状态的
+      
       lastFunctionIdRef.current = currentFunctionId;
       lastProjectPathRef.current = project.path;
       lastProjectRef.current = project;
@@ -335,7 +344,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         isLoadingFromStoreRef.current = false;
       });
     }
-  }, [currentFunctionId, currentFunction, project, setNodes, setEdges]);
+  }, [currentFunctionId, currentFunction, project, setNodes, setEdges, getConcreteTypes, pickConstraintName]);
 
   // Derive selected node validity - if function changes, selected node should be null
   // This is computed during render, not in an effect
@@ -614,20 +623,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
     // 传播模型：重新计算类型传播（数据边）
     if (!edge.sourceHandle?.startsWith('exec-')) {
-      const graph = buildPropagationGraph(nodes, remainingEdges, currentFunction ?? undefined);
-      const sources = extractTypeSources(nodes);
-      const propagationResult = propagateTypes(graph, sources);
-
-      console.log('Edge removed, propagation result:', {
-        types: [...propagationResult.types.entries()]
-      });
-
+      const propagationResult = computePropagationWithNarrowing(
+        nodes, remainingEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+      );
       // 统一更新所有节点的显示类型
       setNodes(nds => applyPropagationResult(nds, propagationResult));
     }
-
-    console.log(`Deleted edge: ${edge.id}`);
-  }, [edges, nodes, setEdges, setNodes, currentFunction]);
+  }, [edges, nodes, setEdges, setNodes, currentFunction, getConcreteTypes, pickConstraintName]);
 
   // Handle function selection from FunctionManager
   const handleFunctionSelect = useCallback((functionId: string) => {
@@ -734,10 +736,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         target: e.target,
         targetHandle: e.targetHandle ?? null,
       }));
-      const result = validateConnection(normalizedConnection, nodes, resolvedTypes, existingEdges);
+      const result = validateConnection(normalizedConnection, nodes, undefined, existingEdges);
       return result.isValid;
     },
-    [nodes, edges, resolvedTypes]
+    [nodes, edges]
   );
 
   /**
@@ -754,16 +756,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const getEdgeColor = useCallback((sourceNodeId: string, sourceHandleId: string | null | undefined): string => {
     if (!sourceHandleId) return '#4A90D9';
 
-    // Get the resolved type for this port from typeStore
-    const nodeTypesMap = resolvedTypes.get(sourceNodeId);
-    if (nodeTypesMap) {
-      const resolvedType = nodeTypesMap.get(sourceHandleId);
-      if (resolvedType) {
-        return getTypeColor(resolvedType);
-      }
-    }
-
-    // Try to get type from node data
+    // Get type from node data
     const sourceNode = nodes.find(n => n.id === sourceNodeId);
     if (sourceNode) {
       // Handle FunctionEntryNode - outputs are in data.outputs array
@@ -776,9 +769,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           }
         }
       }
-
-      // Handle FunctionReturnNode - inputs are in data.inputs array (but Return node doesn't have source handles)
-      // This case is unlikely since Return node only has target handles
 
       // Handle FunctionCallNode - outputs are in data.outputs array
       if (sourceNode.type === 'function-call') {
@@ -794,8 +784,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       // Handle BlueprintNode (operation) - outputTypes is a Record
       if (sourceNode.type === 'operation') {
         const nodeData = sourceNode.data as BlueprintNodeData;
-        if (nodeData.outputTypes && sourceHandleId.startsWith('output-')) {
-          const portName = sourceHandleId.replace('output-', '');
+        const parsed = PortRef.parseHandleId(sourceHandleId);
+        if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
+          const portName = parsed.name;
           const typeConstraint = nodeData.outputTypes[portName];
           if (typeConstraint) {
             return getTypeColor(typeConstraint);
@@ -806,7 +797,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
     // Default blue for data connections
     return '#4A90D9';
-  }, [resolvedTypes, nodes]);
+  }, [nodes]);
 
   /**
    * Handles connection creation with validation
@@ -825,7 +816,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       const validationResult: ConnectionValidationResult = validateConnection(
         connection,
         nodes,
-        resolvedTypes,
+        undefined,
         existingEdges
       );
 
@@ -851,19 +842,14 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
       // 传播模型：重新计算类型传播（数据边）
       if (!isExec) {
-        const graph = buildPropagationGraph(nodes, newEdges, currentFunction ?? undefined);
-        const sources = extractTypeSources(nodes);
-        const propagationResult = propagateTypes(graph, sources);
-
-        console.log('Edge added, propagation result:', {
-          types: [...propagationResult.types.entries()]
-        });
-
+        const propagationResult = computePropagationWithNarrowing(
+          nodes, newEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+        );
         // 统一更新所有节点的显示类型
         setNodes(nds => applyPropagationResult(nds, propagationResult));
       }
     },
-    [nodes, edges, resolvedTypes, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction]
+    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConcreteTypes, pickConstraintName]
   );
 
   /**

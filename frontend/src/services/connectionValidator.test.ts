@@ -14,23 +14,46 @@ import {
 } from './connectionValidator';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, OperationDef } from '../types';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import type { ConstraintDef } from '../stores/typeConstraintStore';
+
+// 构建 mock constraintDefs
+function buildMockConstraintDefs(): Map<string, ConstraintDef> {
+  const buildableTypes = [
+    'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
+    'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
+    'Index',
+  ];
+  
+  const constraintMap: Record<string, string[]> = {
+    'SignlessIntegerLike': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128'],
+    'AnyFloat': ['F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32'],
+    'AnyType': buildableTypes,
+  };
+  
+  const defs = new Map<string, ConstraintDef>();
+  for (const t of buildableTypes) {
+    defs.set(t, { name: t, summary: '', rule: { kind: 'type', name: t } });
+  }
+  for (const [name, types] of Object.entries(constraintMap)) {
+    if (!defs.has(name)) {
+      defs.set(name, { name, summary: '', rule: { kind: 'oneOf', types } });
+    }
+  }
+  return defs;
+}
 
 // 初始化类型约束 store（模拟后端数据）
 beforeAll(() => {
+  const buildableTypes = [
+    'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
+    'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
+    'Index',
+  ];
+  
   useTypeConstraintStore.setState({
-    buildableTypes: [
-      'I1', 'I8', 'I16', 'I32', 'I64', 'I128',
-      'F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32',
-      'Index',
-    ],
-    constraintMap: {
-      'SignlessIntegerLike': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128'],
-      'AnyFloat': ['F16', 'F32', 'F64', 'F80', 'F128', 'BF16', 'TF32'],
-      'I32': ['I32'],
-      'F32': ['F32'],
-      'Index': ['Index'],
-      'AnyType': ['I1', 'I8', 'I16', 'I32', 'I64', 'I128', 'F16', 'F32', 'F64', 'Index'],
-    },
+    buildableTypes,
+    constraintDefs: buildMockConstraintDefs(),
+    typeDefinitions: [],
     isLoaded: true,
     isLoading: false,
     error: null,
@@ -161,38 +184,38 @@ describe('connectionValidator', () => {
   describe('getPortTypeConstraint', () => {
     it('should get output type from operation node', () => {
       const node = createOperationNode('node1', {}, { result: 'I32' });
-      const type = getPortTypeConstraint(node, 'output-result', true);
+      const type = getPortTypeConstraint(node, 'data-out-result', true);
       expect(type).toBe('I32');
     });
 
     it('should get input type from operation node', () => {
       const node = createOperationNode('node1', { lhs: 'SignlessIntegerLike' }, {});
-      const type = getPortTypeConstraint(node, 'input-lhs', false);
+      const type = getPortTypeConstraint(node, 'data-in-lhs', false);
       expect(type).toBe('SignlessIntegerLike');
     });
 
     it('should get output type from function entry node', () => {
       const node = createFunctionEntryNode('entry', [
-        { id: 'param-x', name: 'x', typeConstraint: 'I32' },
+        { id: 'data-out-x', name: 'x', typeConstraint: 'I32' },
       ]);
-      const type = getPortTypeConstraint(node, 'param-x', true);
+      const type = getPortTypeConstraint(node, 'data-out-x', true);
       expect(type).toBe('I32');
     });
 
     it('should get input type from function return node', () => {
       const node = createFunctionReturnNode('return', [
-        { id: 'ret-0', name: 'result', typeConstraint: 'F32' },
+        { id: 'data-in-result', name: 'result', typeConstraint: 'F32' },
       ]);
-      const type = getPortTypeConstraint(node, 'ret-0', false);
+      const type = getPortTypeConstraint(node, 'data-in-result', false);
       expect(type).toBe('F32');
     });
 
     it('should prefer resolved type over constraint', () => {
       const node = createOperationNode('node1', { lhs: 'SignlessIntegerLike' }, {});
       const resolvedTypes = new Map([
-        ['node1', new Map([['input-lhs', 'I32']])],
+        ['node1', new Map([['data-in-lhs', 'I32']])],
       ]);
-      const type = getPortTypeConstraint(node, 'input-lhs', false, resolvedTypes);
+      const type = getPortTypeConstraint(node, 'data-in-lhs', false, resolvedTypes);
       expect(type).toBe('I32');
     });
   });
@@ -204,9 +227,9 @@ describe('connectionValidator', () => {
 
       const connection: Connection = {
         source: 'source',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'target',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [sourceNode, targetNode]);
@@ -219,9 +242,9 @@ describe('connectionValidator', () => {
 
       const connection: Connection = {
         source: 'source',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'target',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [sourceNode, targetNode]);
@@ -234,9 +257,9 @@ describe('connectionValidator', () => {
 
       const connection: Connection = {
         source: 'source',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'target',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [sourceNode, targetNode]);
@@ -249,9 +272,9 @@ describe('connectionValidator', () => {
 
       const connection: Connection = {
         source: 'node1',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'node1',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [node]);
@@ -264,9 +287,9 @@ describe('connectionValidator', () => {
 
       const connection: Connection = {
         source: 'nonexistent',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'target',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [targetNode]);
@@ -279,9 +302,9 @@ describe('connectionValidator', () => {
 
       const connection: Connection = {
         source: 'source',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'nonexistent',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [sourceNode]);
@@ -296,14 +319,14 @@ describe('connectionValidator', () => {
       // Without resolved types, abstract -> concrete might not work
       // With resolved types showing I32, it should work
       const resolvedTypes = new Map([
-        ['source', new Map([['output-result', 'I32']])],
+        ['source', new Map([['data-out-result', 'I32']])],
       ]);
 
       const connection: Connection = {
         source: 'source',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'target',
-        targetHandle: 'input-input',
+        targetHandle: 'data-in-input',
       };
 
       const result = validateConnection(connection, [sourceNode, targetNode], resolvedTypes);
@@ -312,15 +335,15 @@ describe('connectionValidator', () => {
 
     it('should allow connection from function entry to operation', () => {
       const entryNode = createFunctionEntryNode('entry', [
-        { id: 'param-x', name: 'x', typeConstraint: 'I32', concreteType: 'I32' },
+        { id: 'data-out-x', name: 'x', typeConstraint: 'I32', concreteType: 'I32' },
       ]);
       const opNode = createOperationNode('op', { lhs: 'SignlessIntegerLike' }, {});
 
       const connection: Connection = {
         source: 'entry',
-        sourceHandle: 'param-x',
+        sourceHandle: 'data-out-x',
         target: 'op',
-        targetHandle: 'input-lhs',
+        targetHandle: 'data-in-lhs',
       };
 
       const result = validateConnection(connection, [entryNode, opNode]);
@@ -330,14 +353,14 @@ describe('connectionValidator', () => {
     it('should allow connection from operation to function return', () => {
       const opNode = createOperationNode('op', {}, { result: 'I32' });
       const returnNode = createFunctionReturnNode('return', [
-        { id: 'ret-0', name: 'result', typeConstraint: 'SignlessIntegerLike' },
+        { id: 'data-in-result', name: 'result', typeConstraint: 'SignlessIntegerLike' },
       ]);
 
       const connection: Connection = {
         source: 'op',
-        sourceHandle: 'output-result',
+        sourceHandle: 'data-out-result',
         target: 'return',
-        targetHandle: 'ret-0',
+        targetHandle: 'data-in-result',
       };
 
       const result = validateConnection(connection, [opNode, returnNode]);
@@ -358,7 +381,7 @@ describe('connectionValidator', () => {
       );
 
       const edges = [
-        { source: 'other', sourceHandle: 'out', target: 'node1', targetHandle: 'input-lhs' },
+        { source: 'other', sourceHandle: 'out', target: 'node1', targetHandle: 'data-in-lhs' },
       ];
 
       const errors = getNodeErrors(node, edges);
@@ -379,8 +402,8 @@ describe('connectionValidator', () => {
       );
 
       const edges = [
-        { source: 'other1', sourceHandle: 'out', target: 'node1', targetHandle: 'input-lhs' },
-        { source: 'other2', sourceHandle: 'out', target: 'node1', targetHandle: 'input-rhs' },
+        { source: 'other1', sourceHandle: 'out', target: 'node1', targetHandle: 'data-in-lhs' },
+        { source: 'other2', sourceHandle: 'out', target: 'node1', targetHandle: 'data-in-rhs' },
       ];
 
       const errors = getNodeErrors(node, edges);
@@ -399,7 +422,7 @@ describe('connectionValidator', () => {
       );
 
       const edges = [
-        { source: 'other', sourceHandle: 'out', target: 'node1', targetHandle: 'input-lhs' },
+        { source: 'other', sourceHandle: 'out', target: 'node1', targetHandle: 'data-in-lhs' },
       ];
 
       const errors = getNodeErrors(node, edges);

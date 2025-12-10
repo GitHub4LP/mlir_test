@@ -5,9 +5,8 @@ description = "MLIR Blueprint Editor - Visual node-based MLIR programming"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mlir",
-    "mlir-native-tools",
-    "mlir-python-bindings",
+    "mlir-python-bindings==20251208+fc92e4dec",
+    "mlir-wheel==20251208+fc92e4dec",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "pydantic>=2.0.0",
@@ -18,7 +17,7 @@ dependencies = [
 ]
 
 [tool.uv]
-find-links = ["https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"]
+find-links = ["https://llvm.github.io/eudsl"]
 
 [dependency-groups]
 dev = [

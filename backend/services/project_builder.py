@@ -17,6 +17,7 @@ from typing import Any
 from mlir import ir
 from mlir.dialects import func, arith
 
+from .attribute_converter import convert_attributes
 from .type_registry import json_type_to_mlir
 
 
@@ -235,7 +236,7 @@ class ProjectBuilder:
         result_types = self._parse_types(list(output_types.values()))
         
         # 解析属性
-        attributes = self._parse_attributes(data.get('attributes', {}), output_types)
+        attributes = convert_attributes(data.get('attributes', {}), output_types)
         
         # 创建操作
         op = ir.Operation.create(
@@ -362,41 +363,6 @@ class ProjectBuilder:
             mlir_type_str = json_type_to_mlir(t)
             result.append(ir.Type.parse(mlir_type_str))
         return result
-    
-    def _parse_attributes(
-        self, attrs: dict[str, Any], output_types: dict[str, str]
-    ) -> dict[str, ir.Attribute]:
-        """解析属性"""
-        result = {}
-        for k, v in attrs.items():
-            if v is None or v == '':
-                continue
-            
-            # 处理 TypedAttrInterface（如 arith.constant 的 value）
-            attr_str = str(v)
-            if not ':' in attr_str and output_types:
-                # 需要添加类型后缀
-                first_type = next(iter(output_types.values()), None)
-                if first_type:
-                    mlir_type = json_type_to_mlir(first_type)
-                    attr_str = f"{v} : {mlir_type}"
-            else:
-                # 转换属性中的类型
-                attr_str = self._convert_attr_types(attr_str)
-            
-            result[k] = ir.Attribute.parse(attr_str)
-        
-        return result
-    
-    def _convert_attr_types(self, attr_str: str) -> str:
-        """转换属性字符串中的类型"""
-        if ' : ' in attr_str:
-            parts = attr_str.rsplit(' : ', 1)
-            if len(parts) == 2:
-                value, type_str = parts
-                mlir_type = json_type_to_mlir(type_str.strip())
-                return f"{value} : {mlir_type}"
-        return attr_str
     
     def _find_node_by_type(self, graph: FunctionGraph, node_type: str) -> GraphNode | None:
         """查找指定类型的节点"""

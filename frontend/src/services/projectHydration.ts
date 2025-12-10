@@ -23,13 +23,14 @@ import type {
 
 /**
  * Strip operation definition from BlueprintNodeData for storage
+ * 只保存用户意图，不保存派生数据（inputTypes/outputTypes）
  */
 export function dehydrateNodeData(data: BlueprintNodeData): StoredBlueprintNodeData {
   return {
     fullName: data.operation.fullName,
     attributes: data.attributes,
-    inputTypes: data.inputTypes,
-    outputTypes: data.outputTypes,
+    pinnedTypes: data.pinnedTypes,
+    variadicCounts: data.variadicCounts,
     execIn: data.execIn,
     execOuts: data.execOuts,
     regionPins: data.regionPins,
@@ -38,6 +39,7 @@ export function dehydrateNodeData(data: BlueprintNodeData): StoredBlueprintNodeD
 
 /**
  * Fill operation definition into StoredBlueprintNodeData from dialectStore
+ * inputTypes/outputTypes 初始化为原始约束，加载后由传播重新计算
  */
 export function hydrateNodeData(
   data: StoredBlueprintNodeData,
@@ -49,11 +51,26 @@ export function hydrateNodeData(
     throw new Error(`Unknown operation: ${data.fullName}. Make sure the dialect is loaded.`);
   }
 
+  // 初始化 inputTypes/outputTypes 为原始约束
+  const inputTypes: Record<string, string> = {};
+  const outputTypes: Record<string, string> = {};
+  
+  for (const arg of operation.arguments) {
+    if (arg.kind === 'operand') {
+      inputTypes[arg.name] = arg.typeConstraint;
+    }
+  }
+  for (const result of operation.results) {
+    outputTypes[result.name] = result.typeConstraint;
+  }
+
   return {
     operation,
     attributes: data.attributes,
-    inputTypes: data.inputTypes,
-    outputTypes: data.outputTypes,
+    inputTypes,
+    outputTypes,
+    pinnedTypes: data.pinnedTypes,
+    variadicCounts: data.variadicCounts,
     execIn: data.execIn,
     execOuts: data.execOuts,
     regionPins: data.regionPins,
