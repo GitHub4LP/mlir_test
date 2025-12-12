@@ -20,11 +20,11 @@ import { AttributeEditor } from './AttributeEditor';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
 import { NodePins } from './NodePins';
 import { buildPinRows } from '../services/pinUtils';
-import { handlePinnedTypeChange } from '../services/typeChangeHandler';
 import { useProjectStore } from '../stores/projectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
 import { computeTypeSelectionState } from '../services/typeSelection';
+import { useTypeChangeHandler } from '../hooks';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
@@ -46,7 +46,9 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
-  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
+
+  // 使用统一的 hook
+  const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
   const operands = getOperands(operation);
   const attrs = getAttributes(operation);
@@ -73,26 +75,6 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
       return node;
     }));
   }, [id, setNodes]);
-
-  /**
-   * 处理类型选择变更（传播模型）
-   * 
-   * - 选择具体类型（如 I32）：添加到 pinnedTypes，触发传播
-   * - 选择原始约束或抽象约束：从 pinnedTypes 移除，触发传播
-   * 
-   * 核心概念：
-   * - pinnedTypes 存储用户显式选择的类型（持久化）
-   * - 传播是无状态的，每次从 pinnedTypes + 图结构重新计算
-   */
-  const typeChangeDeps = useMemo(() => ({
-    edges, getCurrentFunction, getConcreteTypes, pickConstraintName
-  }), [edges, getCurrentFunction, getConcreteTypes, pickConstraintName]);
-
-  const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
-    setNodes(currentNodes => handlePinnedTypeChange(
-      id, portId, type, originalConstraint, currentNodes, typeChangeDeps
-    ));
-  }, [id, setNodes, typeChangeDeps]);
 
   // Variadic 端口实例数量
   const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);

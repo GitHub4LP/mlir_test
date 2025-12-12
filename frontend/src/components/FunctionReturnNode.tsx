@@ -12,10 +12,10 @@ import { getTypeColor } from '../services/typeSystem';
 import { useProjectStore } from '../stores/projectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
-import { handlePinnedTypeChange } from '../services/typeChangeHandler';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../services/typeSelectorRenderer';
 import { EditableName, execPinStyle, dataPinStyle } from './shared';
 import { dataInHandle } from '../services/port';
+import { useCurrentFunction, useTypeChangeHandler } from '../hooks';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
@@ -29,31 +29,11 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const removeReturnType = useProjectStore(state => state.removeReturnType);
   const updateReturnType = useProjectStore(state => state.updateReturnType);
   const getFunctionById = useProjectStore(state => state.getFunctionById);
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
-  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
-  const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
 
-  // 直接订阅当前函数数据（而非函数引用），确保数据变化时组件重新渲染
-  const currentFunction = useProjectStore(state => {
-    if (!state.project || !state.currentFunctionId) return null;
-    if (state.project.mainFunction.id === state.currentFunctionId) {
-      return state.project.mainFunction;
-    }
-    return state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
-  });
-
-  const typeChangeDeps = useMemo(() => ({
-    edges, getCurrentFunction, getConcreteTypes, pickConstraintName,
-    onSignatureChange: updateSignatureConstraints,
-  }), [edges, getCurrentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]);
-
-  // 统一使用 handlePinnedTypeChange（与 BlueprintNode 相同）
-  const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
-    setNodes(currentNodes => handlePinnedTypeChange(
-      id, portId, type, originalConstraint, currentNodes, typeChangeDeps
-    ));
-  }, [id, setNodes, typeChangeDeps]);
+  // 使用统一的 hooks
+  const currentFunction = useCurrentFunction();
+  const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
   const handleAddReturnType = useCallback(() => {
     const func = getFunctionById(functionId);

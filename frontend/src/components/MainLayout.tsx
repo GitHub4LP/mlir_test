@@ -34,7 +34,7 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
 import { nodeTypes } from './nodeTypes';
 import { edgeTypes } from './edgeTypes';
-import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionCallData } from '../types';
+import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionReturnData, FunctionCallData } from '../types';
 import { validateConnection, type ConnectionValidationResult } from '../services/connectionValidator';
 import { getTypeColor } from '../services/typeSystem';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
@@ -42,7 +42,8 @@ import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { triggerTypePropagationWithSignature } from '../services/typePropagation';
-import { PortRef, PortKind } from '../services/port';
+import { PortRef, PortKind, dataInHandle, dataOutHandle } from '../services/port';
+import { getDisplayType } from '../services/typeSelectorRenderer';
 
 /**
  * Props for MainLayout component
@@ -296,10 +297,55 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
-
-
   // Track if we're loading from store to avoid triggering auto-save
   const isLoadingFromStoreRef = useRef(false);
+
+  // 异步同步签名：监听 Entry/Return 节点的类型变化，同步到 FunctionDef
+  // 使用 useEffect 确保在渲染完成后执行，避免在渲染期间更新其他组件
+  useEffect(() => {
+    if (!currentFunctionId || !currentFunction || isLoadingFromStoreRef.current) return;
+
+    // 找到 Entry 和 Return 节点
+    const entryNode = nodes.find(n => n.type === 'function-entry' && (n.data as FunctionEntryData).functionId === currentFunctionId);
+    const returnNode = nodes.find(n => n.type === 'function-return' && (n.data as FunctionReturnData).functionId === currentFunctionId);
+
+    if (!entryNode && !returnNode) return;
+
+    // 提取签名（使用与 extractSignatureDisplayTypes 相同的逻辑）
+    const parameterConstraints: Record<string, string> = {};
+    const returnTypeConstraints: Record<string, string> = {};
+
+    if (entryNode) {
+      const entryData = entryNode.data as FunctionEntryData;
+      const outputs = entryData.outputs || [];
+      for (const port of outputs) {
+        const pin = {
+          id: dataOutHandle(port.name),
+          label: port.name,
+          typeConstraint: port.typeConstraint,
+          displayName: port.typeConstraint,
+        };
+        parameterConstraints[port.name] = getDisplayType(pin, entryData);
+      }
+    }
+
+    if (returnNode) {
+      const returnData = returnNode.data as FunctionReturnData;
+      const inputs = returnData.inputs || [];
+      for (const port of inputs) {
+        const pin = {
+          id: dataInHandle(port.name),
+          label: port.name,
+          typeConstraint: port.typeConstraint,
+          displayName: port.typeConstraint,
+        };
+        returnTypeConstraints[port.name] = getDisplayType(pin, returnData);
+      }
+    }
+
+    // 同步到 FunctionDef
+    updateSignatureConstraints(currentFunctionId, parameterConstraints, returnTypeConstraints);
+  }, [nodes, currentFunctionId, currentFunction, updateSignatureConstraints]);
 
   // Load graph when function changes or when project changes
   // Convert nodes and edges to GraphState format for saving
@@ -362,18 +408,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     setNodes(result.nodes);
     setEdges(graphEdges);
 
-    // 同步签名到 FunctionDef
-    updateSignatureConstraints(
-      func.id,
-      result.signature.parameters,
-      result.signature.returnTypes
-    );
-
     // 重置加载标志
     queueMicrotask(() => {
       isLoadingFromStoreRef.current = false;
     });
-  }, [getFunctionById, getConcreteTypes, pickConstraintName, setNodes, setEdges, updateSignatureConstraints]);
+    // 注意：签名同步由上面的 useEffect 自动处理，无需手动调用
+  }, [getFunctionById, getConcreteTypes, pickConstraintName, setNodes, setEdges]);
 
 
 
@@ -599,18 +639,11 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         const result = triggerTypePropagationWithSignature(
           nds, remainingEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
         );
-        // 同步签名到 FunctionDef
-        if (currentFunction) {
-          updateSignatureConstraints(
-            currentFunction.id,
-            result.signature.parameters,
-            result.signature.returnTypes
-          );
-        }
+        // 注意：签名同步由 useEffect 自动处理，无需手动调用
         return result.nodes;
       });
     }
-  }, [edges, setEdges, setNodes, currentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]);
+  }, [edges, setEdges, setNodes, currentFunction, getConcreteTypes, pickConstraintName]);
 
   // Handle function selection from FunctionManager
   const handleFunctionSelect = useCallback((functionId: string) => {
@@ -872,19 +905,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           const result = triggerTypePropagationWithSignature(
             nds, newEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
           );
-          // 同步签名到 FunctionDef
-          if (currentFunction) {
-            updateSignatureConstraints(
-              currentFunction.id,
-              result.signature.parameters,
-              result.signature.returnTypes
-            );
-          }
+          // 注意：签名同步由 useEffect 自动处理，无需手动调用
           return result.nodes;
         });
       }
     },
-    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]
+    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConcreteTypes, pickConstraintName]
   );
 
   /**

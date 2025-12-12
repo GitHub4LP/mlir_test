@@ -38,12 +38,6 @@ export interface TypeChangeHandlerDeps {
   getCurrentFunction: () => FunctionDef | null;
   getConcreteTypes: (constraint: string) => string[];
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;
-  /** 可选：签名同步回调，传播完成后调用 */
-  onSignatureChange?: (
-    functionId: string,
-    parameterConstraints: Record<string, string>,
-    returnTypeConstraints: Record<string, string>
-  ) => void;
 }
 
 /**
@@ -94,14 +88,8 @@ export function handlePinnedTypeChange<T extends { pinnedTypes?: Record<string, 
     deps.pickConstraintName
   );
 
-  // 3. 同步签名到 FunctionDef（如果提供了回调）
-  if (deps.onSignatureChange && currentFunction) {
-    deps.onSignatureChange(
-      currentFunction.id,
-      result.signature.parameters,
-      result.signature.returnTypes
-    );
-  }
+  // 注意：签名同步不再在这里同步执行，而是在 MainLayout 的 useEffect 中异步处理
+  // 这样可以避免在渲染期间更新其他组件
 
   return result.nodes;
 }
@@ -126,14 +114,8 @@ export function triggerPropagationOnly(
     deps.pickConstraintName
   );
 
-  // 同步签名到 FunctionDef（如果提供了回调）
-  if (deps.onSignatureChange && currentFunction) {
-    deps.onSignatureChange(
-      currentFunction.id,
-      result.signature.parameters,
-      result.signature.returnTypes
-    );
-  }
+  // 注意：签名同步不再在这里同步执行，而是在 MainLayout 的 useEffect 中异步处理
+  // 这样可以避免在渲染期间更新其他组件
 
   return result.nodes;
 }

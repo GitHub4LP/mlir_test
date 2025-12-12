@@ -8,18 +8,18 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node, useReactFlow, useEdges, useNodes } from '@xyflow/react';
+import { type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionCallData, DataPin } from '../types';
 import { getTypeColor } from '../services/typeSystem';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
 import { NodePins } from './NodePins';
 import { buildPinRows } from '../services/pinUtils';
-import { handlePinnedTypeChange } from '../services/typeChangeHandler';
 import { useProjectStore } from '../stores/projectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
 import { computeTypeSelectionState } from '../services/typeSelection';
 import { getDisplayType } from '../services/typeSelectorRenderer';
+import { useTypeChangeHandler } from '../hooks';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -30,28 +30,15 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   selected,
 }: FunctionCallNodeProps) {
   const { functionName, inputs, outputs, execIn, execOuts, pinnedTypes = {} } = data;
-  const { setNodes } = useReactFlow();
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
-  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
   // 从 data 中获取传播结果
   const { inputTypes = {}, outputTypes = {} } = data;
 
-  const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
-
-  const typeChangeDeps = useMemo(() => ({
-    edges, getCurrentFunction, getConcreteTypes, pickConstraintName,
-    onSignatureChange: updateSignatureConstraints,
-  }), [edges, getCurrentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]);
-
-  // 处理类型选择（与 BlueprintNode 相同逻辑）
-  const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
-    setNodes(currentNodes => handlePinnedTypeChange(
-      id, portId, type, originalConstraint, currentNodes, typeChangeDeps
-    ));
-  }, [id, setNodes, typeChangeDeps]);
+  // 使用统一的 hook
+  const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
   // Build pin rows
   const pinRows = useMemo(() => {
