@@ -34,7 +34,7 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
 import { nodeTypes } from './nodeTypes';
 import { edgeTypes } from './edgeTypes';
-import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionReturnData, FunctionCallData } from '../types';
+import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionReturnData, FunctionCallData, DataPin } from '../types';
 import { validateConnection, type ConnectionValidationResult } from '../services/connectionValidator';
 import { getTypeColor } from '../services/typeSystem';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
@@ -319,13 +319,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       const entryData = entryNode.data as FunctionEntryData;
       const outputs = entryData.outputs || [];
       for (const port of outputs) {
-        const pin = {
+        const dataPin: DataPin = {
           id: dataOutHandle(port.name),
           label: port.name,
           typeConstraint: port.typeConstraint,
           displayName: port.typeConstraint,
         };
-        parameterConstraints[port.name] = getDisplayType(pin, entryData);
+        parameterConstraints[port.name] = getDisplayType(dataPin, entryData);
       }
     }
 
@@ -333,13 +333,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       const returnData = returnNode.data as FunctionReturnData;
       const inputs = returnData.inputs || [];
       for (const port of inputs) {
-        const pin = {
+        const dataPin: DataPin = {
           id: dataInHandle(port.name),
           label: port.name,
           typeConstraint: port.typeConstraint,
           displayName: port.typeConstraint,
         };
-        returnTypeConstraints[port.name] = getDisplayType(pin, returnData);
+        returnTypeConstraints[port.name] = getDisplayType(dataPin, returnData);
       }
     }
 
@@ -406,7 +406,68 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     );
 
     setNodes(result.nodes);
-    setEdges(graphEdges);
+    
+    // 为所有数据边设置颜色（使用传播后的 nodes）
+    const edgesWithColors = graphEdges.map(edge => {
+      if (edge.type === 'execution' || !edge.sourceHandle) {
+        return edge;
+      }
+      // 使用传播后的 nodes 计算颜色
+      const sourceNode = result.nodes.find(n => n.id === edge.source);
+      if (!sourceNode) {
+        return edge;
+      }
+      
+      // 统一使用 getDisplayType 获取显示类型
+      let displayType: string | null = null;
+      
+      if (sourceNode.type === 'function-entry') {
+        const entryData = sourceNode.data as FunctionEntryData;
+        const port = entryData.outputs?.find(p => p.id === edge.sourceHandle);
+        if (port) {
+          const dataPin: DataPin = {
+            id: port.id,
+            label: port.name,
+            typeConstraint: port.typeConstraint,
+            displayName: port.name,
+          };
+          displayType = getDisplayType(dataPin, entryData);
+        }
+      } else if (sourceNode.type === 'function-call') {
+        const callData = sourceNode.data as FunctionCallData;
+        const port = callData.outputs?.find(p => p.id === edge.sourceHandle);
+        if (port) {
+          const dataPin: DataPin = {
+            id: port.id,
+            label: port.name,
+            typeConstraint: port.typeConstraint,
+            displayName: port.name,
+          };
+          displayType = getDisplayType(dataPin, callData);
+        }
+      } else if (sourceNode.type === 'operation') {
+        const nodeData = sourceNode.data as BlueprintNodeData;
+        const parsed = PortRef.parseHandleId(edge.sourceHandle);
+        if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
+          const portName = parsed.name;
+          const operation = nodeData.operation;
+          const result = operation.results.find(r => r.name === portName);
+          if (result) {
+            const dataPin: DataPin = {
+              id: edge.sourceHandle,
+              label: result.name,
+              typeConstraint: result.typeConstraint,
+              displayName: result.displayName || result.name,
+            };
+            displayType = getDisplayType(dataPin, nodeData);
+          }
+        }
+      }
+      
+      const color = displayType ? getTypeColor(displayType) : '#95A5A6';
+      return { ...edge, data: { ...edge.data, color } };
+    });
+    setEdges(edgesWithColors);
 
     // 重置加载标志
     queueMicrotask(() => {
@@ -640,6 +701,73 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           nds, remainingEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
         );
         // 注意：签名同步由 useEffect 自动处理，无需手动调用
+        
+        // 使用传播后的 nodes 更新所有数据边的颜色
+        const updatedEdges = remainingEdges.map(e => {
+          if (e.type === 'execution' || !e.sourceHandle) {
+            return e;
+          }
+          const sourceNode = result.nodes.find(n => n.id === e.source);
+          if (!sourceNode) {
+            return e;
+          }
+          
+          // 统一使用 getDisplayType 获取显示类型
+          let displayType: string | null = null;
+          
+          if (sourceNode.type === 'function-entry') {
+            const entryData = sourceNode.data as FunctionEntryData;
+            const port = entryData.outputs?.find(p => p.id === e.sourceHandle);
+            if (port) {
+              const dataPin: DataPin = {
+                id: port.id,
+                label: port.name,
+                typeConstraint: port.typeConstraint,
+                displayName: port.name,
+              };
+              displayType = getDisplayType(dataPin, entryData);
+            }
+          } else if (sourceNode.type === 'function-call') {
+            const callData = sourceNode.data as FunctionCallData;
+            const port = callData.outputs?.find(p => p.id === e.sourceHandle);
+            if (port) {
+              const dataPin: DataPin = {
+                id: port.id,
+                label: port.name,
+                typeConstraint: port.typeConstraint,
+                displayName: port.name,
+              };
+              displayType = getDisplayType(dataPin, callData);
+            }
+          } else if (sourceNode.type === 'operation') {
+            const nodeData = sourceNode.data as BlueprintNodeData;
+            const parsed = PortRef.parseHandleId(e.sourceHandle);
+            if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
+              const portName = parsed.name;
+              const operation = nodeData.operation;
+              const result = operation.results.find(r => r.name === portName);
+              if (result) {
+                const dataPin: DataPin = {
+                  id: e.sourceHandle,
+                  label: result.name,
+                  typeConstraint: result.typeConstraint,
+                  displayName: result.displayName || result.name,
+                };
+                displayType = getDisplayType(dataPin, nodeData);
+              }
+            }
+          }
+          
+          const newColor = displayType ? getTypeColor(displayType) : '#95A5A6';
+          if (e.data?.color !== newColor) {
+            return { ...e, data: { ...e.data, color: newColor } };
+          }
+          return e;
+        });
+        
+        // 更新边的颜色
+        setEdges(updatedEdges);
+        
         return result.nodes;
       });
     }
@@ -811,51 +939,76 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   /**
    * Gets the color for a data connection based on the source handle type
+   * 
+   * 统一使用 getDisplayType 获取显示类型，确保颜色与显示类型一致
    */
   const getEdgeColor = useCallback((sourceNodeId: string, sourceHandleId: string | null | undefined): string => {
-    if (!sourceHandleId) return '#4A90D9';
+    if (!sourceHandleId) return '#95A5A6'; // 默认灰色
 
     // Get type from node data
     const sourceNode = nodes.find(n => n.id === sourceNodeId);
-    if (sourceNode) {
-      // Handle FunctionEntryNode - outputs are in data.outputs array
-      if (sourceNode.type === 'function-entry') {
-        const entryData = sourceNode.data as FunctionEntryData;
-        if (entryData.outputs) {
-          const port = entryData.outputs.find(p => p.id === sourceHandleId);
-          if (port) {
-            return getTypeColor(port.concreteType || port.typeConstraint);
-          }
+    if (!sourceNode) {
+      return '#95A5A6'; // 默认灰色
+    }
+
+    // 统一使用 getDisplayType 获取显示类型
+    let displayType: string | null = null;
+
+    // Handle FunctionEntryNode - outputs are in data.outputs array
+    if (sourceNode.type === 'function-entry') {
+      const entryData = sourceNode.data as FunctionEntryData;
+      if (entryData.outputs) {
+        const port = entryData.outputs.find(p => p.id === sourceHandleId);
+        if (port) {
+          const dataPin: DataPin = {
+            id: port.id,
+            label: port.name,
+            typeConstraint: port.typeConstraint,
+            displayName: port.name,
+          };
+          displayType = getDisplayType(dataPin, entryData);
         }
       }
-
-      // Handle FunctionCallNode - outputs are in data.outputs array
-      if (sourceNode.type === 'function-call') {
-        const callData = sourceNode.data as FunctionCallData;
-        if (callData.outputs) {
-          const port = callData.outputs.find(p => p.id === sourceHandleId);
-          if (port) {
-            return getTypeColor(port.concreteType || port.typeConstraint);
-          }
+    }
+    // Handle FunctionCallNode - outputs are in data.outputs array
+    else if (sourceNode.type === 'function-call') {
+      const callData = sourceNode.data as FunctionCallData;
+      if (callData.outputs) {
+        const port = callData.outputs.find(p => p.id === sourceHandleId);
+        if (port) {
+          const dataPin: DataPin = {
+            id: port.id,
+            label: port.name,
+            typeConstraint: port.typeConstraint,
+            displayName: port.name,
+          };
+          displayType = getDisplayType(dataPin, callData);
         }
       }
-
-      // Handle BlueprintNode (operation) - outputTypes is a Record
-      if (sourceNode.type === 'operation') {
-        const nodeData = sourceNode.data as BlueprintNodeData;
-        const parsed = PortRef.parseHandleId(sourceHandleId);
-        if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
-          const portName = parsed.name;
-          const typeConstraint = nodeData.outputTypes[portName];
-          if (typeConstraint) {
-            return getTypeColor(typeConstraint);
-          }
+    }
+    // Handle BlueprintNode (operation) - outputTypes is a Record
+    else if (sourceNode.type === 'operation') {
+      const nodeData = sourceNode.data as BlueprintNodeData;
+      const parsed = PortRef.parseHandleId(sourceHandleId);
+      if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
+        const portName = parsed.name;
+        // 从 operation 的 outputs 中找到对应的 port
+        const operation = nodeData.operation;
+        const result = operation.results.find(r => r.name === portName);
+        if (result) {
+          const dataPin: DataPin = {
+            id: sourceHandleId,
+            label: result.name,
+            typeConstraint: result.typeConstraint,
+            displayName: result.displayName || result.name,
+          };
+          displayType = getDisplayType(dataPin, nodeData);
         }
       }
     }
 
-    // Default blue for data connections
-    return '#4A90D9';
+    // 使用统一的颜色映射
+    return displayType ? getTypeColor(displayType) : '#95A5A6';
   }, [nodes]);
 
   /**
@@ -893,7 +1046,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         id: `edge-${connection.source}-${connection.sourceHandle}-${connection.target}-${connection.targetHandle}`,
         type: isExec ? 'execution' : 'data',
         data: isExec ? undefined : { color: getEdgeColor(connection.source!, connection.sourceHandle) },
-        animated: isExec,
       };
 
       const newEdges = [...edges, edgeWithStyle];
@@ -906,6 +1058,74 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
             nds, newEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
           );
           // 注意：签名同步由 useEffect 自动处理，无需手动调用
+          
+          // 类型传播后，使用传播后的 nodes 更新所有数据边的颜色
+          const updatedEdges = newEdges.map(edge => {
+            if (edge.type === 'execution' || !edge.sourceHandle) {
+              return edge;
+            }
+            // 使用传播后的 nodes 计算颜色
+            const sourceNode = result.nodes.find(n => n.id === edge.source);
+            if (!sourceNode) {
+              return edge;
+            }
+            
+            // 统一使用 getDisplayType 获取显示类型
+            let displayType: string | null = null;
+            
+            if (sourceNode.type === 'function-entry') {
+              const entryData = sourceNode.data as FunctionEntryData;
+              const port = entryData.outputs?.find(p => p.id === edge.sourceHandle);
+              if (port) {
+                const dataPin: DataPin = {
+                  id: port.id,
+                  label: port.name,
+                  typeConstraint: port.typeConstraint,
+                  displayName: port.name,
+                };
+                displayType = getDisplayType(dataPin, entryData);
+              }
+            } else if (sourceNode.type === 'function-call') {
+              const callData = sourceNode.data as FunctionCallData;
+              const port = callData.outputs?.find(p => p.id === edge.sourceHandle);
+              if (port) {
+                const dataPin: DataPin = {
+                  id: port.id,
+                  label: port.name,
+                  typeConstraint: port.typeConstraint,
+                  displayName: port.name,
+                };
+                displayType = getDisplayType(dataPin, callData);
+              }
+            } else if (sourceNode.type === 'operation') {
+              const nodeData = sourceNode.data as BlueprintNodeData;
+              const parsed = PortRef.parseHandleId(edge.sourceHandle);
+              if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
+                const portName = parsed.name;
+                const operation = nodeData.operation;
+                const result = operation.results.find(r => r.name === portName);
+                if (result) {
+                  const dataPin: DataPin = {
+                    id: edge.sourceHandle,
+                    label: result.name,
+                    typeConstraint: result.typeConstraint,
+                    displayName: result.displayName || result.name,
+                  };
+                  displayType = getDisplayType(dataPin, nodeData);
+                }
+              }
+            }
+            
+            const newColor = displayType ? getTypeColor(displayType) : '#95A5A6';
+            if (edge.data?.color !== newColor) {
+              return { ...edge, data: { ...edge.data, color: newColor } };
+            }
+            return edge;
+          });
+          
+          // 更新边的颜色
+          setEdges(updatedEdges);
+          
           return result.nodes;
         });
       }

@@ -15,6 +15,7 @@ import { getTypeColor } from '../services/typeSystem';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import {
   type TypeNode,
+  type WrapperInfo,
   WRAPPERS,
   serializeType,
   parseType,
@@ -89,7 +90,7 @@ interface SelectionPanelProps {
   /** 约束对应的具体类型列表，null 表示无约束 */
   constraintTypes: string[] | null;
   /** 允许的包装器列表 */
-  allowedWrappers: typeof WRAPPERS;
+  allowedWrappers: readonly WrapperInfo[];
   /** 原始约束名（用于显示） */
   constraintName?: string;
 }

@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 
 /**
- * Execution Edge - White with animated arrow marker
+ * Execution Edge - White edge, same style as DataEdge but thicker
  */
 export const ExecutionEdge = memo(function ExecutionEdge({
   id,
@@ -37,36 +37,15 @@ export const ExecutionEdge = memo(function ExecutionEdge({
   });
 
   return (
-    <>
-      {/* Arrow marker definition */}
-      <defs>
-        <marker
-          id={`exec-arrow-${id}`}
-          markerWidth="12"
-          markerHeight="12"
-          refX="8"
-          refY="6"
-          orient="auto"
-          markerUnits="userSpaceOnUse"
-        >
-          <path d="M2,2 L10,6 L2,10 L4,6 Z" fill="white" />
-        </marker>
-      </defs>
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={{
-          stroke: 'white',
-          strokeWidth: selected ? 3 : 2,
-          filter: selected ? 'drop-shadow(0 0 4px white)' : undefined,
-        }}
-        markerEnd={`url(#exec-arrow-${id})`}
-      />
-      {/* Animated flow indicator */}
-      <circle r="3" fill="white">
-        <animateMotion dur="1.5s" repeatCount="indefinite" path={edgePath} />
-      </circle>
-    </>
+    <BaseEdge
+      id={id}
+      path={edgePath}
+      style={{
+        stroke: 'white',
+        strokeWidth: selected ? 4 : 3,  // 比数据线粗（数据线是 selected ? 3 : 2）
+        filter: selected ? 'drop-shadow(0 0 4px white)' : undefined,
+      }}
+    />
   );
 });
 

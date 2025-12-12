@@ -323,50 +323,19 @@ export function hasAllTypesMatchTrait(operation: OperationDef): boolean {
 // 类型颜色
 // ============================================================================
 
+import { getTypeColor as getTypeColorFromMapping } from './typeColorMapping';
+
 /**
  * Gets the color for a type (used for port visualization).
+ * 
+ * 使用程序化的颜色映射系统：
+ * - 基本类型（BuildableType）使用配置的颜色
+ * - 复合类型（约束）通过展开到基本类型集合，然后对颜色进行平均
+ * 
+ * @param displayType - 显示类型（可能是 BuildableType 或约束）
+ * @returns hex 颜色字符串
  */
-export function getTypeColor(typeConstraint: string): string {
-  // Boolean types - orange (check before integer to handle I1)
-  if (typeConstraint === 'BoolLike' || typeConstraint === 'I1') {
-    return '#E67E22'; // Orange
-  }
-  
-  // Integer types - blue shades
-  if (typeConstraint.includes('Integer') || typeConstraint.match(/^[SU]?I\d+$/)) {
-    return '#4A90D9'; // Blue
-  }
-  
-  // Float types - green shades
-  if (typeConstraint.includes('Float') || typeConstraint.match(/^[BT]?F\d+$/)) {
-    return '#50C878'; // Green
-  }
-  
-  // Index type - purple
-  if (typeConstraint === 'Index' || typeConstraint.includes('Index')) {
-    return '#9B59B6'; // Purple
-  }
-  
-  // Tensor types - teal
-  if (typeConstraint.includes('Tensor')) {
-    return '#1ABC9C'; // Teal
-  }
-  
-  // MemRef types - red
-  if (typeConstraint.includes('MemRef')) {
-    return '#E74C3C'; // Red
-  }
-  
-  // Vector types - yellow
-  if (typeConstraint.includes('Vector')) {
-    return '#F1C40F'; // Yellow
-  }
-  
-  // Complex types - pink
-  if (typeConstraint.includes('Complex')) {
-    return '#FF69B4'; // Pink
-  }
-  
-  // Default - gray
-  return '#95A5A6'; // Gray
+export function getTypeColor(displayType: string): string {
+  const getConcreteTypes = useTypeConstraintStore.getState().getConcreteTypes;
+  return getTypeColorFromMapping(displayType, getConcreteTypes);
 }
