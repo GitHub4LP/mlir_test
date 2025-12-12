@@ -11,32 +11,7 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { DataPin, PinRow } from '../types';
 import { getTypeColor } from '../services/typeSystem';
-
-/**
- * Exec pin handle style - triangular arrow pointing RIGHT
- */
-const execPinStyle = {
-  width: 0,
-  height: 0,
-  borderStyle: 'solid' as const,
-  borderWidth: '5px 0 5px 8px',
-  borderColor: 'transparent transparent transparent white',
-  backgroundColor: 'transparent',
-  borderRadius: 0,
-};
-
-/**
- * Data pin handle style - circular
- */
-function dataPinStyle(color: string) {
-  return {
-    width: 10,
-    height: 10,
-    backgroundColor: color,
-    border: '2px solid #1a1a2e',
-    borderRadius: '50%',
-  };
-}
+import { execPinStyle, dataPinStyle } from './shared';
 
 interface PinRowProps {
   row: PinRow;

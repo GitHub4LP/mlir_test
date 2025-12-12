@@ -18,13 +18,13 @@ router = APIRouter()
 class ParameterDef(BaseModel):
     """函数参数"""
     name: str
-    type: str
+    constraint: str
 
 
 class TypeDef(BaseModel):
     """返回类型"""
     name: str
-    type: str
+    constraint: str
 
 
 class PortConfig(BaseModel):

@@ -8,17 +8,18 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node, useReactFlow, useEdges } from '@xyflow/react';
+import { type NodeProps, type Node, useReactFlow, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionCallData, DataPin } from '../types';
-import { getTypeColor, isAbstractConstraint } from '../services/typeSystem';
-import { computePortTypeState, isPortConnected, getPropagatedType } from '../services/typeSystemService';
+import { getTypeColor } from '../services/typeSystem';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
 import { NodePins } from './NodePins';
 import { buildPinRows } from '../services/pinUtils';
-import { applyPropagationResult, computePropagationWithNarrowing } from '../services/typePropagation/propagator';
+import { handlePinnedTypeChange } from '../services/typeChangeHandler';
 import { useProjectStore } from '../stores/projectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
+import { computeTypeSelectionState } from '../services/typeSelection';
+import { getDisplayType } from '../services/typeSelectorRenderer';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -35,52 +36,22 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
-  // 构建显示类型映射
-  const inputTypes = useMemo(() => {
-    const types: Record<string, string> = {};
-    for (const port of inputs) {
-      types[port.name] = port.concreteType || port.typeConstraint;
-    }
-    return types;
-  }, [inputs]);
+  // 从 data 中获取传播结果
+  const { inputTypes = {}, outputTypes = {} } = data;
 
-  const outputTypes = useMemo(() => {
-    const types: Record<string, string> = {};
-    for (const port of outputs) {
-      types[port.name] = port.concreteType || port.typeConstraint;
-    }
-    return types;
-  }, [outputs]);
+  const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
+
+  const typeChangeDeps = useMemo(() => ({
+    edges, getCurrentFunction, getConcreteTypes, pickConstraintName,
+    onSignatureChange: updateSignatureConstraints,
+  }), [edges, getCurrentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]);
 
   // 处理类型选择（与 BlueprintNode 相同逻辑）
   const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
-    const shouldPin = type && type !== originalConstraint && !isAbstractConstraint(type);
-
-    setNodes(currentNodes => {
-      const updatedNodes = currentNodes.map(node => {
-        if (node.id === id) {
-          const nodeData = node.data as FunctionCallData;
-          const newPinnedTypes = { ...(nodeData.pinnedTypes || {}) };
-
-          if (shouldPin) {
-            newPinnedTypes[portId] = type;
-          } else {
-            delete newPinnedTypes[portId];
-          }
-
-          return { ...node, data: { ...nodeData, pinnedTypes: newPinnedTypes } };
-        }
-        return node;
-      });
-
-      const currentFunction = getCurrentFunction();
-      const propagationResult = computePropagationWithNarrowing(
-        updatedNodes, edges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
-      );
-
-      return applyPropagationResult(updatedNodes, propagationResult);
-    });
-  }, [id, edges, setNodes, getCurrentFunction, getConcreteTypes, pickConstraintName]);
+    setNodes(currentNodes => handlePinnedTypeChange(
+      id, portId, type, originalConstraint, currentNodes, typeChangeDeps
+    ));
+  }, [id, setNodes, typeChangeDeps]);
 
   // Build pin rows
   const pinRows = useMemo(() => {
@@ -103,31 +74,28 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     return buildPinRows({ execIn, execOuts: execOuts || [], dataInputs, dataOutputs });
   }, [inputs, outputs, inputTypes, outputTypes, execIn, execOuts]);
 
-  // Render type selector
+  // Render type selector（使用统一的 getDisplayType）
+  const nodes = useNodes();
   const renderTypeSelector = useCallback((pin: DataPin) => {
-    const propagatedType = getPropagatedType(pin.id, inputTypes, outputTypes);
-    const connected = isPortConnected(id, pin.id, edges);
+    // 使用统一的 getDisplayType
+    const displayType = getDisplayType(pin, data);
 
-    const state = computePortTypeState({
-      portId: pin.id,
-      nodeId: id,
-      constraint: pin.typeConstraint,
-      pinnedTypes,
-      propagatedType,
-      narrowedConstraint: null,  // TODO: Call 节点的收窄约束处理
-      isConnected: connected,
-    });
+    // 统一使用 computeTypeSelectionState 计算可选集和 canEdit
+    const currentFunction = getCurrentFunction();
+    const { options, canEdit } = computeTypeSelectionState(
+      id, pin.id, nodes, edges, currentFunction ?? undefined, getConcreteTypes
+    );
 
     return (
       <UnifiedTypeSelector
-        selectedType={state.displayType}
+        selectedType={displayType}
         onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
         constraint={pin.typeConstraint}
-        allowedTypes={state.options ?? undefined}
-        disabled={!state.canEdit}
+        allowedTypes={options.length > 0 ? options : undefined}
+        disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, pinnedTypes, inputTypes, outputTypes, edges]);
+  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConcreteTypes]);
 
   // Get port type
   const getPortTypeWrapper = useCallback((pinId: string) => {

@@ -11,10 +11,7 @@ def test_op_registry():
     """测试操作注册表"""
     registry = get_registry()
     
-    # 应该有大量操作
-    assert len(registry) > 1000
-    
-    # 检查常用操作
+    # 检查常用操作（按需加载）
     assert "arith.addi" in registry
     assert "arith.constant" in registry
     assert "scf.for" in registry

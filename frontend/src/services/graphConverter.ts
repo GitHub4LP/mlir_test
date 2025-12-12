@@ -133,7 +133,7 @@ function convertOperationNode(node: GraphNode): BackendGraphNode {
   // 收集结果类型（按顺序）
   const resultTypes: string[] = [];
   for (const result of operation.results) {
-    const concreteType = data.outputTypes[result.name];
+    const concreteType = data.outputTypes?.[result.name];
     if (!concreteType) {
       throw new Error(`Missing type for result '${result.name}' in node '${node.id}'`);
     }

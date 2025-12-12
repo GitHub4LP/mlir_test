@@ -18,31 +18,71 @@ function getConcreteTypeOrUndefined(type: string): string | undefined {
 }
 
 /**
+ * 从 FunctionDef 获取参数的签名类型
+ * 
+ * FunctionDef.parameters[].constraint 是权威数据源（由类型传播同步）
+ * 用于 Call 节点的输入端口
+ */
+export function getParameterSignatureTypes(func: FunctionDef): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const param of func.parameters) {
+    result[param.name] = param.constraint;
+  }
+  return result;
+}
+
+/**
+ * 从 FunctionDef 获取返回值的签名类型
+ * 
+ * FunctionDef.returnTypes[].constraint 是权威数据源（由类型传播同步）
+ * 用于 Call 节点的输出端口
+ */
+export function getReturnSignatureTypes(func: FunctionDef): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const ret of func.returnTypes) {
+    const name = ret.name || `result_${func.returnTypes.indexOf(ret)}`;
+    result[name] = ret.constraint;
+  }
+  return result;
+}
+
+/**
  * Creates input port configurations from function parameters
+ * 
+ * typeConstraint 直接使用 FunctionDef.parameters[].constraint（权威数据源）
  */
 export function createInputPortsFromParams(func: FunctionDef): PortConfig[] {
-  return func.parameters.map((param) => ({
-    id: dataInHandle(param.name),  // 统一格式：data-in-{name}
-    name: param.name,
-    kind: 'input' as const,
-    typeConstraint: param.type,
-    concreteType: getConcreteTypeOrUndefined(param.type),
-    color: getTypeColor(param.type),
-  }));
+  return func.parameters.map((param) => {
+    const constraint = param.constraint;
+    return {
+      id: dataInHandle(param.name),  // 统一格式：data-in-{name}
+      name: param.name,
+      kind: 'input' as const,
+      typeConstraint: constraint,
+      concreteType: getConcreteTypeOrUndefined(constraint),
+      color: getTypeColor(constraint),
+    };
+  });
 }
 
 /**
  * Creates output port configurations from function return types
+ * 
+ * typeConstraint 直接使用 FunctionDef.returnTypes[].constraint（权威数据源）
  */
 export function createOutputPortsFromReturns(func: FunctionDef): PortConfig[] {
-  return func.returnTypes.map((ret, index) => ({
-    id: dataOutHandle(ret.name || `result_${index}`),  // 统一格式：data-out-{name}
-    name: ret.name || `result_${index}`,
-    kind: 'output' as const,
-    typeConstraint: ret.type,
-    concreteType: getConcreteTypeOrUndefined(ret.type),
-    color: getTypeColor(ret.type),
-  }));
+  return func.returnTypes.map((ret, index) => {
+    const name = ret.name || `result_${index}`;
+    const constraint = ret.constraint;
+    return {
+      id: dataOutHandle(name),  // 统一格式：data-out-{name}
+      name,
+      kind: 'output' as const,
+      typeConstraint: constraint,
+      concreteType: getConcreteTypeOrUndefined(constraint),
+      color: getTypeColor(constraint),
+    };
+  });
 }
 
 /**
@@ -184,8 +224,8 @@ export interface FunctionPaletteEntry {
 }
 
 export function createFunctionPaletteEntry(func: FunctionDef): FunctionPaletteEntry {
-  const paramTypes = func.parameters.map((p) => p.type).join(', ');
-  const returnTypes = func.returnTypes.map((r) => r.type).join(', ');
+  const paramTypes = func.parameters.map((p) => p.constraint).join(', ');
+  const returnTypes = func.returnTypes.map((r) => r.constraint).join(', ');
 
   return {
     id: `func_${func.id}`,

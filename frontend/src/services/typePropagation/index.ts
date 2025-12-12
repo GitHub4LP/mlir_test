@@ -15,5 +15,9 @@ export {
   extractPortConstraints,
   computeNarrowedConstraints,
   computePropagationWithNarrowing,
+  computeOptionsExcludingSelf,
+  applyPropagationResult,
 } from './propagator';
+export { triggerTypePropagation, triggerTypePropagationWithSignature } from './trigger';
 export type { PropagationGraph, TypeSource, PropagationResult } from './types';
+export type { PropagationTriggerResult } from './trigger';

@@ -34,14 +34,14 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
 import { nodeTypes } from './nodeTypes';
 import { edgeTypes } from './edgeTypes';
-import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionCallData, Project } from '../types';
+import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionCallData } from '../types';
 import { validateConnection, type ConnectionValidationResult } from '../services/connectionValidator';
 import { getTypeColor } from '../services/typeSystem';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
 import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-import { applyPropagationResult, computePropagationWithNarrowing } from '../services/typePropagation/propagator';
+import { triggerTypePropagationWithSignature } from '../services/typePropagation';
 import { PortRef, PortKind } from '../services/port';
 
 /**
@@ -275,6 +275,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
   const createProject = useProjectStore(state => state.createProject);
   const updateFunctionGraph = useProjectStore(state => state.updateFunctionGraph);
+  const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
 
   // Get the current function directly from the store to react to changes
   const currentFunction = useProjectStore(state => {
@@ -295,63 +296,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
-  // Initialize a default project if none exists
-  useEffect(() => {
-    if (!project) {
-      createProject('Untitled Project', './untitled_project', ['arith', 'func']);
-    }
-  }, [project, createProject]);
+
 
   // Track if we're loading from store to avoid triggering auto-save
   const isLoadingFromStoreRef = useRef(false);
 
   // Load graph when function changes or when project changes
-  // Track function ID, project path, and project object reference to detect changes
-  const lastFunctionIdRef = useRef<string | null>(null);
-  const lastProjectPathRef = useRef<string | null>(null);
-  const lastProjectRef = useRef<Project | null>(null);
-
-  useEffect(() => {
-    if (!currentFunction || !project) return;
-
-    const currentGraph = currentFunction.graph;
-    const isFunctionSwitch = lastFunctionIdRef.current !== currentFunctionId;
-    const isProjectSwitch = lastProjectPathRef.current !== project.path;
-    // Also detect when the same path is reloaded (project object reference changed)
-    const isProjectReload = lastProjectRef.current !== project && lastProjectPathRef.current === project.path;
-
-    // Reload graph when switching functions OR when project changes OR when project is reloaded
-    // This ensures the graph is updated when opening a different project or reopening the same project
-    if (isFunctionSwitch || isProjectSwitch || isProjectReload) {
-      isLoadingFromStoreRef.current = true;
-      const graphNodes = currentGraph.nodes as Node[];
-      const graphEdges = currentGraph.edges as Edge[];
-      
-      // 初始加载时触发类型传播（包含约束收窄）
-      const propagationResult = computePropagationWithNarrowing(
-        graphNodes, graphEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
-      );
-      const nodesWithTypes = applyPropagationResult(graphNodes, propagationResult);
-      
-      setNodes(nodesWithTypes);
-      setEdges(graphEdges);
-      
-      lastFunctionIdRef.current = currentFunctionId;
-      lastProjectPathRef.current = project.path;
-      lastProjectRef.current = project;
-      // Reset the flag after a microtask to allow React to batch the state updates
-      queueMicrotask(() => {
-        isLoadingFromStoreRef.current = false;
-      });
-    }
-  }, [currentFunctionId, currentFunction, project, setNodes, setEdges, getConcreteTypes, pickConstraintName]);
-
-  // Derive selected node validity - if function changes, selected node should be null
-  // This is computed during render, not in an effect
-  const effectiveSelectedNode = selectedNode && nodes.find(n => n.id === selectedNode.id)
-    ? selectedNode
-    : null;
-
   // Convert nodes and edges to GraphState format for saving
   const convertToGraphState = useCallback((): GraphState => {
     return {
@@ -371,45 +321,67 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     };
   }, [nodes, edges]);
 
-  // Auto-save graph changes (debounced)
-  // Only save when persistable data changes (position, data), not UI state (selected)
-  const lastSavedGraphRef = useRef<string>('');
-
+  // Track function ID, project path, and project object reference to detect changes
+  // Store convertToGraphState in ref for use in effect without causing re-runs
+  const convertToGraphStateRef = useRef(convertToGraphState);
   useEffect(() => {
-    // Skip if we're loading from store
-    if (isLoadingFromStoreRef.current) return;
+    convertToGraphStateRef.current = convertToGraphState;
+  }, [convertToGraphState]);
 
-    if (!currentFunctionId) return;
+  // 获取 projectStore 的 getFunctionById
+  const getFunctionById = useProjectStore(state => state.getFunctionById);
 
-    // Create a serializable representation of persistable data only
-    // Exclude UI state like 'selected', 'dragging', etc.
-    const persistableData = JSON.stringify({
-      nodes: nodes.map(n => ({
-        id: n.id,
-        type: n.type,
-        position: n.position,
-        data: n.data,
-      })),
-      edges: edges.map(e => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: e.sourceHandle,
-        targetHandle: e.targetHandle,
-      })),
+  /**
+   * 保存当前图到 projectStore
+   * @param functionId 要保存的函数 ID（通常是切换前的函数）
+   */
+  const saveCurrentGraph = useCallback((functionId: string) => {
+    const graphState = convertToGraphStateRef.current();
+    if (graphState.nodes.length > 0) {
+      updateFunctionGraph(functionId, graphState);
+    }
+  }, [updateFunctionGraph]);
+
+  /**
+   * 加载函数图到 React Flow 并执行类型传播
+   * @param functionId 要加载的函数 ID
+   */
+  const loadFunctionGraph = useCallback((functionId: string) => {
+    const func = getFunctionById(functionId);
+    if (!func) return;
+
+    isLoadingFromStoreRef.current = true;
+    const graphNodes = func.graph.nodes as Node[];
+    const graphEdges = func.graph.edges as Edge[];
+
+    // 类型传播并同步签名
+    const result = triggerTypePropagationWithSignature(
+      graphNodes, graphEdges, func, getConcreteTypes, pickConstraintName
+    );
+
+    setNodes(result.nodes);
+    setEdges(graphEdges);
+
+    // 同步签名到 FunctionDef
+    updateSignatureConstraints(
+      func.id,
+      result.signature.parameters,
+      result.signature.returnTypes
+    );
+
+    // 重置加载标志
+    queueMicrotask(() => {
+      isLoadingFromStoreRef.current = false;
     });
+  }, [getFunctionById, getConcreteTypes, pickConstraintName, setNodes, setEdges, updateSignatureConstraints]);
 
-    // Skip if nothing changed
-    if (persistableData === lastSavedGraphRef.current) return;
 
-    const timer = setTimeout(() => {
-      const graphState = convertToGraphState();
-      updateFunctionGraph(currentFunctionId, graphState);
-      lastSavedGraphRef.current = persistableData;
-    }, 500);
 
-    return () => clearTimeout(timer);
-  }, [currentFunctionId, nodes, edges, convertToGraphState, updateFunctionGraph]);
+  // Derive selected node validity - if function changes, selected node should be null
+  // This is computed during render, not in an effect
+  const effectiveSelectedNode = selectedNode && nodes.find(n => n.id === selectedNode.id)
+    ? selectedNode
+    : null;
 
   // Handle node selection
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
@@ -621,20 +593,74 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     const remainingEdges = edges.filter(e => e.id !== edge.id);
     setEdges(remainingEdges);
 
-    // 传播模型：重新计算类型传播（数据边）
+    // 传播模型：重新计算类型传播（数据边）并同步签名
     if (!edge.sourceHandle?.startsWith('exec-')) {
-      const propagationResult = computePropagationWithNarrowing(
-        nodes, remainingEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
-      );
-      // 统一更新所有节点的显示类型
-      setNodes(nds => applyPropagationResult(nds, propagationResult));
+      setNodes(nds => {
+        const result = triggerTypePropagationWithSignature(
+          nds, remainingEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+        );
+        // 同步签名到 FunctionDef
+        if (currentFunction) {
+          updateSignatureConstraints(
+            currentFunction.id,
+            result.signature.parameters,
+            result.signature.returnTypes
+          );
+        }
+        return result.nodes;
+      });
     }
-  }, [edges, nodes, setEdges, setNodes, currentFunction, getConcreteTypes, pickConstraintName]);
+  }, [edges, setEdges, setNodes, currentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]);
 
   // Handle function selection from FunctionManager
   const handleFunctionSelect = useCallback((functionId: string) => {
-    console.log('Switched to function:', functionId);
-  }, []);
+    // 保存当前图（如果有）
+    if (currentFunctionId && currentFunctionId !== functionId) {
+      saveCurrentGraph(currentFunctionId);
+    }
+    // 加载新函数图
+    loadFunctionGraph(functionId);
+  }, [currentFunctionId, saveCurrentGraph, loadFunctionGraph]);
+
+  // Handle project created - load main function graph
+  const handleProjectCreated = useCallback(() => {
+    // projectStore 已设置 currentFunctionId 为 main
+    const mainId = useProjectStore.getState().currentFunctionId;
+    if (mainId) {
+      loadFunctionGraph(mainId);
+    }
+  }, [loadFunctionGraph]);
+
+  // Handle project opened - load main function graph
+  const handleProjectOpened = useCallback(() => {
+    // projectStore 已设置 currentFunctionId 为 main
+    const mainId = useProjectStore.getState().currentFunctionId;
+    if (mainId) {
+      loadFunctionGraph(mainId);
+    }
+  }, [loadFunctionGraph]);
+
+  // Handle function deleted - load current function (should be main)
+  const handleFunctionDeleted = useCallback(() => {
+    const currentId = useProjectStore.getState().currentFunctionId;
+    if (currentId) {
+      loadFunctionGraph(currentId);
+    }
+  }, [loadFunctionGraph]);
+
+  // Initialize a default project if none exists
+  // Moved here to ensure handleProjectCreated is defined
+  useEffect(() => {
+    if (!project) {
+      createProject('Untitled Project', './untitled_project', ['arith', 'func']);
+      // Since we removed the effect that watches project changes, we must manually trigger load here
+      // We can reuse handleProjectCreated which does exactly what we need (load main function)
+      // We use a timeout to ensure store updates have propagated (though zustand is sync usually)
+      setTimeout(() => {
+        handleProjectCreated();
+      }, 0);
+    }
+  }, [project, createProject, handleProjectCreated]);
 
   // Handle drag start from palette for operations
   const handleDragStart = useCallback((_event: React.DragEvent, operation: OperationDef) => {
@@ -840,16 +866,25 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       const newEdges = [...edges, edgeWithStyle];
       setEdges(newEdges);
 
-      // 传播模型：重新计算类型传播（数据边）
+      // 传播模型：重新计算类型传播（数据边）并同步签名
       if (!isExec) {
-        const propagationResult = computePropagationWithNarrowing(
-          nodes, newEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
-        );
-        // 统一更新所有节点的显示类型
-        setNodes(nds => applyPropagationResult(nds, propagationResult));
+        setNodes(nds => {
+          const result = triggerTypePropagationWithSignature(
+            nds, newEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+          );
+          // 同步签名到 FunctionDef
+          if (currentFunction) {
+            updateSignatureConstraints(
+              currentFunction.id,
+              result.signature.parameters,
+              result.signature.returnTypes
+            );
+          }
+          return result.nodes;
+        });
       }
     },
-    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConcreteTypes, pickConstraintName]
+    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]
   );
 
   /**
@@ -961,7 +996,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
           {/* Function Manager Section */}
           <div className="border-b border-gray-700 max-h-64 flex-shrink-0">
-            <FunctionManager onFunctionSelect={handleFunctionSelect} />
+            <FunctionManager
+              onFunctionSelect={handleFunctionSelect}
+              onFunctionDeleted={handleFunctionDeleted}
+            />
           </div>
 
           {/* Node Palette Section */}
@@ -1067,10 +1105,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       <CreateProjectDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
+        onCreated={handleProjectCreated}
       />
       <OpenProjectDialog
         isOpen={isOpenDialogOpen}
         onClose={() => setIsOpenDialogOpen(false)}
+        onOpened={handleProjectOpened}
       />
       <SaveProjectDialog
         isOpen={isSaveDialogOpen}

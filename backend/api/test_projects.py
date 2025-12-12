@@ -120,8 +120,7 @@ class TestProjectAPI:
         loaded_project = data["project"]
         assert loaded_project["name"] == "Test Project"
         assert loaded_project["mainFunction"]["id"] == "main"
-        # dialects 从节点自动提取，空项目无节点则为空
-        assert loaded_project["dialects"] == []
+        # dialects 从节点自动提取，空项目无节点则为�?        assert loaded_project["dialects"] == []
 
     def test_load_nonexistent_project(self, temp_project_dir):
         """Test loading a project that doesn't exist."""
@@ -141,8 +140,8 @@ class TestProjectAPI:
             {
                 "id": "func_helper",
                 "name": "helper",
-                "parameters": [{"name": "x", "type": "i32"}],
-                "returnTypes": [{"name": "result", "type": "i32"}],
+                "parameters": [{"name": "x", "constraint": "i32"}],
+                "returnTypes": [{"name": "result", "constraint": "i32"}],
                 "graph": {"nodes": [], "edges": []},
                 "isMain": False
             }
@@ -251,7 +250,6 @@ class TestProjectAPI:
         
         # Verify all data is preserved
         assert loaded["name"] == project["name"]
-        # dialects 从节点自动提取，空项目无节点则为空
-        assert loaded["dialects"] == []
+        # dialects 从节点自动提取，空项目无节点则为�?        assert loaded["dialects"] == []
         assert loaded["mainFunction"]["parameters"] == project["mainFunction"]["parameters"]
         assert loaded["mainFunction"]["returnTypes"] == project["mainFunction"]["returnTypes"]

@@ -61,8 +61,8 @@ class FunctionDef:
     """函数定义"""
     id: str
     name: str
-    parameters: list[dict[str, str]]  # [{name, type}]
-    returnTypes: list[dict[str, str]]  # [{name, type}]
+    parameters: list[dict[str, str]]  # [{name, constraint}]
+    returnTypes: list[dict[str, str]]  # [{name, constraint}]
     graph: FunctionGraph
     isMain: bool = False
 
@@ -172,8 +172,8 @@ class ProjectBuilder:
         self.ssa_map.clear()
         
         # 解析参数和返回类型
-        param_types = self._parse_types([p['type'] for p in func_def.parameters])
-        return_types = self._parse_types([r['type'] for r in func_def.returnTypes])
+        param_types = self._parse_types([p['constraint'] for p in func_def.parameters])
+        return_types = self._parse_types([r['constraint'] for r in func_def.returnTypes])
         
         # 创建函数类型和函数操作
         func_type = ir.FunctionType.get(param_types, return_types)

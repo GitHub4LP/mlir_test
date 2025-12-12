@@ -11,19 +11,20 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node, useReactFlow, useEdges } from '@xyflow/react';
+import { type NodeProps, type Node, useReactFlow, useEdges, useNodes } from '@xyflow/react';
 import type { BlueprintNodeData, DataPin } from '../types';
-import { getTypeColor, isAbstractConstraint } from '../services/typeSystem';
-import { computePortTypeState, isPortConnected, getPropagatedType } from '../services/typeSystemService';
+import { getTypeColor } from '../services/typeSystem';
 import { getOperands, getAttributes } from '../services/dialectParser';
+import { getDisplayType } from '../services/typeSelectorRenderer';
 import { AttributeEditor } from './AttributeEditor';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
 import { NodePins } from './NodePins';
 import { buildPinRows } from '../services/pinUtils';
-import { applyPropagationResult, computePropagationWithNarrowing } from '../services/typePropagation/propagator';
+import { handlePinnedTypeChange } from '../services/typeChangeHandler';
 import { useProjectStore } from '../stores/projectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
+import { computeTypeSelectionState } from '../services/typeSelection';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
@@ -38,7 +39,7 @@ function getDialectColor(dialect: string): string {
 }
 
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
-  const { operation, attributes, inputTypes, outputTypes, execIn, execOuts, regionPins, pinnedTypes = {}, narrowedConstraints = {} } = data;
+  const { operation, attributes, inputTypes = {}, outputTypes = {}, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
   const dialectColor = getDialectColor(operation.dialect);
 
   const { setNodes } = useReactFlow();
@@ -83,48 +84,15 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
    * - pinnedTypes 存储用户显式选择的类型（持久化）
    * - 传播是无状态的，每次从 pinnedTypes + 图结构重新计算
    */
+  const typeChangeDeps = useMemo(() => ({
+    edges, getCurrentFunction, getConcreteTypes, pickConstraintName
+  }), [edges, getCurrentFunction, getConcreteTypes, pickConstraintName]);
+
   const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
-    // 判断是否应该 pin：
-    // 1. 选择的类型等于原始约束 → 不 pin（恢复默认）
-    // 2. 选择的是抽象约束 → 不 pin
-    // 3. 其他情况 → pin
-    const shouldPin = type && type !== originalConstraint && !isAbstractConstraint(type);
-
-    // 更新节点数据并触发传播
-    setNodes(currentNodes => {
-      // 1. 更新当前节点的 pinnedTypes
-      const updatedNodes = currentNodes.map(node => {
-        if (node.id === id) {
-          const nodeData = node.data as BlueprintNodeData;
-          const newPinnedTypes = { ...(nodeData.pinnedTypes || {}) };
-
-          if (shouldPin) {
-            newPinnedTypes[portId] = type;
-          } else {
-            delete newPinnedTypes[portId];
-          }
-
-          return {
-            ...node,
-            data: {
-              ...nodeData,
-              pinnedTypes: newPinnedTypes,
-            },
-          };
-        }
-        return node;
-      });
-
-      // 2. 重新计算传播结果并更新所有节点（包含函数级别 Traits 和约束收窄）
-      const currentFunction = getCurrentFunction();
-      const propagationResult = computePropagationWithNarrowing(
-        updatedNodes, edges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
-      );
-
-      // 3. 统一更新所有节点的显示类型
-      return applyPropagationResult(updatedNodes, propagationResult);
-    });
-  }, [id, edges, setNodes, getCurrentFunction, getConcreteTypes, pickConstraintName]);
+    setNodes(currentNodes => handlePinnedTypeChange(
+      id, portId, type, originalConstraint, currentNodes, typeChangeDeps
+    ));
+  }, [id, setNodes, typeChangeDeps]);
 
   // Variadic 端口实例数量
   const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);
@@ -180,36 +148,28 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     });
   }, [operands, results, inputTypes, outputTypes, execIn, execOuts, regionPins, variadicCounts]);
 
-  // Render type selector for data pins
+  // Render type selector for data pins（使用统一的 getDisplayType）
+  const nodes = useNodes();
   const renderTypeSelector = useCallback((pin: DataPin) => {
-    const propagatedType = getPropagatedType(pin.id, inputTypes, outputTypes);
-    const connected = isPortConnected(id, pin.id, edges);
+    // 使用统一的 getDisplayType
+    const displayType = getDisplayType(pin, data);
     
-    // 从 pin.id 解析端口名（移除 variadic 后缀）
-    const parsed = PortRef.parseHandleId(pin.id);
-    const portName = parsed ? parsed.name.replace(/_\d+$/, '') : '';
-    const narrowedConstraint = narrowedConstraints[portName] || null;
-    
-    const state = computePortTypeState({
-      portId: pin.id,
-      nodeId: id,
-      constraint: pin.typeConstraint,
-      pinnedTypes,
-      propagatedType,
-      narrowedConstraint,
-      isConnected: connected,
-    });
-    
+    // 统一使用 computeTypeSelectionState 计算可选集和 canEdit
+    const currentFunction = getCurrentFunction();
+    const { options, canEdit } = computeTypeSelectionState(
+      id, pin.id, nodes, edges, currentFunction ?? undefined, getConcreteTypes
+    );
+
     return (
       <UnifiedTypeSelector
-        selectedType={state.displayType}
+        selectedType={displayType}
         onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
         constraint={pin.typeConstraint}
-        allowedTypes={state.options ?? undefined}
-        disabled={!state.canEdit}
+        allowedTypes={options.length > 0 ? options : undefined}
+        disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, pinnedTypes, inputTypes, outputTypes, narrowedConstraints, edges]);
+  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConcreteTypes]);
 
   // Get port type: 从节点数据中获取显示类型
   const getPortTypeWrapper = useCallback((pinId: string) => {

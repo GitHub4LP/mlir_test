@@ -23,9 +23,9 @@ function createParameterPorts(parameters: ParameterDef[]): PortConfig[] {
       id: dataOutHandle(param.name),  // 统一格式：data-out-{name}
       name: param.name,
       kind: 'output' as const,
-      typeConstraint: param.type,
-      concreteType: param.type,
-      color: getTypeColor(param.type),
+      typeConstraint: param.constraint,
+      concreteType: param.constraint,
+      color: getTypeColor(param.constraint),
     };
   });
 }
@@ -40,9 +40,9 @@ function createReturnPorts(returnTypes: TypeDef[]): PortConfig[] {
       id: dataInHandle(ret.name || `result_${idx}`),  // 统一格式：data-in-{name}
       name: ret.name || `result_${idx}`,
       kind: 'input' as const,
-      typeConstraint: ret.type,
-      concreteType: ret.type,
-      color: getTypeColor(ret.type),
+      typeConstraint: ret.constraint,
+      concreteType: ret.constraint,
+      color: getTypeColor(ret.constraint),
     };
   });
 }
@@ -65,7 +65,7 @@ function createFunctionGraph(
 
   // Main function has fixed signature: no parameters, returns I32
   const actualParams = isMain ? [] : parameters;
-  const actualReturns = isMain ? [{ name: 'result', type: 'I32' }] : returnTypes;
+  const actualReturns = isMain ? [{ name: 'result', constraint: 'I32' }] : returnTypes;
 
   const entryData: FunctionEntryData = {
     functionId,
@@ -117,8 +117,8 @@ function createDefaultMainFunction(): FunctionDef {
     id,
     name,
     parameters: [],
-    returnTypes: [{ name: 'result', type: 'I32' }],
-    graph: createFunctionGraph(id, name, [], [{ name: 'result', type: 'I32' }], true),
+    returnTypes: [{ name: 'result', constraint: 'I32' }],
+    graph: createFunctionGraph(id, name, [], [{ name: 'result', constraint: 'I32' }], true),
     isMain: true,
   };
 }
@@ -187,6 +187,13 @@ interface ProjectActions {
 
   // Function traits management
   setFunctionTraits: (functionId: string, traits: FunctionTrait[]) => boolean;
+
+  // Batch update function signature constraints (used by type propagation)
+  updateSignatureConstraints: (
+    functionId: string,
+    parameterConstraints: Record<string, string>,
+    returnTypeConstraints: Record<string, string>
+  ) => boolean;
 
   // Graph management (updates the graph for a specific function)
   updateFunctionGraph: (functionId: string, graph: GraphState) => boolean;
@@ -670,6 +677,65 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           ),
         },
       };
+    });
+
+    return true;
+  },
+
+  // Batch update function signature constraints
+  // Used by type propagation to sync displayType to FunctionDef.constraint
+  updateSignatureConstraints: (functionId, parameterConstraints, returnTypeConstraints) => {
+    const state = get();
+    if (!state.project) return false;
+
+    // Check if any constraint actually changed
+    const func = get().getFunctionById(functionId);
+    if (!func) return false;
+
+    let hasChanges = false;
+    for (const param of func.parameters) {
+      if (parameterConstraints[param.name] && parameterConstraints[param.name] !== param.constraint) {
+        hasChanges = true;
+        break;
+      }
+    }
+    if (!hasChanges) {
+      for (const ret of func.returnTypes) {
+        if (returnTypeConstraints[ret.name] && returnTypeConstraints[ret.name] !== ret.constraint) {
+          hasChanges = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasChanges) return false;
+
+    set((state) => {
+      if (!state.project) return state;
+
+      const updateFunc = (f: FunctionDef): FunctionDef => ({
+        ...f,
+        parameters: f.parameters.map(p => 
+          parameterConstraints[p.name] ? { ...p, constraint: parameterConstraints[p.name] } : p
+        ),
+        returnTypes: f.returnTypes.map(r =>
+          returnTypeConstraints[r.name] ? { ...r, constraint: returnTypeConstraints[r.name] } : r
+        ),
+      });
+
+      let updatedProject = { ...state.project };
+      if (state.project.mainFunction.id === functionId) {
+        updatedProject.mainFunction = updateFunc(state.project.mainFunction);
+      } else {
+        updatedProject.customFunctions = state.project.customFunctions.map(f =>
+          f.id === functionId ? updateFunc(f) : f
+        );
+      }
+
+      // Sync all FunctionCallNodes that reference this function
+      updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
+
+      return { project: updatedProject, error: null };
     });
 
     return true;

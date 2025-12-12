@@ -26,6 +26,10 @@ import type {
 import { getTypeColor } from './typeSystem';
 import { dataInHandle, dataOutHandle } from './port';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import {
+  createInputPortsFromParams,
+  createOutputPortsFromReturns,
+} from './functionNodeGenerator';
 
 /**
  * 判断类型是否是具体类型（而非约束）
@@ -36,62 +40,36 @@ function getConcreteTypeOrUndefined(type: string): string | undefined {
 }
 
 /**
- * Creates input port configurations from function parameters
- * Used for FunctionCallNode inputs
- */
-function createCallInputPorts(func: FunctionDef): PortConfig[] {
-  return func.parameters.map((param) => ({
-    id: dataInHandle(param.name),  // 统一格式：data-in-{name}
-    name: param.name,
-    kind: 'input' as const,
-    typeConstraint: param.type,
-    concreteType: getConcreteTypeOrUndefined(param.type),
-    color: getTypeColor(param.type),
-  }));
-}
-
-/**
- * Creates output port configurations from function return types
- * Used for FunctionCallNode outputs
- */
-function createCallOutputPorts(func: FunctionDef): PortConfig[] {
-  return func.returnTypes.map((ret, index) => ({
-    id: dataOutHandle(ret.name || `result_${index}`),  // 统一格式：data-out-{name}
-    name: ret.name || `result_${index}`,
-    kind: 'output' as const,
-    typeConstraint: ret.type,
-    concreteType: getConcreteTypeOrUndefined(ret.type),
-    color: getTypeColor(ret.type),
-  }));
-}
-
-/**
  * Creates output port configurations from function parameters
  * Used for FunctionEntryNode outputs
+ * 
+ * 注意：Entry 节点使用原始 param.constraint，因为它是签名的定义者
  */
 function createEntryOutputPorts(func: FunctionDef): PortConfig[] {
   return func.parameters.map((param) => ({
     id: dataOutHandle(param.name),  // 统一格式：data-out-{name}
     name: param.name,
     kind: 'output' as const,
-    typeConstraint: param.type,
-    concreteType: getConcreteTypeOrUndefined(param.type),
-    color: getTypeColor(param.type),
+    typeConstraint: param.constraint,
+    concreteType: getConcreteTypeOrUndefined(param.constraint),
+    color: getTypeColor(param.constraint),
   }));
 }
 
 /**
  * Creates input port configurations from function return types
  * Used for FunctionReturnNode inputs
+ * 
+ * 注意：Return 节点使用原始 ret.constraint，因为它是签名的定义者
  */
 function createReturnInputPorts(func: FunctionDef): PortConfig[] {
   return func.returnTypes.map((ret, idx) => ({
     id: dataInHandle(ret.name || `result_${idx}`),  // 统一格式：data-in-{name}
     name: ret.name || `result_${idx}`,
     kind: 'input' as const,
-    typeConstraint: ret.type,
-    concreteType: getConcreteTypeOrUndefined(ret.type),
-    color: getTypeColor(ret.type),
+    typeConstraint: ret.constraint,
+    concreteType: getConcreteTypeOrUndefined(ret.constraint),
+    color: getTypeColor(ret.constraint),
   }));
 }
 
@@ -119,6 +97,7 @@ function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
 
 /**
  * Updates a FunctionCallNode's data to match the current function signature
+ * 使用 functionNodeGenerator 中的统一函数
  */
 function updateFunctionCallNodeData(
   existingData: FunctionCallData,
@@ -127,8 +106,8 @@ function updateFunctionCallNodeData(
   return {
     ...existingData,
     functionName: func.name,
-    inputs: createCallInputPorts(func),
-    outputs: createCallOutputPorts(func),
+    inputs: createInputPortsFromParams(func),
+    outputs: createOutputPortsFromReturns(func),
     execOuts: getExecOutputsFromFunction(func),
   };
 }

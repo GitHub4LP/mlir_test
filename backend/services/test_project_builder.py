@@ -1,10 +1,8 @@
 """
 ProjectBuilder 测试
 
-测试项目级 MLIR 构建，包括：
-- 单函数构建
-- 多函数构建
-- 函数调用
+测试项目�?MLIR 构建，包括：
+- 单函数构�?- 多函数构�?- 函数调用
 - 依赖排序
 """
 
@@ -43,7 +41,7 @@ def make_return_node(func_id: str, func_name: str, inputs: list[dict], is_main: 
 
 
 def make_constant_node(node_id: str, value: int, type_str: str = "I32"):
-    """创建常量节点（新格式：只有 fullName，没有完整 operation）"""
+    """创建常量节点（新格式：只�?fullName，没有完�?operation�?""
     return {
         "id": node_id,
         "type": "operation",
@@ -57,7 +55,7 @@ def make_constant_node(node_id: str, value: int, type_str: str = "I32"):
 
 
 def make_addi_node(node_id: str, type_str: str = "I32"):
-    """创建加法节点（新格式：只有 fullName，没有完整 operation）"""
+    """创建加法节点（新格式：只�?fullName，没有完�?operation�?""
     return {
         "id": node_id,
         "type": "operation",
@@ -98,7 +96,7 @@ class TestProjectBuilder:
                 "id": "main",
                 "name": "main",
                 "parameters": [],
-                "returnTypes": [{"name": "result", "type": "I32"}],
+                "returnTypes": [{"name": "result", "constraint": "I32"}],
                 "graph": {
                     "nodes": [
                         make_entry_node("main", "main", [], is_main=True),
@@ -127,7 +125,7 @@ class TestProjectBuilder:
         assert module.operation.verify()
     
     def test_single_function_with_params(self):
-        """测试单函数：带参数"""
+        """测试单函数：带参�?""
         project = {
             "name": "test",
             "path": "./test",
@@ -135,10 +133,10 @@ class TestProjectBuilder:
                 "id": "add",
                 "name": "add",
                 "parameters": [
-                    {"name": "a", "type": "I32"},
-                    {"name": "b", "type": "I32"},
+                    {"name": "a", "constraint": "I32"},
+                    {"name": "b", "constraint": "I32"},
                 ],
-                "returnTypes": [{"name": "result", "type": "I32"}],
+                "returnTypes": [{"name": "result", "constraint": "I32"}],
                 "graph": {
                     "nodes": [
                         make_entry_node("add", "add", [
@@ -176,12 +174,12 @@ class TestProjectBuilder:
     
     def test_function_call(self):
         """测试函数调用"""
-        # add1 函数：返回 x + 1
+        # add1 函数：返�?x + 1
         add1_func = {
             "id": "add1",
             "name": "add1",
-            "parameters": [{"name": "x", "type": "I32"}],
-            "returnTypes": [{"name": "result", "type": "I32"}],
+            "parameters": [{"name": "x", "constraint": "I32"}],
+            "returnTypes": [{"name": "result", "constraint": "I32"}],
             "graph": {
                 "nodes": [
                     make_entry_node("add1", "add1", [
@@ -207,12 +205,12 @@ class TestProjectBuilder:
             "isMain": False,
         }
         
-        # main 函数：调用 add1(10)
+        # main 函数：调�?add1(10)
         main_func = {
             "id": "main",
             "name": "main",
             "parameters": [],
-            "returnTypes": [{"name": "result", "type": "I32"}],
+            "returnTypes": [{"name": "result", "constraint": "I32"}],
             "graph": {
                 "nodes": [
                     make_entry_node("main", "main", [], is_main=True),
@@ -248,12 +246,11 @@ class TestProjectBuilder:
         module = build_project_from_dict(project)
         mlir_code = str(module)
         
-        # 验证生成的代码
-        assert "func.func @add1" in mlir_code
+        # 验证生成的代�?        assert "func.func @add1" in mlir_code
         assert "func.func @main" in mlir_code
         assert "call @add1" in mlir_code
         
-        # add1 应该在 main 之前（依赖排序）
+        # add1 应该�?main 之前（依赖排序）
         add1_pos = mlir_code.find("func.func @add1")
         main_pos = mlir_code.find("func.func @main")
         assert add1_pos < main_pos, "add1 should be defined before main"
@@ -267,7 +264,7 @@ class TestProjectBuilder:
             "id": "c",
             "name": "c",
             "parameters": [],
-            "returnTypes": [{"name": "result", "type": "I32"}],
+            "returnTypes": [{"name": "result", "constraint": "I32"}],
             "graph": {
                 "nodes": [
                     make_entry_node("c", "c", []),
@@ -285,12 +282,12 @@ class TestProjectBuilder:
             "isMain": False,
         }
         
-        # B 函数：调用 C
+        # B 函数：调�?C
         func_b = {
             "id": "b",
             "name": "b",
             "parameters": [],
-            "returnTypes": [{"name": "result", "type": "I32"}],
+            "returnTypes": [{"name": "result", "constraint": "I32"}],
             "graph": {
                 "nodes": [
                     make_entry_node("b", "b", []),
@@ -312,12 +309,12 @@ class TestProjectBuilder:
             "isMain": False,
         }
         
-        # A (main) 函数：调用 B
+        # A (main) 函数：调�?B
         func_a = {
             "id": "main",
             "name": "main",
             "parameters": [],
-            "returnTypes": [{"name": "result", "type": "I32"}],
+            "returnTypes": [{"name": "result", "constraint": "I32"}],
             "graph": {
                 "nodes": [
                     make_entry_node("main", "main", [], is_main=True),

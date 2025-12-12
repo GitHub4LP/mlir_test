@@ -62,30 +62,38 @@ function getConstraintOptions(constraint: string): string[] | null {
 /**
  * 计算端口的类型状态
  * 
- * 核心公式：
- * - options = getConstraintOptions(narrowedConstraint || constraint)
- * - canEdit = options.length > 1
- * - displayType = pinned > propagated > constraint
+ * 核心模型：
+ * - displayType = pinned > propagated > effectiveConstraint
+ * - effectiveConstraint = narrowedConstraint ?? originalConstraint
+ * - concreteOptions = getConcreteTypes(effectiveConstraint)
+ * - canEdit = !isExternallyDetermined && concreteOptions.length > 1
  * 
- * narrowedConstraint 由 computeNarrowedConstraints 计算：
- * - 本端原始约束 ∩ 所有邻居的有效类型
- * - 邻居包括连线和 trait 边
+ * 关键概念：
+ * - "外部决定"：类型由传播（非自己 pin）决定，用户不能修改
+ * - 自己 pin 的类型不算"外部决定"，用户可以修改自己的选择
  */
 export function computePortTypeState(params: {
   portId: string;
   nodeId: string;
   constraint: string;                     // 原始约束（如 SignlessIntegerLike）
   pinnedTypes: Record<string, string>;    // 用户选择
-  propagatedType: string | null;          // 传播得到的类型（具体类型或约束）
-  narrowedConstraint: string | null;      // 连接导致的收窄约束（独立于传播）
-  isConnected: boolean;                   // 是否有连接（未使用，保留接口兼容）
+  propagatedType: string | null;          // 传播得到的类型
+  narrowedConstraint: string | null;      // 收窄后的约束
+  isConnected: boolean;                   // 是否有连接（保留接口兼容）
 }): PortTypeState {
   const { portId, constraint, pinnedTypes, propagatedType, narrowedConstraint } = params;
   
   const isPinned = portId in pinnedTypes && !!pinnedTypes[portId];
   const pinnedType = pinnedTypes[portId];
   
+  // 有效约束：收窄后约束 > 原始约束
+  const effectiveConstraint = narrowedConstraint ?? constraint;
+  
+  // 可选的具体类型列表
+  const options = getConstraintOptions(effectiveConstraint);
+  
   // 确定显示类型和来源
+  // 优先级：pinned > propagated > effectiveConstraint
   let displayType: string;
   let source: 'pinned' | 'propagated' | 'constraint';
   
@@ -96,27 +104,15 @@ export function computePortTypeState(params: {
     displayType = propagatedType;
     source = 'propagated';
   } else {
-    displayType = constraint;
+    displayType = effectiveConstraint;
     source = 'constraint';
   }
   
-  // 确定有效约束（用于计算 options）
-  // 优先级：收窄约束 > 原始约束
-  let effectiveConstraint: string;
-  
-  if (narrowedConstraint) {
-    // 有收窄约束（连接导致的交集）
-    effectiveConstraint = narrowedConstraint;
-  } else {
-    // 无收窄 → 原始约束
-    effectiveConstraint = constraint;
-  }
-  
-  // 基于 effectiveConstraint 计算可选类型
-  const options = getConstraintOptions(effectiveConstraint);
-  
-  // 统一规则：选项 > 1 就可以编辑
-  const canEdit = (options?.length ?? 0) > 1;
+  // 可编辑性判断：
+  // 1. 如果类型被外部传播决定（非自己 pin）→ 不可编辑
+  // 2. 否则，看具体选项数是否 > 1
+  const isExternallyDetermined = propagatedType !== null && !isPinned;
+  const canEdit = !isExternallyDetermined && (options?.length ?? 0) > 1;
   
   return {
     displayType,
@@ -466,7 +462,7 @@ function getSourcePortType(node: Node, portId: string): string | null {
       if (parsed && parsed.kind === PortKind.DataOut) {
         const name = parsed.name.replace(/_\d+$/, '');
         // 优先使用传播后的类型，否则使用原始约束
-        const propagatedType = data.outputTypes[name];
+        const propagatedType = data.outputTypes?.[name];
         if (propagatedType) return propagatedType;
         // 回退到原始约束
         const result = data.operation.results.find(r => r.name === name);

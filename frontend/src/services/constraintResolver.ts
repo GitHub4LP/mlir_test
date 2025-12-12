@@ -120,12 +120,13 @@ function checkRuleIsShaped(
       return rule.children.some(c => checkRuleIsShaped(c, defs, visited));
     case 'and':
       return rule.children.some(c => checkRuleIsShaped(c, defs, visited));
-    case 'ref':
+    case 'ref': {
       if (visited.has(rule.name)) return false;
       visited.add(rule.name);
       const def = defs.get(rule.name);
       if (!def?.rule) return false;
       return checkRuleIsShaped(def.rule, defs, visited);
+    }
     default:
       return false;
   }
@@ -160,17 +161,19 @@ function collectContainers(
       return ['tensor', 'memref', 'vector'];
     case 'or':
       return [...new Set(rule.children.flatMap(c => collectContainers(c, defs, visited)))];
-    case 'and':
+    case 'and': {
       // 交集：取公共容器
       const childContainers = rule.children.map(c => collectContainers(c, defs, visited));
       if (childContainers.length === 0) return [];
       return childContainers.reduce((acc, curr) => acc.filter(c => curr.includes(c)));
-    case 'ref':
+    }
+    case 'ref': {
       if (visited.has(rule.name)) return [];
       visited.add(rule.name);
       const def = defs.get(rule.name);
       if (!def?.rule) return [];
       return collectContainers(def.rule, defs, visited);
+    }
     default:
       return [];
   }
@@ -212,12 +215,13 @@ function findElementConstraint(
         if (elem) return elem;
       }
       return null;
-    case 'ref':
+    case 'ref': {
       if (visited.has(rule.name)) return null;
       visited.add(rule.name);
       const def = defs.get(rule.name);
       if (!def?.rule) return null;
       return findElementConstraint(def.rule, defs, visited);
+    }
     default:
       return null;
   }

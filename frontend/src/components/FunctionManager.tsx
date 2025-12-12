@@ -16,6 +16,8 @@ export interface FunctionManagerProps {
   onFunctionSelect?: (functionId: string) => void;
   /** Callback when a function is deleted (for warning about usages) */
   onFunctionDelete?: (functionId: string, functionName: string) => boolean;
+  /** Callback after a function has been successfully deleted */
+  onFunctionDeleted?: (functionId: string) => void;
 }
 
 /**
@@ -351,6 +353,7 @@ const DeleteConfirmDialog = memo(function DeleteConfirmDialog({
 export const FunctionManager = memo(function FunctionManager({
   onFunctionSelect,
   onFunctionDelete,
+  onFunctionDeleted,
 }: FunctionManagerProps) {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
@@ -375,9 +378,10 @@ export const FunctionManager = memo(function FunctionManager({
   }, [project]);
 
   // Handle function selection
+  // 先调用 onFunctionSelect（保存旧图+加载新图），再更新 store 状态
   const handleSelect = useCallback((functionId: string) => {
-    selectFunction(functionId);
     onFunctionSelect?.(functionId);
+    selectFunction(functionId);
   }, [selectFunction, onFunctionSelect]);
 
   // Handle function creation
@@ -409,9 +413,11 @@ export const FunctionManager = memo(function FunctionManager({
       if (onFunctionDelete && !onFunctionDelete(deleteTarget.id, deleteTarget.name)) {
         return;
       }
-      removeFunction(deleteTarget.id);
+      if (removeFunction(deleteTarget.id)) {
+        onFunctionDeleted?.(deleteTarget.id);
+      }
     }
-  }, [deleteTarget, onFunctionDelete, removeFunction]);
+  }, [deleteTarget, onFunctionDelete, removeFunction, onFunctionDeleted]);
 
   // Clear error after a timeout
   useEffect(() => {

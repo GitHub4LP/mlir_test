@@ -95,11 +95,11 @@ describe('TypeSystemService', () => {
 
       expect(state.displayType).toBe('I64');
       expect(state.source).toBe('propagated');
-      // 传播的是具体类型，effectiveConstraint 是原始约束（多个选项），可编辑
-      expect(state.canEdit).toBe(true);
+      // 被外部传播决定（非自己 pin），不可编辑
+      expect(state.canEdit).toBe(false);
     });
 
-    it('should be editable when pinned and connected (based on original constraint)', () => {
+    it('should be editable when pinned and connected (self-pinned is not externally determined)', () => {
       const state = computePortTypeState({
         portId: 'data-in-lhs',
         nodeId: 'node1',
@@ -110,7 +110,7 @@ describe('TypeSystemService', () => {
         isConnected: true,
       });
 
-      // effectiveConstraint 是原始约束 SignlessIntegerLike（多个选项），可编辑
+      // 自己 pin 的类型不算"外部决定"，用户可以修改自己的选择
       expect(state.canEdit).toBe(true);
     });
 

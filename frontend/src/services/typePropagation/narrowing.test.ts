@@ -51,7 +51,7 @@ const realGetConcreteTypes = (constraint: string): string[] => {
 };
 
 // 使用真实的 pickConstraintName 逻辑
-const realPickConstraintName = (types: string[], _nodeDialect: string | null, _pinnedName: string | null): string | null => {
+const realPickConstraintName = (types: string[]): string | null => {
   if (types.length === 0) return null;
   
   // 单一类型直接返回

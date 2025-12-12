@@ -5,77 +5,55 @@
  * 每个 Return 节点可有 branchName 用于多出口函数
  */
 
-import { memo, useCallback, useState, useMemo } from 'react';
-import { Handle, Position, type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
+import { memo, useCallback, useMemo } from 'react';
+import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import type { FunctionReturnData, DataPin } from '../types';
 import { getTypeColor } from '../services/typeSystem';
 import { useProjectStore } from '../stores/projectStore';
+import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { UnifiedTypeSelector } from './UnifiedTypeSelector';
-import { 
-  getInternalConnectedConstraints, 
-  getExternalConnectedConstraints,
-  computeSignaturePortOptions 
-} from '../services/typeSystemService';
+import { handlePinnedTypeChange } from '../services/typeChangeHandler';
+import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../services/typeSelectorRenderer';
+import { EditableName, execPinStyle, dataPinStyle } from './shared';
+import { dataInHandle } from '../services/port';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
 
-const EditableName = memo(function EditableName({
-  value, onChange, className = '',
-}: { value: string; onChange: (newName: string) => void; className?: string; }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
-
-  const handleDoubleClick = useCallback(() => { setEditValue(value); setIsEditing(true); }, [value]);
-  const handleBlur = useCallback(() => {
-    setIsEditing(false);
-    if (editValue.trim() && editValue !== value) onChange(editValue.trim());
-  }, [editValue, value, onChange]);
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleBlur();
-    else if (e.key === 'Escape') { setIsEditing(false); setEditValue(value); }
-  }, [handleBlur, value]);
-
-  if (isEditing) {
-    return <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
-      onBlur={handleBlur} onKeyDown={handleKeyDown} onClick={(e) => e.stopPropagation()} autoFocus
-      className={`text-xs bg-gray-700 text-white px-1 py-0.5 rounded border border-blue-500 outline-none w-16 ${className}`} />;
-  }
-  return <span className={`text-xs text-gray-300 cursor-text hover:text-white ${className}`}
-    onDoubleClick={handleDoubleClick} title="Double-click to edit">{value}</span>;
-});
-
-const execPinStyle = {
-  width: 0, height: 0, borderStyle: 'solid' as const, borderWidth: '5px 0 5px 8px',
-  borderColor: 'transparent transparent transparent white', backgroundColor: 'transparent', borderRadius: 0
-};
-const dataPinStyle = (color: string) => ({
-  width: 10, height: 10, backgroundColor: color,
-  border: '2px solid #1a1a2e', borderRadius: '50%'
-});
-
 export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, selected }: FunctionReturnNodeProps) {
-  const { functionId, branchName, inputs, execIn, isMain } = data;
+  const { functionId, branchName, inputs, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
   const edges = useEdges();
   const nodes = useNodes();
-  const project = useProjectStore(state => state.project);
+  const { setNodes } = useReactFlow();
   const addReturnType = useProjectStore(state => state.addReturnType);
   const removeReturnType = useProjectStore(state => state.removeReturnType);
   const updateReturnType = useProjectStore(state => state.updateReturnType);
   const getFunctionById = useProjectStore(state => state.getFunctionById);
+  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
-  const handleReturnTypeChange = useCallback((returnName: string, newType: string) => {
-    const func = getFunctionById(functionId);
-    const ret = func?.returnTypes.find(r => r.name === returnName);
-    if (ret) updateReturnType(functionId, returnName, { ...ret, type: newType });
-  }, [functionId, updateReturnType, getFunctionById]);
+  const currentFunction = getCurrentFunction();
+  const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
+
+  const typeChangeDeps = useMemo(() => ({
+    edges, getCurrentFunction, getConcreteTypes, pickConstraintName,
+    onSignatureChange: updateSignatureConstraints,
+  }), [edges, getCurrentFunction, getConcreteTypes, pickConstraintName, updateSignatureConstraints]);
+
+  // 统一使用 handlePinnedTypeChange（与 BlueprintNode 相同）
+  const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
+    setNodes(currentNodes => handlePinnedTypeChange(
+      id, portId, type, originalConstraint, currentNodes, typeChangeDeps
+    ));
+  }, [id, setNodes, typeChangeDeps]);
 
   const handleAddReturnType = useCallback(() => {
     const func = getFunctionById(functionId);
     const existingNames = func?.returnTypes.map(r => r.name || '') || [];
     let index = 0, newName = `ret${index}`;
     while (existingNames.includes(newName)) { index++; newName = `ret${index}`; }
-    addReturnType(functionId, { name: newName, type: 'AnyType' });
+    addReturnType(functionId, { name: newName, constraint: 'AnyType' });
   }, [functionId, addReturnType, getFunctionById]);
 
   const handleRemoveReturnType = useCallback((returnName: string) => {
@@ -88,24 +66,31 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     if (ret) updateReturnType(functionId, oldName, { ...ret, name: newName });
   }, [functionId, updateReturnType, getFunctionById]);
 
-  // 计算端口的可选类型
-  const getPortOptions = useCallback((portId: string, returnName: string): string[] | null => {
-    if (isMain || !project) return null;
-    
-    // 获取内部约束（函数内连接的操作约束）
-    const internalConstraints = getInternalConnectedConstraints(portId, id, nodes, edges);
-    
-    // 获取外部约束（调用处连接的类型/约束）
-    const externalConstraints = getExternalConnectedConstraints(functionId, returnName, 'return', project);
-    
-    return computeSignaturePortOptions(internalConstraints, externalConstraints);
-  }, [isMain, project, id, nodes, edges, functionId]);
+  // 构建 DataPin 列表（与 BlueprintNode 相同的结构）
+  const dataPins: DataPin[] = useMemo(() => inputs.map((port) => {
+    const portId = dataInHandle(port.name);
+    // 使用端口的实际 typeConstraint（main 函数是 I32，自定义函数是 AnyType）
+    const constraint = port.typeConstraint;
+    return {
+      id: portId,
+      label: port.name,
+      typeConstraint: constraint,
+      displayName: constraint,
+      color: getTypeColor(inputTypes[port.name] || pinnedTypes[portId] || constraint),
+    };
+  }), [inputs, inputTypes, pinnedTypes]);
 
-  const dataPins: DataPin[] = useMemo(() => inputs.map((port) => ({
-    id: port.id, label: port.name, typeConstraint: port.typeConstraint,
-    displayName: port.typeConstraint,
-    color: port.color || getTypeColor(port.typeConstraint),
-  })), [inputs]);
+  const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({
+    nodeId: id,
+    data,
+    nodes,
+    edges,
+    currentFunction: currentFunction ?? undefined,
+    getConcreteTypes,
+    onTypeSelect: (portId: string, type: string, originalConstraint: string) => {
+      handleTypeChange(portId, type, originalConstraint);
+    },
+  }), [id, data, nodes, edges, currentFunction, getConcreteTypes, handleTypeChange]);
 
   const headerColor = isMain ? '#dc2626' : '#ef4444';
   const headerText = branchName ? `Return "${branchName}"` : 'Return';
@@ -124,7 +109,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
           <div className="ml-4" />
         </div>
         {dataPins.map((pin) => {
-          const options = getPortOptions(pin.id, pin.label);
+          const { displayType, options, canEdit, onSelect } = computeTypeSelectorState(pin, typeSelectorParams);
           return (
             <div key={pin.id} className="relative flex items-center py-1.5 min-h-7 group">
               <Handle type="target" position={Position.Left} id={pin.id} isConnectable={true}
@@ -134,11 +119,11 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
                 {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameReturnType(pin.label, n)} />
                   : <span className="text-xs text-gray-300">{pin.label}</span>}
                 <UnifiedTypeSelector 
-                  selectedType={pin.typeConstraint}
-                  onTypeSelect={(t) => handleReturnTypeChange(pin.label, t)} 
-                  constraint="AnyType"
-                  allowedTypes={options ?? undefined}
-                  disabled={isMain} />
+                  selectedType={displayType}
+                  onTypeSelect={onSelect} 
+                  constraint={pin.typeConstraint}
+                  allowedTypes={options.length > 0 ? options : undefined}
+                  disabled={!canEdit} />
               </div>
               {!isMain && <button onClick={() => handleRemoveReturnType(pin.label)}
                 className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 ml-1" title="Remove">

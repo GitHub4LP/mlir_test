@@ -5,13 +5,7 @@
  */
 
 import type { Node, Connection } from '@xyflow/react';
-import type {
-  BlueprintNodeData,
-  FunctionEntryData,
-  FunctionReturnData,
-  FunctionCallData,
-  PortConfig,
-} from '../types';
+import type { BlueprintNodeData } from '../types';
 import { isCompatible, getConcreteTypes } from './typeSystem';
 import { PortRef, PortKind } from './port';
 
@@ -32,16 +26,18 @@ export interface ConnectionValidationResult {
 /**
  * Gets the type constraint for a port on a node
  * 
+ * 统一逻辑：所有节点类型都从 data.inputTypes/outputTypes 获取传播结果
+ * 
  * @param node - The node containing the port
  * @param handleId - The handle/port ID
- * @param isSource - Whether this is a source (output) port
+ * @param _isSource - Whether this is a source (output) port (unused, kept for API compatibility)
  * @param resolvedTypes - Map of resolved concrete types (nodeId -> portId -> type)
  * @returns The type constraint string, or null if not found
  */
 export function getPortTypeConstraint(
   node: Node,
   handleId: string,
-  isSource: boolean,
+  _isSource: boolean,
   resolvedTypes?: Map<string, Map<string, string>>
 ): string | null {
   // Check for resolved concrete type first
@@ -55,59 +51,41 @@ export function getPortTypeConstraint(
     }
   }
 
-  const data = node.data;
-  
   // 使用 PortRef 解析端口 ID
   const parsed = PortRef.parseHandleId(handleId);
+  if (!parsed) return null;
 
-  // Handle operation nodes (BlueprintNode)
-  if (node.type === 'operation') {
-    const blueprintData = data as BlueprintNodeData;
-
-    if (parsed) {
-      const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
-      if (parsed.kind === PortKind.DataOut) {
-        return blueprintData.outputTypes[portName] || null;
-      } else if (parsed.kind === PortKind.DataIn) {
-        return blueprintData.inputTypes[portName] || null;
-      }
-    }
-    return null;
-  }
-
-  // Handle function entry nodes
+  // Handle different node types
   if (node.type === 'function-entry') {
-    const entryData = data as FunctionEntryData;
-    // Function entry only has output ports (parameters)
-    if (isSource && parsed) {
-      const port = entryData.outputs.find((p: PortConfig) => p.name === parsed.name);
-      return port?.concreteType || port?.typeConstraint || null;
+    const data = node.data as any; // Using any to avoid complex type casting for now, relying on structure
+    if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
+      const port = data.outputs.find((p: any) => p.id === handleId);
+      return port ? (port.concreteType || port.typeConstraint) : null;
     }
-    return null;
-  }
-
-  // Handle function return nodes
-  if (node.type === 'function-return') {
-    const returnData = data as FunctionReturnData;
-    // Function return only has input ports (return values)
-    if (!isSource && parsed) {
-      const port = returnData.inputs.find((p: PortConfig) => p.name === parsed.name);
-      return port?.concreteType || port?.typeConstraint || null;
+  } else if (node.type === 'function-return') {
+    const data = node.data as any;
+    if (parsed.kind === PortKind.DataIn && Array.isArray(data.inputs)) {
+      const port = data.inputs.find((p: any) => p.id === handleId);
+      return port ? (port.concreteType || port.typeConstraint) : null;
     }
-    return null;
-  }
+  } else if (node.type === 'function-call') {
+    const data = node.data as any;
+    if (parsed.kind === PortKind.DataIn && Array.isArray(data.inputs)) {
+      const port = data.inputs.find((p: any) => p.id === handleId);
+      return port ? (port.concreteType || port.typeConstraint) : null;
+    } else if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
+      const port = data.outputs.find((p: any) => p.id === handleId);
+      return port ? (port.concreteType || port.typeConstraint) : null;
+    }
+  } else {
+    // Operation nodes
+    const data = node.data as { inputTypes?: Record<string, string>; outputTypes?: Record<string, string> };
+    const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
 
-  // Handle function call nodes
-  if (node.type === 'function-call') {
-    const callData = data as unknown as FunctionCallData;
-    if (parsed) {
-      if (parsed.kind === PortKind.DataOut) {
-        const port = callData.outputs.find((p: PortConfig) => p.name === parsed.name);
-        return port?.concreteType || port?.typeConstraint || null;
-      } else if (parsed.kind === PortKind.DataIn) {
-        const port = callData.inputs.find((p: PortConfig) => p.name === parsed.name);
-        return port?.concreteType || port?.typeConstraint || null;
-      }
+    if (parsed.kind === PortKind.DataOut) {
+      return data.outputTypes?.[portName] || null;
+    } else if (parsed.kind === PortKind.DataIn) {
+      return data.inputTypes?.[portName] || null;
     }
   }
 

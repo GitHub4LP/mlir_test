@@ -215,8 +215,8 @@ describe('projectPersistence', () => {
           {
             id: 'func1',
             name: 'helper',
-            parameters: [{ name: 'x', type: 'i32' }],
-            returnTypes: [{ name: 'result', type: 'i32' }],
+            parameters: [{ name: 'x', constraint: 'i32' }],
+            returnTypes: [{ name: 'result', constraint: 'i32' }],
             graph: { nodes: [], edges: [] },
             isMain: false,
           },

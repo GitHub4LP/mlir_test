@@ -5,12 +5,15 @@
  * 使用 dialectStore 实现方言数据懒加载。
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import type { OperationDef, FunctionDef } from '../types';
 import { filterOperations } from '../services/paletteUtils';
 import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
 import { generateFunctionCallData } from '../services/functionNodeGenerator';
+
+// 缓存空数组，避免每次渲染创建新引用
+const emptyFunctions: FunctionDef[] = [];
 
 export interface NodePaletteProps {
   /** Callback when an operation is dragged to the canvas */
@@ -73,22 +76,26 @@ interface FunctionItemProps {
   currentFunctionId?: string | null;
 }
 
-function FunctionItem({ func, onDragStart, currentFunctionId }: FunctionItemProps) {
+const FunctionItem = memo(function FunctionItem({ func, onDragStart, currentFunctionId }: FunctionItemProps) {
   const isCurrentFunction = func.id === currentFunctionId;
+  const getFunctionById = useProjectStore(state => state.getFunctionById);
 
   const handleDragStart = useCallback((event: React.DragEvent) => {
-    // Generate function call data for the drag
-    const functionCallData = generateFunctionCallData(func);
+    // 拖拽时从 store 获取最新的函数数据（包含最新的 graph）
+    const latestFunc = getFunctionById(func.id);
+    if (!latestFunc) return;
+    
+    const functionCallData = generateFunctionCallData(latestFunc);
     event.dataTransfer.setData('application/reactflow-function', JSON.stringify(functionCallData));
-    event.dataTransfer.setData('text/plain', func.name);
+    event.dataTransfer.setData('text/plain', latestFunc.name);
     event.dataTransfer.effectAllowed = 'copy';
 
-    onDragStart?.(event, func);
-  }, [func, onDragStart]);
+    onDragStart?.(event, latestFunc);
+  }, [func.id, getFunctionById, onDragStart]);
 
   // Don't allow dragging the current function (can't call itself)
-  const paramTypes = func.parameters.map(p => p.type).join(', ');
-  const returnTypes = func.returnTypes.map(r => r.type).join(', ');
+  const paramTypes = func.parameters.map(p => p.constraint).join(', ');
+  const returnTypes = func.returnTypes.map(r => r.constraint).join(', ');
   const signature = `(${paramTypes}) -> (${returnTypes})`;
 
   return (
@@ -114,7 +121,14 @@ function FunctionItem({ func, onDragStart, currentFunctionId }: FunctionItemProp
       </div>
     </div>
   );
-}
+}, (prev, next) => {
+  // 只比较显示相关的属性，忽略 graph 变化
+  return prev.func.id === next.func.id &&
+    prev.func.name === next.func.name &&
+    prev.currentFunctionId === next.currentFunctionId &&
+    JSON.stringify(prev.func.parameters) === JSON.stringify(next.func.parameters) &&
+    JSON.stringify(prev.func.returnTypes) === JSON.stringify(next.func.returnTypes);
+});
 
 /**
  * Collapsible dialect group with loading state
@@ -214,13 +228,9 @@ export function NodePalette({
   const reinitialize = useDialectStore(state => state.initialize);
 
   // Get custom functions from project store
-  const project = useProjectStore(state => state.project);
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
-
-  // Get custom functions (excluding main function)
-  const customFunctions = useMemo(() => {
-    return project?.customFunctions || [];
-  }, [project]);
+  const customFunctionsRaw = useProjectStore(state => state.project?.customFunctions);
+  const customFunctions = customFunctionsRaw ?? emptyFunctions;
 
   // Filter custom functions based on search query
   const filteredFunctions = useMemo(() => {

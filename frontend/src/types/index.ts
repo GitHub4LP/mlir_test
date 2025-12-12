@@ -111,6 +111,26 @@ export interface RegionPinConfig {
   hasYieldInputs: boolean;
 }
 
+/**
+ * 类型传播相关数据（所有节点类型共享）
+ * 
+ * 所有节点类型（Operation、Entry、Return、Call）都使用相同的字段：
+ * - pinnedTypes: 用户显式选择的类型（持久化）
+ * - inputTypes: 输入端口的传播结果
+ * - outputTypes: 输出端口的传播结果
+ * - narrowedConstraints: 连接导致的约束收窄
+ */
+export interface TypePropagationData {
+  /** 用户显式选择的类型，键为端口 handleId */
+  pinnedTypes?: Record<string, string>;
+  /** 输入端口的传播结果，键为端口名 */
+  inputTypes?: Record<string, string>;
+  /** 输出端口的传播结果，键为端口名 */
+  outputTypes?: Record<string, string>;
+  /** 连接导致的约束收窄，键为端口名 */
+  narrowedConstraints?: Record<string, string>;
+}
+
 // 节点类型
 
 /** 存储格式的 BlueprintNodeData（只存 fullName 引用） */
@@ -131,42 +151,12 @@ export interface StoredBlueprintNodeData {
 }
 
 /** 运行时格式的 BlueprintNodeData（包含完整 OperationDef） */
-export interface BlueprintNodeData {
+export interface BlueprintNodeData extends TypePropagationData {
   [key: string]: unknown;
   operation: OperationDef;
-  /**
-   * 属性值，存储为 MLIR 属性字符串格式
-   * 例如: { value: "10 : i32" }
-   */
+  /** 属性值，存储为 MLIR 属性字符串格式 */
   attributes: Record<string, string>;
-  /**
-   * 用户显式选择的类型（pinned）
-   * 键为端口 ID（如 "data-in-lhs", "data-out-result"），值为具体类型（如 "I32"）
-   * 这是类型传播的"源"，会持久化保存
-   */
-  pinnedTypes?: Record<string, string>;
-  /**
-   * 输入端口的显示类型（传播结果或原始约束）
-   * 键为操作数名称，值为类型字符串
-   * 注意：这是显示用的，实际类型由 pinnedTypes + 传播计算得到
-   */
-  inputTypes: Record<string, string>;
-  /**
-   * 输出端口的显示类型（传播结果或原始约束）
-   * 键为结果名称，值为类型字符串
-   */
-  outputTypes: Record<string, string>;
-  /**
-   * 连接导致的约束收窄
-   * 键为端口名称，值为收窄后的约束名
-   * 用于计算可编辑选项范围
-   */
-  narrowedConstraints?: Record<string, string>;
-  /**
-   * Variadic 端口的实例数量
-   * 键为端口定义名（如 "initArgs"），值为实例数量
-   * 默认为 1（至少显示一个实例）
-   */
+  /** Variadic 端口的实例数量 */
   variadicCounts?: Record<string, number>;
   execIn?: ExecPin;      // Execution input pin (optional)
   execOuts: ExecPin[];   // Execution output pins (supports multiple for control flow)
@@ -239,13 +229,13 @@ export interface FunctionDef {
 export interface ParameterDef {
   name: string;
   /** 类型约束或具体类型（如 "SignlessIntegerLike" 或 "I32"） */
-  type: string;
+  constraint: string;
 }
 
 export interface TypeDef {
   name: string;
   /** 类型约束或具体类型 */
-  type: string;
+  constraint: string;
 }
 
 // Graph Types
@@ -313,7 +303,7 @@ export interface GraphEdge {
   targetHandle: string;
 }
 
-export interface FunctionEntryData {
+export interface FunctionEntryData extends TypePropagationData {
   [key: string]: unknown;
   functionId: string;
   functionName: string;
@@ -322,7 +312,7 @@ export interface FunctionEntryData {
   isMain: boolean;              // Whether this is the main function entry
 }
 
-export interface FunctionReturnData {
+export interface FunctionReturnData extends TypePropagationData {
   [key: string]: unknown;
   functionId: string;
   functionName: string;
@@ -332,7 +322,7 @@ export interface FunctionReturnData {
   isMain: boolean;              // Whether this is the main function return
 }
 
-export interface FunctionCallData {
+export interface FunctionCallData extends TypePropagationData {
   [key: string]: unknown;
   functionId: string;
   functionName: string;
@@ -340,8 +330,6 @@ export interface FunctionCallData {
   outputs: PortConfig[];        // Return value outputs (data pins)
   execIn: ExecPin;              // Execution input pin
   execOuts: ExecPin[];          // Execution output pins (one per Return node in function)
-  /** 用户选择的类型（与 BlueprintNodeData 相同） */
-  pinnedTypes?: Record<string, string>;
 }
 
 // Project Types

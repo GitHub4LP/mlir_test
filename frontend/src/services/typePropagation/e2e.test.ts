@@ -105,6 +105,6 @@ describe('Return I32 → constant propagation', () => {
     const updatedConstant = updatedNodes.find(n => n.id === 'const1');
     const constantData = updatedConstant?.data as BlueprintNodeData;
 
-    expect(constantData.outputTypes.result).toBe('I32');
+    expect(constantData.outputTypes?.result).toBe('I32');
   });
 });
