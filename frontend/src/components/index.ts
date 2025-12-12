@@ -9,7 +9,8 @@ export { FunctionEntryNode, type FunctionEntryNodeProps, type FunctionEntryNodeT
 export { FunctionReturnNode, type FunctionReturnNodeProps, type FunctionReturnNodeType } from './FunctionReturnNode';
 export { FunctionCallNode, type FunctionCallNodeProps, type FunctionCallNodeType } from './FunctionCallNode';
 export { AttributeEditor, type AttributeEditorProps } from './AttributeEditor';
-export { UnifiedTypeSelector, type TypeNode, type ScalarNode, type CompositeNode, parseType, serializeType } from './UnifiedTypeSelector';
+export { UnifiedTypeSelector } from './UnifiedTypeSelector';
+export { type TypeNode, type ScalarNode, type CompositeNode, parseType, serializeType } from '../services/typeNodeUtils';
 export { NodePalette, type NodePaletteProps } from './NodePalette';
 export { FunctionManager, type FunctionManagerProps } from './FunctionManager';
 export { ExecutionPanel } from './ExecutionPanel';

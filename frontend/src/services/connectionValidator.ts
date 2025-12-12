@@ -5,7 +5,7 @@
  */
 
 import type { Node, Connection } from '@xyflow/react';
-import type { BlueprintNodeData } from '../types';
+import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, PortConfig } from '../types';
 import { isCompatible, getConcreteTypes } from './typeSystem';
 import { PortRef, PortKind } from './port';
 
@@ -57,24 +57,24 @@ export function getPortTypeConstraint(
 
   // Handle different node types
   if (node.type === 'function-entry') {
-    const data = node.data as any; // Using any to avoid complex type casting for now, relying on structure
+    const data = node.data as FunctionEntryData;
     if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
-      const port = data.outputs.find((p: any) => p.id === handleId);
+      const port = data.outputs.find((p: PortConfig) => p.id === handleId);
       return port ? (port.concreteType || port.typeConstraint) : null;
     }
   } else if (node.type === 'function-return') {
-    const data = node.data as any;
+    const data = node.data as FunctionReturnData;
     if (parsed.kind === PortKind.DataIn && Array.isArray(data.inputs)) {
-      const port = data.inputs.find((p: any) => p.id === handleId);
+      const port = data.inputs.find((p: PortConfig) => p.id === handleId);
       return port ? (port.concreteType || port.typeConstraint) : null;
     }
   } else if (node.type === 'function-call') {
-    const data = node.data as any;
+    const data = node.data as FunctionCallData;
     if (parsed.kind === PortKind.DataIn && Array.isArray(data.inputs)) {
-      const port = data.inputs.find((p: any) => p.id === handleId);
+      const port = data.inputs.find((p: PortConfig) => p.id === handleId);
       return port ? (port.concreteType || port.typeConstraint) : null;
     } else if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
-      const port = data.outputs.find((p: any) => p.id === handleId);
+      const port = data.outputs.find((p: PortConfig) => p.id === handleId);
       return port ? (port.concreteType || port.typeConstraint) : null;
     }
   } else {

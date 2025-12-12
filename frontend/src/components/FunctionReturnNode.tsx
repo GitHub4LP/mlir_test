@@ -5,7 +5,7 @@
  * 每个 Return 节点可有 branchName 用于多出口函数
  */
 
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import type { FunctionReturnData, DataPin } from '../types';
 import { getTypeColor } from '../services/typeSystem';
@@ -21,7 +21,7 @@ export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
 
 export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, selected }: FunctionReturnNodeProps) {
-  const { functionId, branchName, inputs, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
+  const { functionId, branchName, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
   const edges = useEdges();
   const nodes = useNodes();
   const { setNodes } = useReactFlow();
@@ -32,9 +32,16 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
-
-  const currentFunction = getCurrentFunction();
   const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
+
+  // 直接订阅当前函数数据（而非函数引用），确保数据变化时组件重新渲染
+  const currentFunction = useProjectStore(state => {
+    if (!state.project || !state.currentFunctionId) return null;
+    if (state.project.mainFunction.id === state.currentFunctionId) {
+      return state.project.mainFunction;
+    }
+    return state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+  });
 
   const typeChangeDeps = useMemo(() => ({
     edges, getCurrentFunction, getConcreteTypes, pickConstraintName,
@@ -66,19 +73,52 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     if (ret) updateReturnType(functionId, oldName, { ...ret, name: newName });
   }, [functionId, updateReturnType, getFunctionById]);
 
-  // 构建 DataPin 列表（与 BlueprintNode 相同的结构）
-  const dataPins: DataPin[] = useMemo(() => inputs.map((port) => {
-    const portId = dataInHandle(port.name);
-    // 使用端口的实际 typeConstraint（main 函数是 I32，自定义函数是 AnyType）
-    const constraint = port.typeConstraint;
-    return {
-      id: portId,
-      label: port.name,
-      typeConstraint: constraint,
-      displayName: constraint,
-      color: getTypeColor(inputTypes[port.name] || pinnedTypes[portId] || constraint),
-    };
-  }), [inputs, inputTypes, pinnedTypes]);
+  // 同步 FunctionDef.returnTypes 到 React Flow 节点的 data.inputs
+  // 这是为了让类型传播函数能读取到正确的端口列表
+  useEffect(() => {
+    if (isMain) return;
+    
+    const returnTypes = currentFunction?.returnTypes || [];
+    
+    // 构建新的 inputs
+    const newInputs = returnTypes.map((ret, idx) => ({
+      id: dataInHandle(ret.name || `result_${idx}`),
+      name: ret.name || `result_${idx}`,
+      kind: 'input' as const,
+      typeConstraint: ret.constraint,
+      color: getTypeColor(ret.constraint),
+    }));
+    
+    // 检查是否需要更新（避免无限循环）
+    const currentNames = (data.inputs || []).map((i: { name: string }) => i.name).join(',');
+    const newNames = newInputs.map(i => i.name).join(',');
+    
+    if (currentNames !== newNames) {
+      setNodes(ns => ns.map(n => 
+        n.id === id ? { ...n, data: { ...n.data, inputs: newInputs } } : n
+      ));
+    }
+  }, [id, isMain, currentFunction?.returnTypes, data.inputs, setNodes]);
+
+  // 构建 DataPin 列表 - 直接从 FunctionDef.returnTypes 派生（单一数据源）
+  const dataPins: DataPin[] = useMemo(() => {
+    // main 函数返回固定的 I32，自定义函数从 FunctionDef 读取
+    const returns = isMain 
+      ? [{ name: 'result', constraint: 'I32' }] 
+      : (currentFunction?.returnTypes || []);
+    return returns.map((ret, idx) => {
+      const name = ret.name || `result_${idx}`;
+      const portId = dataInHandle(name);
+      const constraint = ret.constraint;
+      return {
+        id: portId,
+        label: name,
+        typeConstraint: constraint,
+        displayName: constraint,
+        color: getTypeColor(inputTypes[name] || pinnedTypes[portId] || constraint),
+      };
+    });
+  }, [isMain, currentFunction?.returnTypes, inputTypes, pinnedTypes]);
 
   const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({
     nodeId: id,

@@ -9,101 +9,17 @@
  * 5. 方言分组：内置约束/类型 + 方言特有约束分组显示
  */
 
-import { memo, useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { memo, useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getTypeColor } from '../services/typeSystem';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-
-// ============ 类型定义 ============
-
-export type TypeNode = ScalarNode | CompositeNode;
-
-export interface ScalarNode {
-  kind: 'scalar';
-  name: string;  // 具体类型如 'f32' 或约束如 'AnyType'
-}
-
-export interface CompositeNode {
-  kind: 'composite';
-  wrapper: string;       // 'tensor', 'vector', 'memref', 'complex', etc.
-  shape?: (number | null)[];  // null 表示动态维度 (?)
-  element: TypeNode;
-}
-
-// 可嵌套的容器类型
-const WRAPPERS = [
-  { name: 'tensor', hasShape: true },
-  { name: 'vector', hasShape: true },
-  { name: 'memref', hasShape: true },
-  { name: 'complex', hasShape: false },
-  { name: 'unranked_tensor', hasShape: false },
-  { name: 'unranked_memref', hasShape: false },
-];
-
-// ============ 工具函数 ============
-
-export function serializeType(node: TypeNode): string {
-  if (node.kind === 'scalar') return node.name;
-
-  const elem = serializeType(node.element);
-  const { wrapper, shape } = node;
-
-  if (!shape || shape.length === 0) {
-    return `${wrapper}<${elem}>`;
-  }
-
-  const shapeStr = shape.map(d => d === null ? '?' : d).join('x');
-  return `${wrapper}<${shapeStr}x${elem}>`;
-}
-
-export function parseType(str: string): TypeNode {
-  str = str.trim();
-
-  for (const w of WRAPPERS) {
-    if (str.startsWith(w.name + '<') && str.endsWith('>')) {
-      const inner = str.slice(w.name.length + 1, -1);
-
-      if (w.hasShape) {
-        // 智能解析：找到 element 开始的位置
-        // element 可能是：标量(f32)、约束(AnyFloat)、或复合类型(tensor<...>)
-        // 从左到右扫描，找到第一个非 shape 部分
-        const parts: string[] = [];
-        let remaining = inner;
-
-        while (remaining) {
-          // 检查是否是数字或 ?
-          const match = remaining.match(/^(\d+|\?)(x|$)/);
-          if (match) {
-            parts.push(match[1]);
-            remaining = remaining.slice(match[0].length);
-            if (!match[2]) break; // 没有 x 了
-          } else {
-            // 不是 shape 部分，剩余的是 element
-            break;
-          }
-        }
-
-        if (parts.length > 0 && remaining) {
-          const shape = parts.map(s => s === '?' ? null : parseInt(s, 10));
-          return { kind: 'composite', wrapper: w.name, shape, element: parseType(remaining) };
-        }
-      }
-      return { kind: 'composite', wrapper: w.name, element: parseType(inner) };
-    }
-  }
-
-  return { kind: 'scalar', name: str || 'AnyType' };
-}
-
-function wrapWith(node: TypeNode, wrapper: string): CompositeNode {
-  const w = WRAPPERS.find(x => x.name === wrapper);
-  return {
-    kind: 'composite',
-    wrapper,
-    shape: w?.hasShape ? [4] : undefined,
-    element: node,
-  };
-}
+import {
+  type TypeNode,
+  WRAPPERS,
+  serializeType,
+  parseType,
+  wrapWith,
+} from '../services/typeNodeUtils';
 
 // ============ 类型分组 ============
 
@@ -649,7 +565,8 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   }, [analysis.allowedWrappers]);
   const [isOpen, setIsOpen] = useState(false);
   const [selectorPos, setSelectorPos] = useState({ top: 0, left: 0 });
-  const [node, setNode] = useState<TypeNode>(() => parseType(selectedType || 'AnyType'));
+  // node 完全由 selectedType 派生（受控模式），无需本地 state
+  const node = useMemo(() => parseType(selectedType || 'AnyType'), [selectedType]);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const clickedElementRef = useRef<Element | null>(null);
@@ -657,11 +574,6 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   // 约束对应的标量类型（用于选择面板）
   // 优先使用 prop 传入的 allowedTypes（来自后端 AnyTypeOf 解析）
   const constraintTypes = propAllowedTypes || analysis.scalarTypes;
-
-  // 同步外部 selectedType 变化（使用 useLayoutEffect 避免闪烁）
-  useLayoutEffect(() => {
-    setNode(parseType(selectedType || 'AnyType'));
-  }, [selectedType]);
 
   // 更新位置（RAF 循环）- 跟随点击的元素
   useEffect(() => {
@@ -710,7 +622,6 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
       return { ...n, element: updateLeaf(n.element) };
     };
     const newNode = updateLeaf(node);
-    setNode(newNode);
     onTypeSelect(serializeType(newNode));
     setIsOpen(false);
   }, [node, onTypeSelect]);
@@ -725,13 +636,11 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
       return { ...n, element: wrapLeaf(n.element) };
     };
     const newNode = wrapLeaf(node);
-    setNode(newNode);
     onTypeSelect(serializeType(newNode));
     setIsOpen(false);
   }, [node, onTypeSelect]);
 
   const handleNodeChange = useCallback((newNode: TypeNode) => {
-    setNode(newNode);
     onTypeSelect(serializeType(newNode));
   }, [onTypeSelect]);
 
