@@ -36,7 +36,7 @@ export function shouldPinType(type: string, originalConstraint?: string): boolea
 export interface TypeChangeHandlerDeps {
   edges: Edge[];
   getCurrentFunction: () => FunctionDef | null;
-  getConcreteTypes: (constraint: string) => string[];
+  getConstraintElements: (constraint: string) => string[];
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;
 }
 
@@ -84,7 +84,7 @@ export function handlePinnedTypeChange<T extends { pinnedTypes?: Record<string, 
     updatedNodes,
     deps.edges,
     currentFunction,
-    deps.getConcreteTypes,
+    deps.getConstraintElements,
     deps.pickConstraintName
   );
 
@@ -110,7 +110,7 @@ export function triggerPropagationOnly(
     currentNodes,
     deps.edges,
     currentFunction,
-    deps.getConcreteTypes,
+    deps.getConstraintElements,
     deps.pickConstraintName
   );
 

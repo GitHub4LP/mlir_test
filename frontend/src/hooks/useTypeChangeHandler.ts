@@ -35,7 +35,7 @@ export function useTypeChangeHandler(options: UseTypeChangeHandlerOptions): UseT
   const { setNodes } = useReactFlow();
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
   // 构建类型变更依赖项
@@ -43,10 +43,10 @@ export function useTypeChangeHandler(options: UseTypeChangeHandlerOptions): UseT
     return {
       edges,
       getCurrentFunction,
-      getConcreteTypes,
+      getConstraintElements,
       pickConstraintName,
     };
-  }, [edges, getCurrentFunction, getConcreteTypes, pickConstraintName]);
+  }, [edges, getCurrentFunction, getConstraintElements, pickConstraintName]);
 
   // 类型变更处理回调
   const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {

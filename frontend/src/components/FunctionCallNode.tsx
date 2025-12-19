@@ -32,7 +32,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   const { functionName, inputs, outputs, execIn, execOuts, pinnedTypes = {} } = data;
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
 
   // 从 data 中获取传播结果
   const { inputTypes = {}, outputTypes = {} } = data;
@@ -70,7 +70,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     // 统一使用 computeTypeSelectionState 计算可选集和 canEdit
     const currentFunction = getCurrentFunction();
     const { options, canEdit } = computeTypeSelectionState(
-      id, pin.id, nodes, edges, currentFunction ?? undefined, getConcreteTypes
+      id, pin.id, nodes, edges, currentFunction ?? undefined, getConstraintElements
     );
 
     return (
@@ -82,7 +82,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
         disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConcreteTypes]);
+  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
 
   // Get port type
   const getPortTypeWrapper = useCallback((pinId: string) => {

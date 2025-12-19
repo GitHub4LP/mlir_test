@@ -112,7 +112,7 @@ const SelectionPanel = memo(function SelectionPanel({
   const [useRegex, setUseRegex] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { buildableTypes, constraintDefs, getConcreteTypes } = useTypeConstraintStore();
+  const { buildableTypes, constraintDefs, getConstraintElements } = useTypeConstraintStore();
 
   // 是否有约束限制（AnyType 视为无约束，显示完整过滤功能）
   const hasConstraint = constraintTypes !== null && constraintName !== 'AnyType' && constraintName !== undefined;
@@ -133,17 +133,17 @@ const SelectionPanel = memo(function SelectionPanel({
         expanded.add(t);
         continue;
       }
-      // 使用新的 getConcreteTypes
-      const concreteTypes = getConcreteTypes(t);
-      if (concreteTypes.length > 0) {
-        concreteTypes.forEach(ct => expanded.add(ct));
+      // 展开约束到集合元素
+      const elements = getConstraintElements(t);
+      if (elements.length > 0) {
+        elements.forEach(ct => expanded.add(ct));
       } else {
         expanded.add(t);
       }
     }
 
     return [...expanded];
-  }, [constraintTypes, getConcreteTypes, buildableTypes]);
+  }, [constraintTypes, getConstraintElements, buildableTypes]);
 
   const typeGroups = useMemo(() => {
     // 构建匹配函数
@@ -464,7 +464,7 @@ interface ConstraintAnalysis {
 
 function analyzeConstraint(
   constraint: string | undefined,
-  getConcreteTypes: (name: string) => string[],
+  getConstraintElements: (name: string) => string[],
   isShapedConstraint: (name: string) => boolean,
   getAllowedContainers: (name: string) => string[]
 ): ConstraintAnalysis {
@@ -482,7 +482,7 @@ function analyzeConstraint(
   const variadicMatch = constraint.match(/^Variadic<(.+)>$/);
   if (variadicMatch) {
     const innerConstraint = variadicMatch[1];
-    return analyzeConstraint(innerConstraint, getConcreteTypes, isShapedConstraint, getAllowedContainers);
+    return analyzeConstraint(innerConstraint, getConstraintElements, isShapedConstraint, getAllowedContainers);
   }
 
   // AnyOf<...> 类型：合成约束
@@ -499,7 +499,7 @@ function analyzeConstraint(
   const isShaped = isShapedConstraint(constraint);
   if (isShaped) {
     const containers = getAllowedContainers(constraint);
-    const scalarTypes = getConcreteTypes(constraint);
+    const scalarTypes = getConstraintElements(constraint);
     return {
       isUnconstrained: false,
       isCompositeConstraint: true,
@@ -509,7 +509,7 @@ function analyzeConstraint(
   }
 
   // 标量约束
-  const scalarTypes = getConcreteTypes(constraint);
+  const scalarTypes = getConstraintElements(constraint);
   return {
     isUnconstrained: false,
     isCompositeConstraint: false,
@@ -551,12 +551,12 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   disabled = false,
   className = '',
 }: UnifiedTypeSelectorProps) {
-  const { getConcreteTypes, isShapedConstraint, getAllowedContainers } = useTypeConstraintStore();
+  const { getConstraintElements, isShapedConstraint, getAllowedContainers } = useTypeConstraintStore();
 
   // 分析约束
   const analysis = useMemo(() =>
-    analyzeConstraint(constraint, getConcreteTypes, isShapedConstraint, getAllowedContainers),
-    [constraint, getConcreteTypes, isShapedConstraint, getAllowedContainers]
+    analyzeConstraint(constraint, getConstraintElements, isShapedConstraint, getAllowedContainers),
+    [constraint, getConstraintElements, isShapedConstraint, getAllowedContainers]
   );
 
   // 允许的包装器

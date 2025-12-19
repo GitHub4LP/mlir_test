@@ -7,7 +7,7 @@
 import { create } from 'zustand';
 import type { ConstraintDef, ConstraintRule } from '../services/constraintResolver';
 import { 
-  getConcreteTypes as resolveConcreteTypes,
+  getConstraintElements as resolveConcreteTypes,
   isShapedConstraint as checkIsShapedConstraint,
   getAllowedContainers as getContainers,
 } from '../services/constraintResolver';
@@ -51,7 +51,7 @@ interface TypeConstraintState {
   loadTypeConstraints: () => Promise<void>;
 
   // 查询方法
-  getConcreteTypes: (constraint: string) => string[];
+  getConstraintElements: (constraint: string) => string[];
   isConcreteType: (type: string) => boolean;
   isShapedConstraint: (constraint: string) => boolean;
   getAllowedContainers: (constraint: string) => string[];
@@ -113,7 +113,7 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     }
   },
 
-  getConcreteTypes: (constraint: string) => {
+  getConstraintElements: (constraint: string) => {
     const { constraintDefs, buildableTypes } = get();
     
     // 尝试规范化

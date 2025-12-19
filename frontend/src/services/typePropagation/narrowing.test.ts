@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeNarrowedConstraints } from './propagator';
 import type { PropagationGraph } from './types';
-import { getConcreteTypes } from '../constraintResolver';
+import { getConstraintElements } from '../constraintResolver';
 import type { ConstraintDef } from '../constraintResolver';
 
 // 模拟后端返回的 BuildableTypes（36个）
@@ -45,9 +45,9 @@ const mockEquivalences = new Map<string, string[]>([
   ['BF16,F16,F32,F64', ['AnyFloat']],
 ]);
 
-// 使用真实的 getConcreteTypes
-const realGetConcreteTypes = (constraint: string): string[] => {
-  return getConcreteTypes(constraint, mockConstraintDefs, mockBuildableTypes);
+// 使用真实的 getConstraintElements
+const realGetConstraintElements = (constraint: string): string[] => {
+  return getConstraintElements(constraint, mockConstraintDefs, mockBuildableTypes);
 };
 
 // 使用真实的 pickConstraintName 逻辑
@@ -85,7 +85,7 @@ describe('Constraint Narrowing', () => {
       ['node1:data-out:result', 'node2:data-in:lhs']
     ]);
 
-    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConcreteTypes, realPickConstraintName);
+    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConstraintElements, realPickConstraintName);
 
     // AnyInteger 应该收窄为 SignlessIntegerLike
     expect(narrowed.get('node1:data-out:result')).toBe('AnySignlessInteger');
@@ -102,7 +102,7 @@ describe('Constraint Narrowing', () => {
       ['node1:data-out:result', 'node2:data-in:lhs']
     ]);
 
-    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConcreteTypes, realPickConstraintName);
+    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConstraintElements, realPickConstraintName);
 
     // AnyType 应该收窄为 AnyFloat
     expect(narrowed.get('node1:data-out:result')).toBe('AnyFloat');
@@ -117,7 +117,7 @@ describe('Constraint Narrowing', () => {
       ['node1:data-out:result', 'node2:data-in:lhs']
     ]);
 
-    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConcreteTypes, realPickConstraintName);
+    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConstraintElements, realPickConstraintName);
 
     // AnyType 应该收窄为 SignlessIntegerLike（或等价名）
     expect(narrowed.get('node1:data-out:result')).toBe('AnySignlessInteger');
@@ -132,7 +132,7 @@ describe('Constraint Narrowing', () => {
       ['node1:data-out:result', 'node2:data-in:lhs']
     ]);
 
-    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConcreteTypes, realPickConstraintName);
+    const narrowed = computeNarrowedConstraints(graph, portConstraints, new Map(), new Set(), realGetConstraintElements, realPickConstraintName);
 
     // 没有收窄
     expect(narrowed.size).toBe(0);
@@ -160,7 +160,7 @@ describe('Constraint Narrowing', () => {
     propagatedTypes.set('addi:data-in:rhs', 'I32');  // 从 lhs 传播来
     propagatedTypes.set('addi:data-out:result', 'I32');  // 从 lhs 传播来
 
-    const narrowed = computeNarrowedConstraints(graph, portConstraints, propagatedTypes, sourceSet, realGetConcreteTypes, realPickConstraintName);
+    const narrowed = computeNarrowedConstraints(graph, portConstraints, propagatedTypes, sourceSet, realGetConstraintElements, realPickConstraintName);
 
     // lhs 的邻居（rhs, result）能到达的源只有 lhs 自己
     // 所以 lhs 不应该被收窄（用邻居原始约束 SignlessIntegerLike）
@@ -183,7 +183,7 @@ describe('Constraint Narrowing', () => {
     propagatedTypes.set('external:data-out:value', 'I32');
     propagatedTypes.set('addi:data-in:lhs', 'I32');  // 从 external 传播来
 
-    const narrowed = computeNarrowedConstraints(graph, portConstraints, propagatedTypes, sourceSet, realGetConcreteTypes, realPickConstraintName);
+    const narrowed = computeNarrowedConstraints(graph, portConstraints, propagatedTypes, sourceSet, realGetConstraintElements, realPickConstraintName);
 
     // lhs 的邻居 external 是源，且不是 lhs 自己
     // 所以 lhs 应该用 external 的传播结果 I32 来收窄
@@ -194,13 +194,13 @@ describe('Constraint Narrowing', () => {
 
 describe('Debug getConcreteTypes', () => {
   it('should expand AnyType to all buildable types', () => {
-    const types = realGetConcreteTypes('AnyType');
+    const types = realGetConstraintElements('AnyType');
     console.log('AnyType expanded to:', types.length, 'types');
     expect(types.length).toBe(mockBuildableTypes.length);
   });
 
   it('should expand SignlessIntegerLike correctly', () => {
-    const types = realGetConcreteTypes('SignlessIntegerLike');
+    const types = realGetConstraintElements('SignlessIntegerLike');
     console.log('SignlessIntegerLike expanded to:', types);
     expect(types).toEqual(['I1', 'I8', 'I16', 'I32', 'I64', 'I128']);
   });

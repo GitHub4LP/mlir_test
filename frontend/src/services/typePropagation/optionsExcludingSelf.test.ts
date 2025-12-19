@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
 import { computeOptionsExcludingSelf } from './propagator';
 import type { BlueprintNodeData, OperationDef } from '../../types';
-import { getConcreteTypes } from '../constraintResolver';
+import { getConstraintElements } from '../constraintResolver';
 import type { ConstraintDef } from '../constraintResolver';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 
@@ -47,8 +47,8 @@ beforeAll(() => {
   });
 });
 
-const realGetConcreteTypes = (constraint: string): string[] => {
-  return getConcreteTypes(constraint, mockConstraintDefs, mockBuildableTypes);
+const realGetConstraintElements = (constraint: string): string[] => {
+  return getConstraintElements(constraint, mockConstraintDefs, mockBuildableTypes);
 };
 
 // 创建 mock 操作定义
@@ -166,7 +166,7 @@ describe('computeOptionsExcludingSelf', () => {
         nodes,
         edges,
         undefined,
-        realGetConcreteTypes
+        realGetConstraintElements
       );
 
       // A.lhs 的邻居是 A.result（通过 trait），A.result 连接到 B.lhs
@@ -234,7 +234,7 @@ describe('computeOptionsExcludingSelf', () => {
         nodes,
         edges,
         undefined,
-        realGetConcreteTypes
+        realGetConstraintElements
       );
 
       // A.lhs 通过 trait 连接到 A.result（和 A.rhs）
@@ -261,7 +261,7 @@ describe('computeOptionsExcludingSelf', () => {
         [node],
         [],
         undefined,
-        realGetConcreteTypes
+        realGetConstraintElements
       );
 
       // 无连接，无 trait，可选集 = 原始约束
@@ -290,7 +290,7 @@ describe('computeOptionsExcludingSelf', () => {
         [node],
         [],
         undefined,
-        realGetConcreteTypes
+        realGetConstraintElements
       );
 
       // rhs 的邻居是 lhs 和 result（通过 trait）

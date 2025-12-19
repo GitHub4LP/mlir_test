@@ -76,9 +76,9 @@ export function expandRule(
 }
 
 /**
- * 获取约束的具体标量类型
+ * 获取约束映射到的类型约束集合元素
  */
-export function getConcreteTypes(
+export function getConstraintElements(
   constraintName: string,
   defs: Map<string, ConstraintDef>,
   buildableTypes: string[]

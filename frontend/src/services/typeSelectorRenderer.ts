@@ -64,8 +64,8 @@ export interface TypeSelectorRenderParams {
   edges: Edge[];
   /** 当前函数定义 */
   currentFunction: FunctionDef | undefined;
-  /** 获取约束的具体类型列表 */
-  getConcreteTypes: (constraint: string) => string[];
+  /** 获取约束映射到的类型约束集合元素 */
+  getConstraintElements: (constraint: string) => string[];
   /** 类型选择回调 */
   onTypeSelect: (portId: string, type: string, originalConstraint: string) => void;
 }
@@ -84,7 +84,7 @@ export function computeTypeSelectorState(
   canEdit: boolean;
   onSelect: (type: string) => void;
 } {
-  const { nodeId, data, nodes, edges, currentFunction, getConcreteTypes, onTypeSelect } = params;
+  const { nodeId, data, nodes, edges, currentFunction, getConstraintElements, onTypeSelect } = params;
 
   // 1. 计算显示类型（统一逻辑）
   const displayType = getDisplayType(pin, data);
@@ -96,7 +96,7 @@ export function computeTypeSelectorState(
     nodes,
     edges,
     currentFunction,
-    getConcreteTypes
+    getConstraintElements
   );
 
   // 3. 构造回调

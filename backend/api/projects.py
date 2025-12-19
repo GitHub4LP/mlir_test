@@ -106,7 +106,6 @@ class GraphNode(BaseModel):
 
 class GraphEdge(BaseModel):
     """图边"""
-    id: str
     source: str
     sourceHandle: str
     target: str
@@ -360,6 +359,8 @@ async def save_project(request: SaveProjectRequest):
     
     注意：使用 POST + 请求体传递路径，避免 URL 编码问题
     路径从 project.path 获取
+    
+    函数文件以函数ID命名（函数ID = 函数名），重命名时会自动删除旧文件
     """
     try:
         project = request.project
@@ -370,14 +371,25 @@ async def save_project(request: SaveProjectRequest):
         
         functions_dir = get_functions_dir(project_path)
         
+        # 收集所有现有的函数文件
+        existing_files = {f.stem for f in functions_dir.glob("*.json")}
+        
         # Save main function
         save_function_to_file(functions_dir, project.mainFunction)
+        existing_files.discard(project.mainFunction.id)
         
         # Save custom functions
         custom_function_ids: list[str] = []
         for func in project.customFunctions:
             save_function_to_file(functions_dir, func)
             custom_function_ids.append(func.id)
+            existing_files.discard(func.id)
+        
+        # 删除不再存在的函数文件（重命名或删除的函数）
+        for old_file_id in existing_files:
+            old_file = functions_dir / f"{old_file_id}.json"
+            if old_file.exists():
+                old_file.unlink()
         
         # 从节点自动计算使用的方言列表（不再手动指定）
         dialects = extract_dialects_from_project(project)

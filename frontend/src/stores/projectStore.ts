@@ -8,10 +8,10 @@ import { create } from 'zustand';
 import type { Project, FunctionDef, ParameterDef, TypeDef, GraphState, FunctionTrait } from '../types';
 import * as projectPersistence from '../services/projectPersistence';
 import { getTypeColor } from '../services/typeSystem';
-import { syncFunctionSignatureChange, syncFunctionRemoval } from '../services/functionSyncService';
+import { syncFunctionSignatureChange, syncFunctionRemoval, syncFunctionRename } from '../services/functionSyncService';
 import { dataInHandle, dataOutHandle } from '../services/port';
 
-import type { FunctionEntryData, FunctionReturnData, PortConfig } from '../types';
+import type { FunctionEntryData, FunctionReturnData, PortConfig, GraphNode } from '../types';
 
 /**
  * Creates ports from function parameters
@@ -50,6 +50,21 @@ function createReturnPorts(returnTypes: TypeDef[]): PortConfig[] {
 
 
 /**
+ * 获取下一个可用的 Return 节点索引
+ */
+function getNextReturnNodeIndex(existingNodes: GraphNode[]): number {
+  const returnNodes = existingNodes.filter(n => n.type === 'function-return');
+  const indices = returnNodes
+    .map(n => {
+      const match = n.id.match(/^return-(\d+)$/);
+      return match ? parseInt(match[1], 10) : -1;
+    })
+    .filter(idx => idx >= 0);
+  if (indices.length === 0) return 0;
+  return Math.max(...indices) + 1;
+}
+
+/**
  * Creates a graph with Function Entry and Return nodes
  * @param isMain - If true, creates a main function with fixed signature (no params, returns i32)
  */
@@ -60,8 +75,10 @@ function createFunctionGraph(
   returnTypes: TypeDef[],
   isMain: boolean = false
 ): GraphState {
-  const entryNodeId = `${functionId}-entry`;
-  const returnNodeId = `${functionId}-return`;
+  // Entry 节点在函数作用域内，使用固定 ID
+  const entryNodeId = 'entry';
+  // Return 节点使用统一的索引生成逻辑（新函数没有现有节点，所以从 0 开始）
+  const returnNodeId = `return-${getNextReturnNodeIndex([])}`;
 
   // Main function has fixed signature: no parameters, returns I32
   const actualParams = isMain ? [] : parameters;
@@ -127,7 +144,7 @@ function createDefaultMainFunction(): FunctionDef {
  * Creates a new function with the given name, including Entry and Return nodes
  */
 function createFunction(name: string, id?: string): FunctionDef {
-  const funcId = id || `func_${Date.now()}`;
+  const funcId = id || name;
   return {
     id: funcId,
     name,
@@ -423,20 +440,37 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set((state) => {
       if (!state.project) return state;
 
-      // Update the function name
+      const oldFunc = state.project.mainFunction.id === functionId
+        ? state.project.mainFunction
+        : state.project.customFunctions.find(f => f.id === functionId);
+      
+      if (!oldFunc) return state;
+
+      const newId = newName;
       let updatedProject = { ...state.project };
+
+      // Update function ID and name
       if (state.project.mainFunction.id === functionId) {
-        updatedProject.mainFunction = { ...state.project.mainFunction, name: newName };
+        updatedProject.mainFunction = { ...state.project.mainFunction, id: newId, name: newName };
       } else {
         updatedProject.customFunctions = state.project.customFunctions.map(f =>
-          f.id === functionId ? { ...f, name: newName } : f
+          f.id === functionId ? { ...f, id: newId, name: newName } : f
         );
       }
 
-      // Sync all FunctionCallNodes to update the displayed name
-      updatedProject = syncFunctionSignatureChange(updatedProject, functionId);
+      // Update all FunctionCallNodes to use new functionId
+      updatedProject = syncFunctionRename(updatedProject, functionId, newId);
 
-      return { project: updatedProject, error: null };
+      // If the renamed function was selected, update currentFunctionId
+      const newState: Partial<ProjectState> = {
+        project: updatedProject,
+        error: null,
+      };
+      if (state.currentFunctionId === functionId) {
+        newState.currentFunctionId = newId;
+      }
+
+      return newState as ProjectState;
     });
 
     return true;

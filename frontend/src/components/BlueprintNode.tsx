@@ -45,7 +45,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   const { setNodes } = useReactFlow();
   const edges = useEdges();
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
 
   // 使用统一的 hook
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -139,7 +139,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     // 统一使用 computeTypeSelectionState 计算可选集和 canEdit
     const currentFunction = getCurrentFunction();
     const { options, canEdit } = computeTypeSelectionState(
-      id, pin.id, nodes, edges, currentFunction ?? undefined, getConcreteTypes
+      id, pin.id, nodes, edges, currentFunction ?? undefined, getConstraintElements
     );
 
     return (
@@ -151,7 +151,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConcreteTypes]);
+  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
 
   // Get port type: 从节点数据中获取显示类型
   const getPortTypeWrapper = useCallback((pinId: string) => {

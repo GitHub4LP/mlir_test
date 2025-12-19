@@ -21,7 +21,7 @@ export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
 
 export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, selected }: FunctionReturnNodeProps) {
-  const { functionId, branchName, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
+  const { branchName, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
   const edges = useEdges();
   const nodes = useNodes();
   const { setNodes } = useReactFlow();
@@ -29,28 +29,29 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const removeReturnType = useProjectStore(state => state.removeReturnType);
   const updateReturnType = useProjectStore(state => state.updateReturnType);
   const getFunctionById = useProjectStore(state => state.getFunctionById);
-  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
 
-  // 使用统一的 hooks
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
+
+  const functionId = currentFunction?.id || '';
 
   const handleAddReturnType = useCallback(() => {
     const func = getFunctionById(functionId);
     const existingNames = func?.returnTypes.map(r => r.name || '') || [];
     let index = 0, newName = `ret${index}`;
     while (existingNames.includes(newName)) { index++; newName = `ret${index}`; }
-    addReturnType(functionId, { name: newName, constraint: 'AnyType' });
+    if (functionId) addReturnType(functionId, { name: newName, constraint: 'AnyType' });
   }, [functionId, addReturnType, getFunctionById]);
 
   const handleRemoveReturnType = useCallback((returnName: string) => {
-    removeReturnType(functionId, returnName);
+    if (functionId) removeReturnType(functionId, returnName);
   }, [functionId, removeReturnType]);
 
   const handleRenameReturnType = useCallback((oldName: string, newName: string) => {
     const func = getFunctionById(functionId);
     const ret = func?.returnTypes.find(r => r.name === oldName);
-    if (ret) updateReturnType(functionId, oldName, { ...ret, name: newName });
+    if (ret && functionId) updateReturnType(functionId, oldName, { ...ret, name: newName });
   }, [functionId, updateReturnType, getFunctionById]);
 
   // 同步 FunctionDef.returnTypes 到 React Flow 节点的 data.inputs
@@ -90,13 +91,13 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
       const name = ret.name || `result_${idx}`;
       const portId = dataInHandle(name);
       const constraint = ret.constraint;
-      return {
-        id: portId,
+    return {
+      id: portId,
         label: name,
-        typeConstraint: constraint,
-        displayName: constraint,
+      typeConstraint: constraint,
+      displayName: constraint,
         color: getTypeColor(inputTypes[name] || pinnedTypes[portId] || constraint),
-      };
+    };
     });
   }, [isMain, currentFunction?.returnTypes, inputTypes, pinnedTypes]);
 
@@ -106,11 +107,11 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     nodes,
     edges,
     currentFunction: currentFunction ?? undefined,
-    getConcreteTypes,
+    getConstraintElements,
     onTypeSelect: (portId: string, type: string, originalConstraint: string) => {
       handleTypeChange(portId, type, originalConstraint);
     },
-  }), [id, data, nodes, edges, currentFunction, getConcreteTypes, handleTypeChange]);
+  }), [id, data, nodes, edges, currentFunction, getConstraintElements, handleTypeChange]);
 
   const headerColor = isMain ? '#dc2626' : '#ef4444';
   const headerText = branchName ? `Return "${branchName}"` : 'Return';

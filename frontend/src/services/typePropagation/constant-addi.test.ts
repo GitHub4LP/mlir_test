@@ -113,8 +113,8 @@ describe('constant → addi narrowing', () => {
     const nodes = [constantNode, addiNode];
 
     // 执行传播和收窄
-    const { getConcreteTypes, pickConstraintName } = useTypeConstraintStore.getState();
-    const result = computePropagationWithNarrowing(nodes, edges, undefined, getConcreteTypes, pickConstraintName);
+    const { getConstraintElements, pickConstraintName } = useTypeConstraintStore.getState();
+    const result = computePropagationWithNarrowing(nodes, edges, undefined, getConstraintElements, pickConstraintName);
 
     // constant.result 应该收窄为 SignlessIntegerLike
     // 因为 AnyType ∩ SignlessIntegerLike = SignlessIntegerLike

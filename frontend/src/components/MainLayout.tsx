@@ -34,7 +34,7 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
 import { nodeTypes } from './nodeTypes';
 import { edgeTypes } from './edgeTypes';
-import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionReturnData, FunctionCallData, DataPin } from '../types';
+import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, GraphNode, GraphEdge, FunctionEntryData, FunctionReturnData, FunctionCallData, DataPin } from '../types';
 import { validateConnection, type ConnectionValidationResult } from '../services/connectionValidator';
 import { getTypeColor } from '../services/typeSystem';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
@@ -60,6 +60,56 @@ export interface MainLayoutProps {
  */
 function generateNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Generates a deterministic edge ID from four-tuple
+ */
+function generateEdgeId(edge: { source: string; sourceHandle: string; target: string; targetHandle: string }): string {
+  return `edge-${edge.source}-${edge.sourceHandle}-${edge.target}-${edge.targetHandle}`;
+}
+
+/**
+ * Checks if two edges are equal based on four-tuple
+ */
+function edgesEqual(e1: GraphEdge | Edge, e2: GraphEdge | Edge): boolean {
+  return e1.source === e2.source && 
+         e1.sourceHandle === e2.sourceHandle && 
+         e1.target === e2.target && 
+         e1.targetHandle === e2.targetHandle;
+}
+
+/**
+ * Converts GraphEdge to React Flow Edge format
+ * 
+ * Derives type and initial data from handle IDs:
+ * - type: 'execution' if sourceHandle or targetHandle starts with 'exec-', otherwise 'data'
+ * - data: undefined for execution edges, {} for data edges (color will be calculated later)
+ * - id: generated deterministically from four-tuple (required by React Flow)
+ */
+function convertGraphEdgeToReactFlowEdge(edge: GraphEdge): Edge {
+  const isExec = edge.sourceHandle.startsWith('exec-') || edge.targetHandle.startsWith('exec-');
+  return {
+    ...edge,
+    id: generateEdgeId(edge),
+    type: isExec ? 'execution' : 'data',
+    data: isExec ? undefined : {},
+  };
+}
+
+/**
+ * Converts GraphNode to React Flow Node format
+ * 
+ * GraphNode already has all required fields for React Flow Node,
+ * but we ensure it has the correct type structure.
+ */
+function convertGraphNodeToReactFlowNode(node: GraphNode): Node {
+  return {
+    ...node,
+    // Ensure type is set (should already be set in GraphNode)
+    type: node.type || 'operation',
+    // React Flow Node may have additional optional fields, but these are the essentials
+  } as Node;
 }
 
 /**
@@ -294,7 +344,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   }, [initializeDialects]);
 
   // Get type constraint store methods for narrowing calculation
-  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
   // Track if we're loading from store to avoid triggering auto-save
@@ -305,9 +355,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   useEffect(() => {
     if (!currentFunctionId || !currentFunction || isLoadingFromStoreRef.current) return;
 
-    // 找到 Entry 和 Return 节点
-    const entryNode = nodes.find(n => n.type === 'function-entry' && (n.data as FunctionEntryData).functionId === currentFunctionId);
-    const returnNode = nodes.find(n => n.type === 'function-return' && (n.data as FunctionReturnData).functionId === currentFunctionId);
+    // main 函数的返回类型是固定的 I32，不需要同步
+    if (currentFunction.isMain) return;
+
+    // 找到 Entry 节点（在函数作用域内，使用固定 ID）
+    const entryNode = nodes.find(n => n.type === 'function-entry' && n.id === 'entry');
+    // Return 节点可能有多个，查找第一个（用于签名同步）
+    const returnNode = nodes.find(n => n.type === 'function-return');
 
     if (!entryNode && !returnNode) return;
 
@@ -358,10 +412,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         data: n.data as BlueprintNodeData,
       })),
       edges: edges.map(e => ({
-        id: e.id,
         source: e.source,
-        target: e.target,
         sourceHandle: e.sourceHandle || '',
+        target: e.target,
         targetHandle: e.targetHandle || '',
       })),
     };
@@ -397,17 +450,22 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     if (!func) return;
 
     isLoadingFromStoreRef.current = true;
-    const graphNodes = func.graph.nodes as Node[];
-    const graphEdges = func.graph.edges as Edge[];
+    
+    // Convert GraphNode[] to React Flow Node[] (GraphNode already has all required fields)
+    const graphNodes = func.graph.nodes.map(convertGraphNodeToReactFlowNode);
+    
+    // Convert GraphEdge[] to React Flow Edge[] (add type and initial data)
+    const graphEdges = func.graph.edges.map(convertGraphEdgeToReactFlowEdge);
 
     // 类型传播并同步签名
     const result = triggerTypePropagationWithSignature(
-      graphNodes, graphEdges, func, getConcreteTypes, pickConstraintName
+      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName
     );
 
     setNodes(result.nodes);
     
     // 为所有数据边设置颜色（使用传播后的 nodes）
+    // 注意：使用转换后的 graphEdges，因为 triggerTypePropagationWithSignature 不返回 edges
     const edgesWithColors = graphEdges.map(edge => {
       if (edge.type === 'execution' || !edge.sourceHandle) {
         return edge;
@@ -474,7 +532,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       isLoadingFromStoreRef.current = false;
     });
     // 注意：签名同步由上面的 useEffect 自动处理，无需手动调用
-  }, [getFunctionById, getConcreteTypes, pickConstraintName, setNodes, setEdges]);
+  }, [getFunctionById, getConstraintElements, pickConstraintName, setNodes, setEdges]);
 
 
 
@@ -542,6 +600,21 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     const idMap = new Map<string, string>();
     const offset = { x: 50, y: 50 }; // Offset for pasted nodes
 
+    // Find the next available Return node index
+    const existingReturnNodes = nodes.filter(n => n.type === 'function-return');
+    const getNextReturnIndex = (): number => {
+      const indices = existingReturnNodes
+        .map(n => {
+          const match = n.id.match(/^return-(\d+)$/);
+          return match ? parseInt(match[1], 10) : -1;
+        })
+        .filter(idx => idx >= 0);
+      if (indices.length === 0) return 0;
+      return Math.max(...indices) + 1;
+    };
+
+    let nextReturnIndex = getNextReturnIndex();
+
     // Create new nodes with new IDs (skip Entry nodes, allow Return nodes)
     const newNodes: Node[] = [];
     for (const node of copiedNodes) {
@@ -550,7 +623,15 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         continue;
       }
 
-      const newId = generateNodeId();
+      let newId: string;
+      if (node.type === 'function-return') {
+        // Return 节点使用 return-{index} 格式，从当前最大索引+1开始
+        newId = `return-${nextReturnIndex}`;
+        nextReturnIndex++;
+      } else {
+        // 其他节点使用随机 ID
+        newId = generateNodeId();
+      }
       idMap.set(node.id, newId);
 
       newNodes.push({
@@ -572,7 +653,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       .filter(edge => idMap.has(edge.source) && idMap.has(edge.target))
       .map(edge => ({
         ...edge,
-        id: `edge-${idMap.get(edge.source)}-${edge.sourceHandle}-${idMap.get(edge.target)}-${edge.targetHandle}`,
+        id: generateEdgeId({
+          source: idMap.get(edge.source)!,
+          sourceHandle: edge.sourceHandle!,
+          target: idMap.get(edge.target)!,
+          targetHandle: edge.targetHandle!,
+        }),
         source: idMap.get(edge.source)!,
         target: idMap.get(edge.target)!,
         selected: false,
@@ -587,7 +673,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     setEdges(eds => [...eds, ...newEdges]);
 
     console.log(`Pasted ${newNodes.length} nodes and ${newEdges.length} edges`);
-  }, [setNodes, setEdges]);
+  }, [nodes, setNodes, setEdges]);
 
   /**
    * Delete selected nodes and edges
@@ -619,9 +705,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     );
 
     // Get selected edges
-    const selectedEdgeIds = new Set(edges.filter(e => e.selected).map(e => e.id));
+    const selectedEdges = edges.filter(e => e.selected);
 
-    if (selectedNodeIds.size === 0 && selectedEdgeIds.size === 0) return;
+    if (selectedNodeIds.size === 0 && selectedEdges.length === 0) return;
 
     // Remove selected nodes
     if (selectedNodeIds.size > 0) {
@@ -632,9 +718,11 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       ));
     }
 
-    // Remove selected edges
-    if (selectedEdgeIds.size > 0) {
-      setEdges(eds => eds.filter(e => !selectedEdgeIds.has(e.id)));
+    // Remove selected edges (based on four-tuple matching)
+    if (selectedEdges.length > 0) {
+      setEdges(eds => eds.filter(e => 
+        !selectedEdges.some(se => edgesEqual(e, se))
+      ));
     }
 
     // Log deletion info
@@ -642,7 +730,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     if (skippedReturnNodes > 0) {
       console.log(`Kept ${skippedReturnNodes} Return node(s) to ensure at least one remains`);
     }
-    console.log(`Deleted ${selectedNodeIds.size} nodes and ${selectedEdgeIds.size} edges`);
+    console.log(`Deleted ${selectedNodeIds.size} nodes and ${selectedEdges.length} edges`);
   }, [nodes, edges, setNodes, setEdges]);
 
   /**
@@ -698,7 +786,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     if (!edge.sourceHandle?.startsWith('exec-')) {
       setNodes(nds => {
         const result = triggerTypePropagationWithSignature(
-          nds, remainingEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+          nds, remainingEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
         );
         // 注意：签名同步由 useEffect 自动处理，无需手动调用
         
@@ -771,7 +859,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         return result.nodes;
       });
     }
-  }, [edges, setEdges, setNodes, currentFunction, getConcreteTypes, pickConstraintName]);
+  }, [edges, setEdges, setNodes, currentFunction, getConstraintElements, pickConstraintName]);
 
   // Handle function selection from FunctionManager
   const handleFunctionSelect = useCallback((functionId: string) => {
@@ -954,12 +1042,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     // 统一使用 getDisplayType 获取显示类型
     let displayType: string | null = null;
 
-    // Handle FunctionEntryNode - outputs are in data.outputs array
-    if (sourceNode.type === 'function-entry') {
-      const entryData = sourceNode.data as FunctionEntryData;
-      if (entryData.outputs) {
-        const port = entryData.outputs.find(p => p.id === sourceHandleId);
-        if (port) {
+      // Handle FunctionEntryNode - outputs are in data.outputs array
+      if (sourceNode.type === 'function-entry') {
+        const entryData = sourceNode.data as FunctionEntryData;
+        if (entryData.outputs) {
+          const port = entryData.outputs.find(p => p.id === sourceHandleId);
+          if (port) {
           const dataPin: DataPin = {
             id: port.id,
             label: port.name,
@@ -967,15 +1055,15 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
             displayName: port.name,
           };
           displayType = getDisplayType(dataPin, entryData);
+          }
         }
       }
-    }
-    // Handle FunctionCallNode - outputs are in data.outputs array
+      // Handle FunctionCallNode - outputs are in data.outputs array
     else if (sourceNode.type === 'function-call') {
-      const callData = sourceNode.data as FunctionCallData;
-      if (callData.outputs) {
-        const port = callData.outputs.find(p => p.id === sourceHandleId);
-        if (port) {
+        const callData = sourceNode.data as FunctionCallData;
+        if (callData.outputs) {
+          const port = callData.outputs.find(p => p.id === sourceHandleId);
+          if (port) {
           const dataPin: DataPin = {
             id: port.id,
             label: port.name,
@@ -983,15 +1071,15 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
             displayName: port.name,
           };
           displayType = getDisplayType(dataPin, callData);
+          }
         }
       }
-    }
-    // Handle BlueprintNode (operation) - outputTypes is a Record
+      // Handle BlueprintNode (operation) - outputTypes is a Record
     else if (sourceNode.type === 'operation') {
-      const nodeData = sourceNode.data as BlueprintNodeData;
-      const parsed = PortRef.parseHandleId(sourceHandleId);
-      if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
-        const portName = parsed.name;
+        const nodeData = sourceNode.data as BlueprintNodeData;
+        const parsed = PortRef.parseHandleId(sourceHandleId);
+        if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
+          const portName = parsed.name;
         // 从 operation 的 outputs 中找到对应的 port
         const operation = nodeData.operation;
         const result = operation.results.find(r => r.name === portName);
@@ -1043,7 +1131,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
       const edgeWithStyle: Edge = {
         ...connection,
-        id: `edge-${connection.source}-${connection.sourceHandle}-${connection.target}-${connection.targetHandle}`,
+        id: generateEdgeId({
+          source: connection.source!,
+          sourceHandle: connection.sourceHandle!,
+          target: connection.target!,
+          targetHandle: connection.targetHandle!,
+        }),
         type: isExec ? 'execution' : 'data',
         data: isExec ? undefined : { color: getEdgeColor(connection.source!, connection.sourceHandle) },
       };
@@ -1055,7 +1148,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       if (!isExec) {
         setNodes(nds => {
           const result = triggerTypePropagationWithSignature(
-            nds, newEdges, currentFunction ?? undefined, getConcreteTypes, pickConstraintName
+            nds, newEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
           );
           // 注意：签名同步由 useEffect 自动处理，无需手动调用
           
@@ -1130,7 +1223,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         });
       }
     },
-    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConcreteTypes, pickConstraintName]
+    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConstraintElements, pickConstraintName]
   );
 
   /**
@@ -1337,6 +1430,21 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           projectPath={project?.path}
           isExpanded={executionPanelExpanded}
           onToggleExpand={toggleExecutionPanel}
+          onSaveCurrentGraph={() => {
+            if (currentFunctionId) {
+              saveCurrentGraph(currentFunctionId);
+            }
+          }}
+          onSaveProject={async () => {
+            if (!project?.path) return false;
+            const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
+            // 先保存当前图到 projectStore
+            if (currentFunctionId) {
+              saveCurrentGraph(currentFunctionId);
+            }
+            // 然后保存到磁盘
+            return await saveProjectToPath(project.path);
+          }}
         />
       </div>
 
@@ -1361,6 +1469,11 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       <SaveProjectDialog
         isOpen={isSaveDialogOpen}
         onClose={() => setIsSaveDialogOpen(false)}
+        onSaveCurrentGraph={() => {
+          if (currentFunctionId) {
+            saveCurrentGraph(currentFunctionId);
+          }
+        }}
       />
     </div>
   );

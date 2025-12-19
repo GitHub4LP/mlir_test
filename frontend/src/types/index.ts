@@ -142,12 +142,15 @@ export interface StoredBlueprintNodeData {
   attributes: Record<string, string>;
   /** 用户显式选择的类型（pinned）- 传播的源 */
   pinnedTypes?: Record<string, string>;
+  /** 传播后的输入类型（用于快速还原） */
+  inputTypes?: Record<string, string>;
+  /** 传播后的输出类型（用于快速还原） */
+  outputTypes?: Record<string, string>;
   /** Variadic 端口实例数 */
   variadicCounts?: Record<string, number>;
   execIn?: ExecPin;
   execOuts: ExecPin[];
   regionPins: RegionPinConfig[];
-  // 注意：inputTypes/outputTypes 是传播派生数据，不保存，加载后重新计算
 }
 
 /** 运行时格式的 BlueprintNodeData（包含完整 OperationDef） */
@@ -254,12 +257,14 @@ export interface GraphNode {
 /**
  * Stored format for GraphNode (used in JSON files)
  * Operation nodes use StoredBlueprintNodeData instead of BlueprintNodeData
+ * Entry/Return nodes use StoredFunctionEntryData/StoredFunctionReturnData
+ * Function-call nodes use StoredFunctionCallData instead of FunctionCallData
  */
 export interface StoredGraphNode {
   id: string;
   type: 'operation' | 'function-entry' | 'function-return' | 'function-call';
   position: { x: number; y: number };
-  data: StoredBlueprintNodeData | FunctionEntryData | FunctionReturnData | FunctionCallData;
+  data: StoredBlueprintNodeData | StoredFunctionEntryData | StoredFunctionReturnData | StoredFunctionCallData;
 }
 
 /**
@@ -296,7 +301,6 @@ export interface StoredProject {
 }
 
 export interface GraphEdge {
-  id: string;
   source: string;
   sourceHandle: string;
   target: string;
@@ -307,7 +311,7 @@ export interface FunctionEntryData extends TypePropagationData {
   [key: string]: unknown;
   functionId: string;
   functionName: string;
-  outputs: PortConfig[];        // Parameter outputs (data pins)
+  outputs: PortConfig[];        // Parameter outputs (data pins) - 运行时从 FunctionDef 派生
   execOut: ExecPin;             // Execution output pin
   isMain: boolean;              // Whether this is the main function entry
 }
@@ -317,17 +321,52 @@ export interface FunctionReturnData extends TypePropagationData {
   functionId: string;
   functionName: string;
   branchName: string;           // Branch name for this return (empty = default)
-  inputs: PortConfig[];         // Return value inputs (data pins)
+  inputs: PortConfig[];         // Return value inputs (data pins) - 运行时从 FunctionDef 派生
   execIn: ExecPin;              // Execution input pin
   isMain: boolean;              // Whether this is the main function return
+}
+
+/**
+ * 存储格式的 FunctionEntryData（只保存必要字段）
+ * functionId、functionName、outputs、outputTypes、narrowedConstraints 不保存，从 FunctionDef 派生
+ */
+export interface StoredFunctionEntryData {
+  execOut: ExecPin;
+  isMain: boolean;
+  pinnedTypes?: Record<string, string>;
+}
+
+/**
+ * 存储格式的 FunctionReturnData（只保存必要字段）
+ * functionId、functionName、inputs、inputTypes、narrowedConstraints 不保存，从 FunctionDef 派生
+ */
+export interface StoredFunctionReturnData {
+  branchName: string;
+  execIn: ExecPin;
+  isMain: boolean;
+  pinnedTypes?: Record<string, string>;
+}
+
+/**
+ * 存储格式的 FunctionCallData（只保存必要字段）
+ * inputs、outputs、narrowedConstraints 不保存，从 FunctionDef 派生
+ */
+export interface StoredFunctionCallData {
+  functionId: string;
+  functionName: string;
+  pinnedTypes?: Record<string, string>;
+  inputTypes?: Record<string, string>;
+  outputTypes?: Record<string, string>;
+  execIn: ExecPin;
+  execOuts: ExecPin[];
 }
 
 export interface FunctionCallData extends TypePropagationData {
   [key: string]: unknown;
   functionId: string;
   functionName: string;
-  inputs: PortConfig[];         // Parameter inputs (data pins)
-  outputs: PortConfig[];        // Return value outputs (data pins)
+  inputs: PortConfig[];         // Parameter inputs (data pins) - 运行时从 FunctionDef 派生
+  outputs: PortConfig[];        // Return value outputs (data pins) - 运行时从 FunctionDef 派生
   execIn: ExecPin;              // Execution input pin
   execOuts: ExecPin[];          // Execution output pins (one per Return node in function)
 }

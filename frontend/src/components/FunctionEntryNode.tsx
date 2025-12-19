@@ -30,7 +30,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const updateParameter = useProjectStore(state => state.updateParameter);
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const setFunctionTraits = useProjectStore(state => state.setFunctionTraits);
-  const getConcreteTypes = useTypeConstraintStore(state => state.getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
 
   // 使用统一的 hooks
   const currentFunction = useCurrentFunction();
@@ -94,13 +94,13 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     return params.map((param) => {
       const portId = dataOutHandle(param.name);
       const constraint = param.constraint;
-      return {
-        id: portId,
+    return {
+      id: portId,
         label: param.name,
-        typeConstraint: constraint,
-        displayName: constraint,
+      typeConstraint: constraint,
+      displayName: constraint,
         color: getTypeColor(outputTypes[param.name] || pinnedTypes[portId] || constraint),
-      };
+    };
     });
   }, [isMain, parameters, outputTypes, pinnedTypes]);
 
@@ -110,11 +110,11 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     nodes,
     edges,
     currentFunction: currentFunction ?? undefined,
-    getConcreteTypes,
+    getConstraintElements,
     onTypeSelect: (portId: string, type: string, originalConstraint: string) => {
       handleTypeChange(portId, type, originalConstraint);
     },
-  }), [id, data, nodes, edges, currentFunction, getConcreteTypes, handleTypeChange]);
+  }), [id, data, nodes, edges, currentFunction, getConstraintElements, handleTypeChange]);
 
   const headerColor = isMain ? '#f59e0b' : '#22c55e';
 

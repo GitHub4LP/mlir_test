@@ -45,11 +45,11 @@ export interface PortTypeState {
 function getConstraintOptions(constraint: string): string[] | null {
   if (!constraint) return null;
   
-  const { buildableTypes, isLoaded, getConcreteTypes } = useTypeConstraintStore.getState();
+  const { buildableTypes, isLoaded, getConstraintElements } = useTypeConstraintStore.getState();
   
   if (!isLoaded) return null;
   
-  const types = getConcreteTypes(constraint);
+  const types = getConstraintElements(constraint);
   if (types.length > 0) return types;
   
   if (buildableTypes.includes(constraint)) {
@@ -65,7 +65,7 @@ function getConstraintOptions(constraint: string): string[] | null {
  * 核心模型：
  * - displayType = pinned > propagated > effectiveConstraint
  * - effectiveConstraint = narrowedConstraint ?? originalConstraint
- * - concreteOptions = getConcreteTypes(effectiveConstraint)
+ * - concreteOptions = getConstraintElements(effectiveConstraint)
  * - canEdit = !isExternallyDetermined && concreteOptions.length > 1
  * 
  * 关键概念：
@@ -141,7 +141,7 @@ export function computeSignaturePortOptions(
   internalConstraints: string[],
   externalConstraints: string[]
 ): string[] | null {
-  const { buildableTypes, constraintDefs, isLoaded, getConcreteTypes: storeGetConcreteTypes } = useTypeConstraintStore.getState();
+  const { buildableTypes, constraintDefs, isLoaded, getConstraintElements: storeGetConstraintElements } = useTypeConstraintStore.getState();
   
   if (!isLoaded) return null;
   
@@ -155,7 +155,7 @@ export function computeSignaturePortOptions(
   // 检查候选是否满足所有约束
   const satisfiesAllConstraints = (candidateTypes: string[]): boolean => {
     for (const constraint of allConstraints) {
-      const constraintTypes = storeGetConcreteTypes(constraint);
+      const constraintTypes = storeGetConstraintElements(constraint);
       for (const t of candidateTypes) {
         if (!constraintTypes.includes(t)) {
           return false;
@@ -178,7 +178,7 @@ export function computeSignaturePortOptions(
   for (const [name] of constraintDefs) {
     if (buildableTypes.includes(name)) continue;
     
-    const candidateTypes = storeGetConcreteTypes(name);
+    const candidateTypes = storeGetConstraintElements(name);
     if (candidateTypes.length > 0 && satisfiesAllConstraints(candidateTypes)) {
       validOptions.push(name);
     }

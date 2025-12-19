@@ -89,7 +89,7 @@ export function createOutputPortsFromReturns(func: FunctionDef): PortConfig[] {
  * Gets execution outputs from a function's Return nodes
  * Each Return node becomes an exec output on the FunctionCallNode
  */
-function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
+export function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
   const returnNodes = func.graph.nodes.filter(n => n.type === 'function-return');
 
   if (returnNodes.length === 0) {

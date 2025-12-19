@@ -146,8 +146,8 @@ function updateReturnNodeData(
 function findInvalidEdges(
   edges: GraphEdge[],
   nodes: GraphNode[]
-): string[] {
-  const invalidEdgeIds: string[] = [];
+): GraphEdge[] {
+  const invalidEdges: GraphEdge[] = [];
 
   // Build a map of valid port IDs for each node
   const validPorts = new Map<string, Set<string>>();
@@ -185,17 +185,17 @@ function findInvalidEdges(
 
     // If source node has tracked ports and the port doesn't exist
     if (sourcePortIds && !sourcePortIds.has(edge.sourceHandle)) {
-      invalidEdgeIds.push(edge.id);
+      invalidEdges.push(edge);
       continue;
     }
 
     // If target node has tracked ports and the port doesn't exist
     if (targetPortIds && !targetPortIds.has(edge.targetHandle)) {
-      invalidEdgeIds.push(edge.id);
+      invalidEdges.push(edge);
     }
   }
 
-  return invalidEdgeIds;
+  return invalidEdges;
 }
 
 /**
@@ -247,8 +247,11 @@ function syncGraphWithFunction(
   });
 
   // Remove invalid edges
-  const invalidEdgeIds = new Set(findInvalidEdges(graph.edges, updatedNodes));
-  const updatedEdges = graph.edges.filter(e => !invalidEdgeIds.has(e.id));
+  const invalidEdges = findInvalidEdges(graph.edges, updatedNodes);
+  const invalidEdgeSet = new Set(invalidEdges.map(e => `${e.source}-${e.sourceHandle}-${e.target}-${e.targetHandle}`));
+  const updatedEdges = graph.edges.filter(e => 
+    !invalidEdgeSet.has(`${e.source}-${e.sourceHandle}-${e.target}-${e.targetHandle}`)
+  );
 
   return {
     nodes: updatedNodes,
@@ -311,6 +314,64 @@ export function syncFunctionSignatureChange(
  * Removes all FunctionCallNodes that reference a deleted function
  * and cleans up their connections
  */
+/**
+ * 同步函数重命名：更新所有 FunctionCallNode 的 functionId
+ */
+export function syncFunctionRename(
+  project: Project,
+  oldFunctionId: string,
+  newFunctionId: string
+): Project {
+  const findRenamedFunction = (): FunctionDef | null => {
+    if (project.mainFunction.id === newFunctionId) {
+      return project.mainFunction;
+    }
+    return project.customFunctions.find(f => f.id === newFunctionId) || null;
+  };
+
+  const renamedFunc = findRenamedFunction();
+  if (!renamedFunc) return project;
+
+  const updateGraph = (graph: GraphState): GraphState => {
+    const updatedNodes = graph.nodes.map(node => {
+      if (node.type === 'function-call') {
+        const data = node.data as FunctionCallData;
+        if (data.functionId === oldFunctionId) {
+          return {
+            ...node,
+            data: {
+              ...data,
+              functionId: newFunctionId,
+              functionName: renamedFunc.name,
+            },
+          };
+        }
+      }
+      return node;
+    });
+
+    return {
+      nodes: updatedNodes,
+      edges: graph.edges,
+    };
+  };
+
+  const updatedMainGraph = updateGraph(project.mainFunction.graph);
+  const updatedCustomFunctions = project.customFunctions.map(func => ({
+    ...func,
+    graph: updateGraph(func.graph),
+  }));
+
+  return {
+    ...project,
+    mainFunction: {
+      ...project.mainFunction,
+      graph: updatedMainGraph,
+    },
+    customFunctions: updatedCustomFunctions,
+  };
+}
+
 export function syncFunctionRemoval(
   project: Project,
   removedFuncId: string

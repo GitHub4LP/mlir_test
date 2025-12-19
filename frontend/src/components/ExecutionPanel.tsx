@@ -20,6 +20,10 @@ interface ExecutionPanelProps {
   projectPath?: string;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  /** Callback to save current graph to projectStore before preview */
+  onSaveCurrentGraph?: () => void;
+  /** Callback to save project to disk before preview */
+  onSaveProject?: () => Promise<boolean>;
 }
 
 const API_BASE_URL = '/api';
@@ -40,7 +44,9 @@ const logStyles: Record<LogType, { icon: string; color: string }> = {
 export function ExecutionPanel({ 
   projectPath,
   isExpanded = true,
-  onToggleExpand 
+  onToggleExpand,
+  onSaveCurrentGraph,
+  onSaveProject,
 }: ExecutionPanelProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -73,9 +79,25 @@ export function ExecutionPanel({
     }
 
     setIsProcessing(true);
-    addLog('info', 'Generating MLIR code...');
+    addLog('info', 'Saving current graph...');
 
     try {
+      // 1. 先保存当前图到 projectStore（确保 React Flow 中的 edges 等更改被保存）
+      onSaveCurrentGraph?.();
+      
+      // 2. 保存项目到磁盘（确保磁盘上的文件是最新的）
+      if (onSaveProject) {
+        addLog('info', 'Saving project to disk...');
+        const saved = await onSaveProject();
+        if (!saved) {
+          addLog('error', 'Failed to save project to disk');
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      // 3. 从磁盘读取并生成 MLIR 代码
+    addLog('info', 'Generating MLIR code...');
       const response = await fetch(`${API_BASE_URL}/build/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,7 +118,7 @@ export function ExecutionPanel({
     } finally {
       setIsProcessing(false);
     }
-  }, [projectPath, addLog]);
+  }, [projectPath, addLog, onSaveCurrentGraph, onSaveProject]);
 
   /** Build - 构建项目 */
   const handleBuild = useCallback(async () => {

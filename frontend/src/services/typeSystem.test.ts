@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
   isAbstractConstraint,
-  getConcreteTypes,
+  getConstraintElements,
   isCompatible,
   canConnect,
   findCommonType,
@@ -129,27 +129,27 @@ describe('normalizeType', () => {
 // Type Constraint Query Tests
 // ============================================================================
 
-describe('getConcreteTypes', () => {
-  it('should return concrete types for abstract constraints', () => {
-    const types = getConcreteTypes('SignlessIntegerLike');
+describe('getConstraintElements', () => {
+  it('should return constraint elements for abstract constraints', () => {
+    const types = getConstraintElements('SignlessIntegerLike');
     expect(types).toContain('I32');
     expect(types).toContain('I64');
     expect(types.length).toBeGreaterThan(1);
   });
 
-  it('should return single type for concrete constraints', () => {
-    const types = getConcreteTypes('I32');
+  it('should return single element for single-element constraints', () => {
+    const types = getConstraintElements('I32');
     expect(types).toEqual(['I32']);
   });
 
   it('should return the constraint itself for unknown constraints', () => {
-    const types = getConcreteTypes('UnknownType');
+    const types = getConstraintElements('UnknownType');
     expect(types).toEqual(['UnknownType']);
   });
 
   it('should return a copy to prevent mutation', () => {
-    const types1 = getConcreteTypes('SignlessIntegerLike');
-    const types2 = getConcreteTypes('SignlessIntegerLike');
+    const types1 = getConstraintElements('SignlessIntegerLike');
+    const types2 = getConstraintElements('SignlessIntegerLike');
     types1.push('Modified');
     expect(types2).not.toContain('Modified');
   });

@@ -6,7 +6,7 @@
 
 import type { Node, Connection } from '@xyflow/react';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, PortConfig } from '../types';
-import { isCompatible, getConcreteTypes } from './typeSystem';
+import { isCompatible, getConstraintElements } from './typeSystem';
 import { PortRef, PortKind } from './port';
 
 /**
@@ -275,19 +275,19 @@ export function validateConnection(
   }
 
   // Generate helpful error message
-  const sourceConcreteTypes = getConcreteTypes(sourceType);
-  const targetConcreteTypes = getConcreteTypes(targetType);
+  const sourceElements = getConstraintElements(sourceType);
+  const targetElements = getConstraintElements(targetType);
 
   let errorMessage = `Type mismatch: '${sourceType}' is not compatible with '${targetType}'`;
 
-  // Add more detail if types are abstract
-  if (sourceConcreteTypes.length > 1 || targetConcreteTypes.length > 1) {
-    const sourceTypesStr = sourceConcreteTypes.length > 3
-      ? `${sourceConcreteTypes.slice(0, 3).join(', ')}...`
-      : sourceConcreteTypes.join(', ');
-    const targetTypesStr = targetConcreteTypes.length > 3
-      ? `${targetConcreteTypes.slice(0, 3).join(', ')}...`
-      : targetConcreteTypes.join(', ');
+  // Add more detail if constraints map to multiple elements
+  if (sourceElements.length > 1 || targetElements.length > 1) {
+    const sourceTypesStr = sourceElements.length > 3
+      ? `${sourceElements.slice(0, 3).join(', ')}...`
+      : sourceElements.join(', ');
+    const targetTypesStr = targetElements.length > 3
+      ? `${targetElements.slice(0, 3).join(', ')}...`
+      : targetElements.join(', ');
 
     errorMessage += `. Source accepts [${sourceTypesStr}], target requires [${targetTypesStr}]`;
   }

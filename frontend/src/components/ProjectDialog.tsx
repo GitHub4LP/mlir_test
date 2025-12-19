@@ -395,6 +395,8 @@ interface SaveProjectDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  /** Callback to save current graph to projectStore before saving project */
+  onSaveCurrentGraph?: () => void;
 }
 
 /**
@@ -405,6 +407,7 @@ export const SaveProjectDialog = memo(function SaveProjectDialog({
   isOpen,
   onClose,
   onSaved,
+  onSaveCurrentGraph,
 }: SaveProjectDialogProps) {
   const project = useProjectStore(state => state.project);
   const saveProjectToPath = useProjectStore(state => state.saveProjectToPath);
@@ -456,6 +459,10 @@ export const SaveProjectDialog = memo(function SaveProjectDialog({
     setIsLoading(true);
     setError(null);
     
+    // 保存当前图到 projectStore（如果提供了回调）
+    // 这确保 React Flow 中的 edges 等更改被保存到 projectStore
+    onSaveCurrentGraph?.();
+    
     const success = await saveProjectToPath(trimmedPath);
     
     setIsLoading(false);
@@ -466,7 +473,7 @@ export const SaveProjectDialog = memo(function SaveProjectDialog({
     } else {
       setError(storeError || 'Failed to save project');
     }
-  }, [path, saveProjectToPath, storeError, onSaved, handleClose]);
+  }, [path, saveProjectToPath, storeError, onSaved, handleClose, onSaveCurrentGraph]);
 
   // Handle escape key
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

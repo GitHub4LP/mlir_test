@@ -206,7 +206,7 @@ export function getBuildableTypeColor(buildableType: string): string | null {
  */
 export function getTypeColor(
   displayType: string,
-  getConcreteTypes: (constraint: string) => string[]
+  getConstraintElements: (constraint: string) => string[]
 ): string {
   if (!displayType) {
     return '#95A5A6'; // 默认灰色
@@ -218,18 +218,18 @@ export function getTypeColor(
     return directColor;
   }
 
-  // 2. 展开约束到 BuildableType 集合
-  const concreteTypes = getConcreteTypes(displayType);
+  // 2. 展开约束到类型约束集合元素
+  const elements = getConstraintElements(displayType);
 
-  // 3. 单一类型 → 直接返回该类型颜色
-  if (concreteTypes.length === 1) {
-    const color = getBuildableTypeColor(concreteTypes[0]);
+  // 3. 单一元素 → 直接返回该元素颜色
+  if (elements.length === 1) {
+    const color = getBuildableTypeColor(elements[0]);
     return color || '#95A5A6';
   }
 
-  // 4. 多个类型 → 对颜色进行 RGB 平均
-  if (concreteTypes.length > 1) {
-    const colors = concreteTypes
+  // 4. 多个元素 → 对颜色进行 RGB 平均
+  if (elements.length > 1) {
+    const colors = elements
       .map(t => getBuildableTypeColor(t))
       .filter((c): c is string => c !== null); // 过滤未定义的颜色
 

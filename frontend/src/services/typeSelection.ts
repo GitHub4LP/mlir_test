@@ -34,7 +34,7 @@ export interface TypeSelectionResult {
  * @param nodes - 当前图的所有节点
  * @param edges - 当前图的所有边
  * @param currentFunction - 当前函数定义
- * @param getConcreteTypes - 获取约束的具体类型列表
+ * @param getConstraintElements - 获取约束映射到的类型约束集合元素
  */
 export function computeTypeSelectionState(
   nodeId: string,
@@ -42,7 +42,7 @@ export function computeTypeSelectionState(
   nodes: Node[],
   edges: Edge[],
   currentFunction: FunctionDef | undefined,
-  getConcreteTypes: (constraint: string) => string[]
+  getConstraintElements: (constraint: string) => string[]
 ): TypeSelectionResult {
   // 计算可选集（排除自己的影响）
   const portRef = PortRef.fromHandle(nodeId, portId);
@@ -52,7 +52,7 @@ export function computeTypeSelectionState(
         nodes,
         edges,
         currentFunction,
-        getConcreteTypes
+        getConstraintElements
       )
     : [];
 

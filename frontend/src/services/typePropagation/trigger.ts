@@ -30,8 +30,8 @@ function extractSignatureDisplayTypes(
         const pin = {
           id: dataOutHandle(port.name),
           label: port.name,
-          typeConstraint: port.typeConstraint,
-          displayName: port.typeConstraint,
+          typeConstraint: 'AnyType',
+          displayName: 'AnyType',
         };
         parameters[port.name] = getDisplayType(pin, data);
       }
@@ -41,8 +41,8 @@ function extractSignatureDisplayTypes(
         const pin = {
           id: dataInHandle(port.name),
           label: port.name,
-          typeConstraint: port.typeConstraint,
-          displayName: port.typeConstraint,
+          typeConstraint: 'AnyType',
+          displayName: 'AnyType',
         };
         returnTypes[port.name] = getDisplayType(pin, data);
       }
@@ -73,7 +73,7 @@ export interface PropagationTriggerResult {
  * @param nodes - 当前节点列表
  * @param edges - 当前边列表
  * @param currentFunction - 当前函数定义（用于函数级 Traits）
- * @param getConcreteTypes - 获取约束的具体类型列表
+ * @param getConstraintElements - 获取约束映射到的类型约束集合元素
  * @param pickConstraintName - 选择约束名称
  * @returns 更新后的节点列表（包含传播结果）
  */
@@ -81,11 +81,11 @@ export function triggerTypePropagation(
   nodes: Node[],
   edges: Edge[],
   currentFunction: FunctionDef | undefined,
-  getConcreteTypes: (constraint: string) => string[],
+  getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null
 ): Node[] {
   const result = triggerTypePropagationWithSignature(
-    nodes, edges, currentFunction, getConcreteTypes, pickConstraintName
+    nodes, edges, currentFunction, getConstraintElements, pickConstraintName
   );
   return result.nodes;
 }
@@ -99,14 +99,14 @@ export function triggerTypePropagationWithSignature(
   nodes: Node[],
   edges: Edge[],
   currentFunction: FunctionDef | undefined,
-  getConcreteTypes: (constraint: string) => string[],
+  getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null
 ): PropagationTriggerResult {
   const propagationResult = computePropagationWithNarrowing(
     nodes,
     edges,
     currentFunction,
-    getConcreteTypes,
+    getConstraintElements,
     pickConstraintName
   );
   const updatedNodes = applyPropagationResult(nodes, propagationResult);

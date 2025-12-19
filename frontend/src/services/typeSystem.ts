@@ -69,18 +69,18 @@ export function normalizeType(type: string): string {
 }
 
 /**
- * Gets the list of concrete types that satisfy a type constraint.
+ * 获取约束映射到的类型约束集合的元素
  * 委托给 typeConstraintStore
  */
-export function getConcreteTypes(constraint: string): string[] {
-  return useTypeConstraintStore.getState().getConcreteTypes(constraint);
+export function getConstraintElements(constraint: string): string[] {
+  return useTypeConstraintStore.getState().getConstraintElements(constraint);
 }
 
 /**
- * Checks if a type constraint is abstract (has multiple concrete types)
+ * 检查类型约束是否是抽象的（映射到多个元素）
  */
 export function isAbstractConstraint(constraint: string): boolean {
-  const types = useTypeConstraintStore.getState().getConcreteTypes(constraint);
+  const types = useTypeConstraintStore.getState().getConstraintElements(constraint);
   return types.length > 1;
 }
 
@@ -121,7 +121,7 @@ export function analyzeConstraint(constraint: string): ConstraintAnalysis {
     return { kind: 'multi', resolvedType: null };
   }
   
-  const { buildableTypes, isLoaded, getConcreteTypes: storeGetConcreteTypes } = useTypeConstraintStore.getState();
+  const { buildableTypes, isLoaded, getConstraintElements: storeGetConstraintElements } = useTypeConstraintStore.getState();
   
   // 如果数据还没加载，默认允许选择
   if (!isLoaded) {
@@ -129,7 +129,7 @@ export function analyzeConstraint(constraint: string): ConstraintAnalysis {
   }
   
   const isBuildableType = buildableTypes.includes(constraint);
-  const types = storeGetConcreteTypes(constraint);
+  const types = storeGetConstraintElements(constraint);
   
   // 空类型列表：允许选择任意类型
   if (types.length === 0) {
@@ -245,15 +245,15 @@ export function isCompatible(sourceType: string, targetConstraint: string): bool
     return true;
   }
   
-  const sourceConcreteTypes = getConcreteTypes(sourceType);
-  const targetConcreteTypes = getConcreteTypes(targetConstraint);
-  const targetTypeSet = new Set(targetConcreteTypes);
+  const sourceElements = getConstraintElements(sourceType);
+  const targetElements = getConstraintElements(targetConstraint);
+  const targetTypeSet = new Set(targetElements);
   
-  if (sourceConcreteTypes.length === 1) {
-    return targetTypeSet.has(sourceConcreteTypes[0]);
+  if (sourceElements.length === 1) {
+    return targetTypeSet.has(sourceElements[0]);
   }
   
-  return sourceConcreteTypes.some(type => targetTypeSet.has(type));
+  return sourceElements.some(type => targetTypeSet.has(type));
 }
 
 /**
@@ -267,8 +267,8 @@ export function canConnect(type1: string, type2: string): boolean {
  * Finds the most specific common type between two type constraints.
  */
 export function findCommonType(constraint1: string, constraint2: string): string | null {
-  const types1 = getConcreteTypes(constraint1);
-  const types2 = getConcreteTypes(constraint2);
+  const types1 = getConstraintElements(constraint1);
+  const types2 = getConstraintElements(constraint2);
   
   const commonTypes = types1.filter(t => types2.includes(t));
   
@@ -336,6 +336,6 @@ import { getTypeColor as getTypeColorFromMapping } from './typeColorMapping';
  * @returns hex 颜色字符串
  */
 export function getTypeColor(displayType: string): string {
-  const getConcreteTypes = useTypeConstraintStore.getState().getConcreteTypes;
-  return getTypeColorFromMapping(displayType, getConcreteTypes);
+  const getConstraintElements = useTypeConstraintStore.getState().getConstraintElements;
+  return getTypeColorFromMapping(displayType, getConstraintElements);
 }

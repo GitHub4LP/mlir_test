@@ -357,6 +357,9 @@ const ArrayInput = memo(function ArrayInput({
 /**
  * TypedAttr input component - for TypedAttrInterface (integer or float values)
  * Used by arith.constant and similar operations
+ * 
+ * 存储为字符串以保留用户输入格式（如 "2.0" vs "2"）
+ * 后端根据 outputTypes 决定最终格式
  */
 const TypedAttrInput = memo(function TypedAttrInput({
   value,
@@ -365,40 +368,40 @@ const TypedAttrInput = memo(function TypedAttrInput({
   name,
 }: {
   value: unknown;
-  onChange: (value: number) => void;
+  onChange: (value: string) => void;
   disabled?: boolean;
   name: string;
 }) {
   const [error, setError] = useState<string>();
+  // 保持字符串格式显示
   const displayValue = value !== undefined && value !== null ? String(value) : '';
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
 
-    // Allow empty, negative sign, or decimal point during typing
-    if (newValue === '' || newValue === '-' || newValue === '.') {
+    // 允许输入中间状态
+    if (newValue === '' || newValue === '-' || newValue === '.' || newValue === '-.') {
       setError(undefined);
-      if (newValue === '') {
-        onChange(0);
-      }
+      onChange(newValue || '0');
       return;
     }
 
-    // Try to parse as number (integer or float)
+    // 验证是否为有效数字
     const num = parseFloat(newValue);
     if (isNaN(num)) {
       setError('Invalid number');
     } else {
       setError(undefined);
-      onChange(num);
+      // 保存原始字符串，保留 "2.0" 格式
+      onChange(newValue);
     }
   }, [onChange]);
 
   return (
     <div className="flex flex-col">
       <input
-        type="number"
-        step="any"
+        type="text"
+        inputMode="decimal"
         className={`w-24 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
           } focus:outline-none focus:border-blue-500`}
         value={displayValue}
