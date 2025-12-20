@@ -23,8 +23,8 @@ import {
   type Edge,
   type Connection,
   type OnConnect,
-  type NodeChange,
-  type EdgeChange,
+  type NodeChange as RFNodeChange,
+  type EdgeChange as RFEdgeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -32,18 +32,33 @@ import { NodePalette } from './NodePalette';
 import { FunctionManager } from './FunctionManager';
 import { ExecutionPanel } from './ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
+import { CanvasEditorWrapper } from '../editor';
+import type { EditorNode, NodeChange as EditorNodeChange, EditorSelection, ConnectionRequest } from '../editor';
 import { nodeTypes } from './nodeTypes';
 import { edgeTypes } from './edgeTypes';
-import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, GraphNode, GraphEdge, FunctionEntryData, FunctionReturnData, FunctionCallData, DataPin } from '../types';
+import type { OperationDef, BlueprintNodeData, FunctionDef, GraphState, FunctionEntryData, FunctionReturnData, DataPin } from '../types';
 import { validateConnection, type ConnectionValidationResult } from '../services/connectionValidator';
-import { getTypeColor } from '../services/typeSystem';
-import { generateExecConfig, createExecIn } from '../services/operationClassifier';
 import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { triggerTypePropagationWithSignature } from '../services/typePropagation';
-import { PortRef, PortKind, dataInHandle, dataOutHandle } from '../services/port';
+import { dataInHandle, dataOutHandle } from '../services/port';
 import { getDisplayType } from '../services/typeSelectorRenderer';
+
+// Layout components
+import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar } from './layout';
+
+// Utility functions
+import {
+  generateNodeId,
+  generateEdgeId,
+  edgesEqual,
+  convertGraphEdgeToReactFlowEdge,
+  convertGraphNodeToReactFlowNode,
+  createBlueprintNodeData,
+  getEdgeColor,
+  updateEdgeColors,
+} from '../utils';
 
 /**
  * Props for MainLayout component
@@ -56,239 +71,11 @@ export interface MainLayoutProps {
 }
 
 /**
- * Generates a unique node ID
+ * Clipboard data structure for copy/paste operations
  */
-function generateNodeId(): string {
-  return `node_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-}
-
-/**
- * Generates a deterministic edge ID from four-tuple
- */
-function generateEdgeId(edge: { source: string; sourceHandle: string; target: string; targetHandle: string }): string {
-  return `edge-${edge.source}-${edge.sourceHandle}-${edge.target}-${edge.targetHandle}`;
-}
-
-/**
- * Checks if two edges are equal based on four-tuple
- */
-function edgesEqual(e1: GraphEdge | Edge, e2: GraphEdge | Edge): boolean {
-  return e1.source === e2.source && 
-         e1.sourceHandle === e2.sourceHandle && 
-         e1.target === e2.target && 
-         e1.targetHandle === e2.targetHandle;
-}
-
-/**
- * Converts GraphEdge to React Flow Edge format
- * 
- * Derives type and initial data from handle IDs:
- * - type: 'execution' if sourceHandle or targetHandle starts with 'exec-', otherwise 'data'
- * - data: undefined for execution edges, {} for data edges (color will be calculated later)
- * - id: generated deterministically from four-tuple (required by React Flow)
- */
-function convertGraphEdgeToReactFlowEdge(edge: GraphEdge): Edge {
-  const isExec = edge.sourceHandle.startsWith('exec-') || edge.targetHandle.startsWith('exec-');
-  return {
-    ...edge,
-    id: generateEdgeId(edge),
-    type: isExec ? 'execution' : 'data',
-    data: isExec ? undefined : {},
-  };
-}
-
-/**
- * Converts GraphNode to React Flow Node format
- * 
- * GraphNode already has all required fields for React Flow Node,
- * but we ensure it has the correct type structure.
- */
-function convertGraphNodeToReactFlowNode(node: GraphNode): Node {
-  return {
-    ...node,
-    // Ensure type is set (should already be set in GraphNode)
-    type: node.type || 'operation',
-    // React Flow Node may have additional optional fields, but these are the essentials
-  } as Node;
-}
-
-/**
- * Creates BlueprintNodeData from an operation definition
- * 
- * Automatically generates execution pins based on operation classification:
- * - Terminator operations: exec-in only, no exec-out
- * - Control flow operations: exec-in + one exec-out per region
- * - Regular operations: exec-in + single exec-out
- */
-function createBlueprintNodeData(operation: OperationDef): BlueprintNodeData {
-  const attributes: Record<string, string> = {};
-  const inputTypes: Record<string, string> = {};
-  const outputTypes: Record<string, string> = {};
-
-  for (const arg of operation.arguments) {
-    if (arg.kind === 'operand') {
-      inputTypes[arg.name] = arg.typeConstraint;
-    }
-  }
-
-  for (const result of operation.results) {
-    outputTypes[result.name] = result.typeConstraint;
-  }
-
-  // Generate execution pin configuration based on operation classification
-  const execConfig = generateExecConfig(operation);
-
-  return {
-    operation,
-    attributes,
-    inputTypes,
-    outputTypes,
-    // Execution pins based on operation type
-    execIn: execConfig.hasExecIn ? createExecIn() : undefined,
-    execOuts: execConfig.execOuts,
-    // Region data pins for control flow operations
-    regionPins: execConfig.regionPins,
-  };
-}
-
-/**
- * Connection error toast component
- */
-interface ConnectionErrorToastProps {
-  message: string;
-  onClose: () => void;
-}
-
-function ConnectionErrorToast({ message, onClose }: ConnectionErrorToastProps) {
-  return (
-    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in">
-      <div className="bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-md">
-        <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-        </svg>
-        <span className="text-sm">{message}</span>
-        <button
-          onClick={onClose}
-          className="ml-2 text-white/80 hover:text-white"
-        >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Properties panel for editing selected node
- */
-interface PropertiesPanelProps {
-  selectedNode: Node | null;
-  onNodeUpdate?: (nodeId: string, data: unknown) => void;
-}
-
-function PropertiesPanel({ selectedNode }: PropertiesPanelProps) {
-  // 面板只在选中节点时显示，所以 selectedNode 不会为 null
-  if (!selectedNode) return null;
-
-  const nodeData = selectedNode.data as BlueprintNodeData | undefined;
-  const operation = nodeData?.operation;
-
-  return (
-    <div className="p-4 overflow-y-auto h-full">
-      <h2 className="text-lg font-semibold text-white mb-4">Properties</h2>
-
-      {/* Node Info */}
-      <div className="mb-4 p-3 bg-gray-700 rounded">
-        <div className="text-sm text-gray-300">
-          <span className="text-gray-500">ID:</span> {selectedNode.id}
-        </div>
-        {operation && (
-          <>
-            <div className="text-sm text-gray-300 mt-1">
-              <span className="text-gray-500">Operation:</span> {operation.fullName}
-            </div>
-            {operation.summary && (
-              <div className="text-xs text-gray-400 mt-2">
-                {operation.summary}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Position */}
-      <div className="mb-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-2">Position</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs text-gray-500">X</label>
-            <input
-              type="number"
-              value={Math.round(selectedNode.position.x)}
-              readOnly
-              className="w-full bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Y</label>
-            <input
-              type="number"
-              value={Math.round(selectedNode.position.y)}
-              readOnly
-              className="w-full bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Attributes */}
-      {nodeData?.attributes && Object.keys(nodeData.attributes).length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-2">Attributes</h3>
-          <div className="space-y-2">
-            {Object.entries(nodeData.attributes).map(([key, value]) => (
-              <div key={key} className="text-sm">
-                <span className="text-gray-500">{key}:</span>{' '}
-                <span className="text-gray-300">{String(value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Input Types */}
-      {nodeData?.inputTypes && Object.keys(nodeData.inputTypes).length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-2">Input Types</h3>
-          <div className="space-y-1">
-            {Object.entries(nodeData.inputTypes).map(([port, type]) => (
-              <div key={port} className="text-xs flex justify-between">
-                <span className="text-gray-400">{port}</span>
-                <span className="text-blue-400">{type}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Output Types */}
-      {nodeData?.outputTypes && Object.keys(nodeData.outputTypes).length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-2">Output Types</h3>
-          <div className="space-y-1">
-            {Object.entries(nodeData.outputTypes).map(([port, type]) => (
-              <div key={port} className="text-xs flex justify-between">
-                <span className="text-gray-400">{port}</span>
-                <span className="text-green-400">{type}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+interface ClipboardData {
+  nodes: Node[];
+  edges: Edge[];
 }
 
 /**
@@ -297,14 +84,6 @@ function PropertiesPanel({ selectedNode }: PropertiesPanelProps) {
  * Contains the actual layout implementation.
  * Must be wrapped in ReactFlowProvider to use useReactFlow hook.
  */
-/**
- * Clipboard data structure for copy/paste operations
- */
-interface ClipboardData {
-  nodes: Node[];
-  edges: Edge[];
-}
-
 function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -320,6 +99,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+
+  // Canvas preview state
+  const [showCanvasPreview, setShowCanvasPreview] = useState(false);
 
   // Get project state and actions
   const project = useProjectStore(state => state.project);
@@ -351,21 +133,15 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const isLoadingFromStoreRef = useRef(false);
 
   // 异步同步签名：监听 Entry/Return 节点的类型变化，同步到 FunctionDef
-  // 使用 useEffect 确保在渲染完成后执行，避免在渲染期间更新其他组件
   useEffect(() => {
     if (!currentFunctionId || !currentFunction || isLoadingFromStoreRef.current) return;
-
-    // main 函数的返回类型是固定的 I32，不需要同步
     if (currentFunction.isMain) return;
 
-    // 找到 Entry 节点（在函数作用域内，使用固定 ID）
     const entryNode = nodes.find(n => n.type === 'function-entry' && n.id === 'entry');
-    // Return 节点可能有多个，查找第一个（用于签名同步）
     const returnNode = nodes.find(n => n.type === 'function-return');
 
     if (!entryNode && !returnNode) return;
 
-    // 提取签名（使用与 extractSignatureDisplayTypes 相同的逻辑）
     const parameterConstraints: Record<string, string> = {};
     const returnTypeConstraints: Record<string, string> = {};
 
@@ -397,11 +173,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       }
     }
 
-    // 同步到 FunctionDef
     updateSignatureConstraints(currentFunctionId, parameterConstraints, returnTypeConstraints);
   }, [nodes, currentFunctionId, currentFunction, updateSignatureConstraints]);
 
-  // Load graph when function changes or when project changes
   // Convert nodes and edges to GraphState format for saving
   const convertToGraphState = useCallback((): GraphState => {
     return {
@@ -420,20 +194,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     };
   }, [nodes, edges]);
 
-  // Track function ID, project path, and project object reference to detect changes
-  // Store convertToGraphState in ref for use in effect without causing re-runs
   const convertToGraphStateRef = useRef(convertToGraphState);
   useEffect(() => {
     convertToGraphStateRef.current = convertToGraphState;
   }, [convertToGraphState]);
 
-  // 获取 projectStore 的 getFunctionById
   const getFunctionById = useProjectStore(state => state.getFunctionById);
 
-  /**
-   * 保存当前图到 projectStore
-   * @param functionId 要保存的函数 ID（通常是切换前的函数）
-   */
   const saveCurrentGraph = useCallback((functionId: string) => {
     const graphState = convertToGraphStateRef.current();
     if (graphState.nodes.length > 0) {
@@ -441,112 +208,37 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     }
   }, [updateFunctionGraph]);
 
-  /**
-   * 加载函数图到 React Flow 并执行类型传播
-   * @param functionId 要加载的函数 ID
-   */
   const loadFunctionGraph = useCallback((functionId: string) => {
     const func = getFunctionById(functionId);
     if (!func) return;
 
     isLoadingFromStoreRef.current = true;
     
-    // Convert GraphNode[] to React Flow Node[] (GraphNode already has all required fields)
     const graphNodes = func.graph.nodes.map(convertGraphNodeToReactFlowNode);
-    
-    // Convert GraphEdge[] to React Flow Edge[] (add type and initial data)
     const graphEdges = func.graph.edges.map(convertGraphEdgeToReactFlowEdge);
 
-    // 类型传播并同步签名
     const result = triggerTypePropagationWithSignature(
       graphNodes, graphEdges, func, getConstraintElements, pickConstraintName
     );
 
     setNodes(result.nodes);
-    
-    // 为所有数据边设置颜色（使用传播后的 nodes）
-    // 注意：使用转换后的 graphEdges，因为 triggerTypePropagationWithSignature 不返回 edges
-    const edgesWithColors = graphEdges.map(edge => {
-      if (edge.type === 'execution' || !edge.sourceHandle) {
-        return edge;
-      }
-      // 使用传播后的 nodes 计算颜色
-      const sourceNode = result.nodes.find(n => n.id === edge.source);
-      if (!sourceNode) {
-        return edge;
-      }
-      
-      // 统一使用 getDisplayType 获取显示类型
-      let displayType: string | null = null;
-      
-      if (sourceNode.type === 'function-entry') {
-        const entryData = sourceNode.data as FunctionEntryData;
-        const port = entryData.outputs?.find(p => p.id === edge.sourceHandle);
-        if (port) {
-          const dataPin: DataPin = {
-            id: port.id,
-            label: port.name,
-            typeConstraint: port.typeConstraint,
-            displayName: port.name,
-          };
-          displayType = getDisplayType(dataPin, entryData);
-        }
-      } else if (sourceNode.type === 'function-call') {
-        const callData = sourceNode.data as FunctionCallData;
-        const port = callData.outputs?.find(p => p.id === edge.sourceHandle);
-        if (port) {
-          const dataPin: DataPin = {
-            id: port.id,
-            label: port.name,
-            typeConstraint: port.typeConstraint,
-            displayName: port.name,
-          };
-          displayType = getDisplayType(dataPin, callData);
-        }
-      } else if (sourceNode.type === 'operation') {
-        const nodeData = sourceNode.data as BlueprintNodeData;
-        const parsed = PortRef.parseHandleId(edge.sourceHandle);
-        if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
-          const portName = parsed.name;
-          const operation = nodeData.operation;
-          const result = operation.results.find(r => r.name === portName);
-          if (result) {
-            const dataPin: DataPin = {
-              id: edge.sourceHandle,
-              label: result.name,
-              typeConstraint: result.typeConstraint,
-              displayName: result.displayName || result.name,
-            };
-            displayType = getDisplayType(dataPin, nodeData);
-          }
-        }
-      }
-      
-      const color = displayType ? getTypeColor(displayType) : '#95A5A6';
-      return { ...edge, data: { ...edge.data, color } };
-    });
+    const edgesWithColors = updateEdgeColors(result.nodes, graphEdges);
     setEdges(edgesWithColors);
 
-    // 重置加载标志
     queueMicrotask(() => {
       isLoadingFromStoreRef.current = false;
     });
-    // 注意：签名同步由上面的 useEffect 自动处理，无需手动调用
   }, [getFunctionById, getConstraintElements, pickConstraintName, setNodes, setEdges]);
 
-
-
-  // Derive selected node validity - if function changes, selected node should be null
-  // This is computed during render, not in an effect
+  // Derive selected node validity
   const effectiveSelectedNode = selectedNode && nodes.find(n => n.id === selectedNode.id)
     ? selectedNode
     : null;
 
   // Handle node selection
-  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+  const handleNodesChange = useCallback((changes: RFNodeChange[]) => {
     onNodesChange(changes);
 
-    // Track selection changes
     for (const change of changes) {
       if (change.type === 'select' && change.selected) {
         const node = nodes.find(n => n.id === change.id);
@@ -559,22 +251,19 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     }
   }, [nodes, onNodesChange]);
 
-  // Handle edge changes
-  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+  const handleEdgesChange = useCallback((changes: RFEdgeChange[]) => {
     onEdgesChange(changes);
   }, [onEdgesChange]);
 
+
   /**
    * Copy selected nodes and their internal edges to clipboard
-   * Preserves node configuration and connections between selected nodes
    */
   const copySelectedNodes = useCallback(() => {
     const selectedNodes = nodes.filter(n => n.selected);
     if (selectedNodes.length === 0) return;
 
     const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
-
-    // Only copy edges that connect selected nodes (internal edges)
     const internalEdges = edges.filter(
       e => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
     );
@@ -589,18 +278,14 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   /**
    * Paste nodes from clipboard with new IDs and offset position
-   * Maintains internal connections between pasted nodes
    */
   const pasteNodes = useCallback(() => {
     if (!clipboardRef.current || clipboardRef.current.nodes.length === 0) return;
 
     const { nodes: copiedNodes, edges: copiedEdges } = clipboardRef.current;
-
-    // Create ID mapping: old ID -> new ID
     const idMap = new Map<string, string>();
-    const offset = { x: 50, y: 50 }; // Offset for pasted nodes
+    const offset = { x: 50, y: 50 };
 
-    // Find the next available Return node index
     const existingReturnNodes = nodes.filter(n => n.type === 'function-return');
     const getNextReturnIndex = (): number => {
       const indices = existingReturnNodes
@@ -615,21 +300,15 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
     let nextReturnIndex = getNextReturnIndex();
 
-    // Create new nodes with new IDs (skip Entry nodes, allow Return nodes)
     const newNodes: Node[] = [];
     for (const node of copiedNodes) {
-      // Don't allow copying Entry nodes (only one per function)
-      if (node.type === 'function-entry') {
-        continue;
-      }
+      if (node.type === 'function-entry') continue;
 
       let newId: string;
       if (node.type === 'function-return') {
-        // Return 节点使用 return-{index} 格式，从当前最大索引+1开始
         newId = `return-${nextReturnIndex}`;
         nextReturnIndex++;
       } else {
-        // 其他节点使用随机 ID
         newId = generateNodeId();
       }
       idMap.set(node.id, newId);
@@ -641,14 +320,13 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           x: node.position.x + offset.x,
           y: node.position.y + offset.y,
         },
-        selected: true, // Select pasted nodes
-        data: { ...node.data }, // Deep copy data
+        selected: true,
+        data: { ...node.data },
       });
     }
 
     if (newNodes.length === 0) return;
 
-    // Create new edges with updated source/target IDs
     const newEdges: Edge[] = copiedEdges
       .filter(edge => idMap.has(edge.source) && idMap.has(edge.target))
       .map(edge => ({
@@ -664,7 +342,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         selected: false,
       }));
 
-    // Deselect existing nodes and add new ones
     setNodes(nds => [
       ...nds.map(n => ({ ...n, selected: false })),
       ...newNodes,
@@ -677,55 +354,43 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   /**
    * Delete selected nodes and edges
-   * - Entry nodes cannot be deleted (only one per function)
-   * - Return nodes can be deleted, but at least one must remain
    */
   const deleteSelected = useCallback(() => {
-    // Count total Return nodes and selected Return nodes
     const allReturnNodes = nodes.filter(n => n.type === 'function-return');
     const selectedReturnNodes = allReturnNodes.filter(n => n.selected);
 
-    // Calculate how many Return nodes we can delete (keep at least 1)
     const maxReturnNodesToDelete = Math.max(0, allReturnNodes.length - 1);
     const returnNodesToDelete = selectedReturnNodes.slice(0, maxReturnNodesToDelete);
     const returnNodeIdsToDelete = new Set(returnNodesToDelete.map(n => n.id));
 
-    // Get selected nodes that can be deleted:
-    // - Not Entry nodes
-    // - Return nodes only if we can delete them (keeping at least 1)
     const selectedNodeIds = new Set(
       nodes
         .filter(n => {
           if (!n.selected) return false;
-          if (n.type === 'function-entry') return false; // Never delete Entry
+          if (n.type === 'function-entry') return false;
           if (n.type === 'function-return') return returnNodeIdsToDelete.has(n.id);
           return true;
         })
         .map(n => n.id)
     );
 
-    // Get selected edges
     const selectedEdges = edges.filter(e => e.selected);
 
     if (selectedNodeIds.size === 0 && selectedEdges.length === 0) return;
 
-    // Remove selected nodes
     if (selectedNodeIds.size > 0) {
       setNodes(nds => nds.filter(n => !selectedNodeIds.has(n.id)));
-      // Also remove edges connected to deleted nodes
       setEdges(eds => eds.filter(e =>
         !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target)
       ));
     }
 
-    // Remove selected edges (based on four-tuple matching)
     if (selectedEdges.length > 0) {
       setEdges(eds => eds.filter(e => 
         !selectedEdges.some(se => edgesEqual(e, se))
       ));
     }
 
-    // Log deletion info
     const skippedReturnNodes = selectedReturnNodes.length - returnNodesToDelete.length;
     if (skippedReturnNodes > 0) {
       console.log(`Kept ${skippedReturnNodes} Return node(s) to ensure at least one remains`);
@@ -733,30 +398,24 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     console.log(`Deleted ${selectedNodeIds.size} nodes and ${selectedEdges.length} edges`);
   }, [nodes, edges, setNodes, setEdges]);
 
-  /**
-   * Handle keyboard shortcuts for copy/paste/delete
-   */
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if focus is on an input element
       const target = event.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
 
-      // Ctrl+C or Cmd+C: Copy
       if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
         event.preventDefault();
         copySelectedNodes();
       }
 
-      // Ctrl+V or Cmd+V: Paste
       if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
         event.preventDefault();
         pasteNodes();
       }
 
-      // Delete or Backspace: Delete selected
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         deleteSelected();
@@ -769,93 +428,18 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   /**
    * Handle double-click on edge to delete it
-   * 
-   * 删除边后，约束系统会：
-   * 1. 移除连接约束
-   * 2. 重置非钉住的端口到原始值域
-   * 3. 重新传播约束
-   * 
-   * 钉住的端口（用户显式选择的类型）不会被重置
    */
   const handleEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
-    // 删除边
     const remainingEdges = edges.filter(e => e.id !== edge.id);
     setEdges(remainingEdges);
 
-    // 传播模型：重新计算类型传播（数据边）并同步签名
     if (!edge.sourceHandle?.startsWith('exec-')) {
       setNodes(nds => {
         const result = triggerTypePropagationWithSignature(
           nds, remainingEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
         );
-        // 注意：签名同步由 useEffect 自动处理，无需手动调用
-        
-        // 使用传播后的 nodes 更新所有数据边的颜色
-        const updatedEdges = remainingEdges.map(e => {
-          if (e.type === 'execution' || !e.sourceHandle) {
-            return e;
-          }
-          const sourceNode = result.nodes.find(n => n.id === e.source);
-          if (!sourceNode) {
-            return e;
-          }
-          
-          // 统一使用 getDisplayType 获取显示类型
-          let displayType: string | null = null;
-          
-          if (sourceNode.type === 'function-entry') {
-            const entryData = sourceNode.data as FunctionEntryData;
-            const port = entryData.outputs?.find(p => p.id === e.sourceHandle);
-            if (port) {
-              const dataPin: DataPin = {
-                id: port.id,
-                label: port.name,
-                typeConstraint: port.typeConstraint,
-                displayName: port.name,
-              };
-              displayType = getDisplayType(dataPin, entryData);
-            }
-          } else if (sourceNode.type === 'function-call') {
-            const callData = sourceNode.data as FunctionCallData;
-            const port = callData.outputs?.find(p => p.id === e.sourceHandle);
-            if (port) {
-              const dataPin: DataPin = {
-                id: port.id,
-                label: port.name,
-                typeConstraint: port.typeConstraint,
-                displayName: port.name,
-              };
-              displayType = getDisplayType(dataPin, callData);
-            }
-          } else if (sourceNode.type === 'operation') {
-            const nodeData = sourceNode.data as BlueprintNodeData;
-            const parsed = PortRef.parseHandleId(e.sourceHandle);
-            if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
-              const portName = parsed.name;
-              const operation = nodeData.operation;
-              const result = operation.results.find(r => r.name === portName);
-              if (result) {
-                const dataPin: DataPin = {
-                  id: e.sourceHandle,
-                  label: result.name,
-                  typeConstraint: result.typeConstraint,
-                  displayName: result.displayName || result.name,
-                };
-                displayType = getDisplayType(dataPin, nodeData);
-              }
-            }
-          }
-          
-          const newColor = displayType ? getTypeColor(displayType) : '#95A5A6';
-          if (e.data?.color !== newColor) {
-            return { ...e, data: { ...e.data, color: newColor } };
-          }
-          return e;
-        });
-        
-        // 更新边的颜色
+        const updatedEdges = updateEdgeColors(result.nodes, remainingEdges);
         setEdges(updatedEdges);
-        
         return result.nodes;
       });
     }
@@ -863,33 +447,26 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   // Handle function selection from FunctionManager
   const handleFunctionSelect = useCallback((functionId: string) => {
-    // 保存当前图（如果有）
     if (currentFunctionId && currentFunctionId !== functionId) {
       saveCurrentGraph(currentFunctionId);
     }
-    // 加载新函数图
     loadFunctionGraph(functionId);
   }, [currentFunctionId, saveCurrentGraph, loadFunctionGraph]);
 
-  // Handle project created - load main function graph
   const handleProjectCreated = useCallback(() => {
-    // projectStore 已设置 currentFunctionId 为 main
     const mainId = useProjectStore.getState().currentFunctionId;
     if (mainId) {
       loadFunctionGraph(mainId);
     }
   }, [loadFunctionGraph]);
 
-  // Handle project opened - load main function graph
   const handleProjectOpened = useCallback(() => {
-    // projectStore 已设置 currentFunctionId 为 main
     const mainId = useProjectStore.getState().currentFunctionId;
     if (mainId) {
       loadFunctionGraph(mainId);
     }
   }, [loadFunctionGraph]);
 
-  // Handle function deleted - load current function (should be main)
   const handleFunctionDeleted = useCallback(() => {
     const currentId = useProjectStore.getState().currentFunctionId;
     if (currentId) {
@@ -898,58 +475,47 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   }, [loadFunctionGraph]);
 
   // Initialize a default project if none exists
-  // Moved here to ensure handleProjectCreated is defined
   useEffect(() => {
     if (!project) {
       createProject('Untitled Project', './untitled_project', ['arith', 'func']);
-      // Since we removed the effect that watches project changes, we must manually trigger load here
-      // We can reuse handleProjectCreated which does exactly what we need (load main function)
-      // We use a timeout to ensure store updates have propagated (though zustand is sync usually)
       setTimeout(() => {
         handleProjectCreated();
       }, 0);
     }
   }, [project, createProject, handleProjectCreated]);
 
-  // Handle drag start from palette for operations
+  // Handle drag start from palette
   const handleDragStart = useCallback((_event: React.DragEvent, operation: OperationDef) => {
-    // Data is already set by NodePalette
     console.log('Dragging operation:', operation.fullName);
   }, []);
 
-  // Handle drag start from palette for custom functions
   const handleFunctionDragStart = useCallback((_event: React.DragEvent, func: FunctionDef) => {
     console.log('Dragging function:', func.name);
   }, []);
 
-  // Get React Flow instance for coordinate conversion
   const reactFlowInstance = useReactFlow();
+
 
   // Handle drop on canvas
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
 
-      // Use screenToFlowPosition for correct coordinate conversion
-      // This handles zoom and pan correctly
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
 
-      // Check if it's a function drop
       const functionData = event.dataTransfer.getData('application/reactflow-function');
       if (functionData) {
         try {
           const functionCallData = JSON.parse(functionData);
-
           const newNode: Node = {
             id: generateNodeId(),
             type: 'function-call',
             position,
             data: functionCallData,
           };
-
           setNodes((nds) => [...nds, newNode]);
           return;
         } catch (err) {
@@ -957,22 +523,18 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         }
       }
 
-      // Check if it's an operation drop
       const data = event.dataTransfer.getData('application/json');
       if (!data) return;
 
       try {
         const operation: OperationDef = JSON.parse(data);
-
         const newNode: Node = {
           id: generateNodeId(),
           type: 'operation',
           position,
           data: createBlueprintNodeData(operation),
         };
-
         setNodes((nds) => [...nds, newNode]);
-        // 传播模型：新节点没有 pinned 类型，不需要特殊处理
       } catch (err) {
         console.error('Failed to parse dropped operation:', err);
       }
@@ -980,7 +542,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     [setNodes, reactFlowInstance]
   );
 
-  // Handle drag over to allow drop
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
@@ -988,13 +549,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
 
   /**
    * Validates a connection before it's created
-   * Requirements: 7.1, 7.2
-   * 
-   * Connection rules:
-   * - Execution output (exec-out): max 1 connection
-   * - Execution input (exec-in): unlimited connections
-   * - Data output: unlimited connections
-   * - Data input: max 1 connection
    */
   const isValidConnection = useCallback(
     (connection: Edge | Connection): boolean => {
@@ -1004,7 +558,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         sourceHandle: connection.sourceHandle ?? null,
         targetHandle: connection.targetHandle ?? null,
       };
-      // Pass existing edges for connection count validation
       const existingEdges = edges.map(e => ({
         source: e.source,
         sourceHandle: e.sourceHandle ?? null,
@@ -1017,95 +570,16 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
     [nodes, edges]
   );
 
-  /**
-   * Determines if a handle is an execution pin
-   */
   const isExecHandle = useCallback((handleId: string | null | undefined): boolean => {
     if (!handleId) return false;
     return handleId.startsWith('exec-');
   }, []);
 
   /**
-   * Gets the color for a data connection based on the source handle type
-   * 
-   * 统一使用 getDisplayType 获取显示类型，确保颜色与显示类型一致
-   */
-  const getEdgeColor = useCallback((sourceNodeId: string, sourceHandleId: string | null | undefined): string => {
-    if (!sourceHandleId) return '#95A5A6'; // 默认灰色
-
-    // Get type from node data
-    const sourceNode = nodes.find(n => n.id === sourceNodeId);
-    if (!sourceNode) {
-      return '#95A5A6'; // 默认灰色
-    }
-
-    // 统一使用 getDisplayType 获取显示类型
-    let displayType: string | null = null;
-
-      // Handle FunctionEntryNode - outputs are in data.outputs array
-      if (sourceNode.type === 'function-entry') {
-        const entryData = sourceNode.data as FunctionEntryData;
-        if (entryData.outputs) {
-          const port = entryData.outputs.find(p => p.id === sourceHandleId);
-          if (port) {
-          const dataPin: DataPin = {
-            id: port.id,
-            label: port.name,
-            typeConstraint: port.typeConstraint,
-            displayName: port.name,
-          };
-          displayType = getDisplayType(dataPin, entryData);
-          }
-        }
-      }
-      // Handle FunctionCallNode - outputs are in data.outputs array
-    else if (sourceNode.type === 'function-call') {
-        const callData = sourceNode.data as FunctionCallData;
-        if (callData.outputs) {
-          const port = callData.outputs.find(p => p.id === sourceHandleId);
-          if (port) {
-          const dataPin: DataPin = {
-            id: port.id,
-            label: port.name,
-            typeConstraint: port.typeConstraint,
-            displayName: port.name,
-          };
-          displayType = getDisplayType(dataPin, callData);
-          }
-        }
-      }
-      // Handle BlueprintNode (operation) - outputTypes is a Record
-    else if (sourceNode.type === 'operation') {
-        const nodeData = sourceNode.data as BlueprintNodeData;
-        const parsed = PortRef.parseHandleId(sourceHandleId);
-        if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
-          const portName = parsed.name;
-        // 从 operation 的 outputs 中找到对应的 port
-        const operation = nodeData.operation;
-        const result = operation.results.find(r => r.name === portName);
-        if (result) {
-          const dataPin: DataPin = {
-            id: sourceHandleId,
-            label: result.name,
-            typeConstraint: result.typeConstraint,
-            displayName: result.displayName || result.name,
-          };
-          displayType = getDisplayType(dataPin, nodeData);
-        }
-      }
-    }
-
-    // 使用统一的颜色映射
-    return displayType ? getTypeColor(displayType) : '#95A5A6';
-  }, [nodes]);
-
-  /**
    * Handles connection creation with validation
-   * Requirements: 7.1, 7.2, 7.3
    */
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
-      // Pass existing edges for connection count validation
       const existingEdges = edges.map(e => ({
         source: e.source,
         sourceHandle: e.sourceHandle ?? null,
@@ -1126,7 +600,6 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         return;
       }
 
-      // Determine edge type and style based on handle type
       const isExec = isExecHandle(connection.sourceHandle) || isExecHandle(connection.targetHandle);
 
       const edgeWithStyle: Edge = {
@@ -1138,189 +611,47 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           targetHandle: connection.targetHandle!,
         }),
         type: isExec ? 'execution' : 'data',
-        data: isExec ? undefined : { color: getEdgeColor(connection.source!, connection.sourceHandle) },
+        data: isExec ? undefined : { color: getEdgeColor(nodes, connection.source!, connection.sourceHandle) },
       };
 
       const newEdges = [...edges, edgeWithStyle];
       setEdges(newEdges);
 
-      // 传播模型：重新计算类型传播（数据边）并同步签名
       if (!isExec) {
         setNodes(nds => {
           const result = triggerTypePropagationWithSignature(
             nds, newEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
           );
-          // 注意：签名同步由 useEffect 自动处理，无需手动调用
-          
-          // 类型传播后，使用传播后的 nodes 更新所有数据边的颜色
-          const updatedEdges = newEdges.map(edge => {
-            if (edge.type === 'execution' || !edge.sourceHandle) {
-              return edge;
-            }
-            // 使用传播后的 nodes 计算颜色
-            const sourceNode = result.nodes.find(n => n.id === edge.source);
-            if (!sourceNode) {
-              return edge;
-            }
-            
-            // 统一使用 getDisplayType 获取显示类型
-            let displayType: string | null = null;
-            
-            if (sourceNode.type === 'function-entry') {
-              const entryData = sourceNode.data as FunctionEntryData;
-              const port = entryData.outputs?.find(p => p.id === edge.sourceHandle);
-              if (port) {
-                const dataPin: DataPin = {
-                  id: port.id,
-                  label: port.name,
-                  typeConstraint: port.typeConstraint,
-                  displayName: port.name,
-                };
-                displayType = getDisplayType(dataPin, entryData);
-              }
-            } else if (sourceNode.type === 'function-call') {
-              const callData = sourceNode.data as FunctionCallData;
-              const port = callData.outputs?.find(p => p.id === edge.sourceHandle);
-              if (port) {
-                const dataPin: DataPin = {
-                  id: port.id,
-                  label: port.name,
-                  typeConstraint: port.typeConstraint,
-                  displayName: port.name,
-                };
-                displayType = getDisplayType(dataPin, callData);
-              }
-            } else if (sourceNode.type === 'operation') {
-              const nodeData = sourceNode.data as BlueprintNodeData;
-              const parsed = PortRef.parseHandleId(edge.sourceHandle);
-              if (nodeData.outputTypes && parsed && parsed.kind === PortKind.DataOut) {
-                const portName = parsed.name;
-                const operation = nodeData.operation;
-                const result = operation.results.find(r => r.name === portName);
-                if (result) {
-                  const dataPin: DataPin = {
-                    id: edge.sourceHandle,
-                    label: result.name,
-                    typeConstraint: result.typeConstraint,
-                    displayName: result.displayName || result.name,
-                  };
-                  displayType = getDisplayType(dataPin, nodeData);
-                }
-              }
-            }
-            
-            const newColor = displayType ? getTypeColor(displayType) : '#95A5A6';
-            if (edge.data?.color !== newColor) {
-              return { ...edge, data: { ...edge.data, color: newColor } };
-            }
-            return edge;
-          });
-          
-          // 更新边的颜色
+          const updatedEdges = updateEdgeColors(result.nodes, newEdges);
           setEdges(updatedEdges);
-          
           return result.nodes;
         });
       }
     },
-    [nodes, edges, setEdges, setNodes, isExecHandle, getEdgeColor, currentFunction, getConstraintElements, pickConstraintName]
+    [nodes, edges, setEdges, setNodes, isExecHandle, currentFunction, getConstraintElements, pickConstraintName]
   );
 
-  /**
-   * Dismiss connection error toast
-   */
   const dismissError = useCallback(() => {
     setConnectionError(null);
   }, []);
 
-  /**
-   * Toggle execution panel expansion
-   */
   const toggleExecutionPanel = useCallback(() => {
     setExecutionPanelExpanded(prev => !prev);
   }, []);
 
-  // Calculate execution panel height for layout
-  const executionPanelHeight = executionPanelExpanded ? 256 : 32; // h-64 = 256px, h-8 = 32px
-
-  // Project toolbar component
-  const ProjectToolbar = (
-    <div className="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-4">
-      {/* Logo/Title */}
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-          <span className="text-white font-bold text-sm">ML</span>
-        </div>
-        <span className="text-white font-semibold">MLIR Blueprint Editor</span>
-      </div>
-
-      {/* Separator */}
-      <div className="h-6 w-px bg-gray-600" />
-
-      {/* Project Actions */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setIsCreateDialogOpen(true)}
-          className="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-1.5"
-          title="Create new project"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New
-        </button>
-
-        <button
-          onClick={() => setIsOpenDialogOpen(true)}
-          className="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-1.5"
-          title="Open existing project"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-          </svg>
-          Open
-        </button>
-
-        <button
-          onClick={() => setIsSaveDialogOpen(true)}
-          disabled={!project}
-          className="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Save project"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-          </svg>
-          Save
-        </button>
-      </div>
-
-      {/* Separator */}
-      <div className="h-6 w-px bg-gray-600" />
-
-      {/* Current Project Info */}
-      {project && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Project:</span>
-          <span className="text-gray-300">{project.name}</span>
-          <span className="text-gray-600">|</span>
-          <span className="text-gray-500 text-xs">{project.path}</span>
-        </div>
-      )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Status */}
-      <div className="text-xs text-gray-500">
-        {project ? `${project.customFunctions.length + 1} functions` : 'No project'}
-      </div>
-    </div>
-  );
+  const executionPanelHeight = executionPanelExpanded ? 256 : 32;
 
   return (
     <div className="w-full h-screen flex flex-col bg-gray-900">
       {/* Project Toolbar */}
-      {ProjectToolbar}
+      <ProjectToolbar
+        project={project}
+        showCanvasPreview={showCanvasPreview}
+        onShowCanvasPreviewChange={setShowCanvasPreview}
+        onCreateClick={() => setIsCreateDialogOpen(true)}
+        onOpenClick={() => setIsOpenDialogOpen(true)}
+        onSaveClick={() => setIsSaveDialogOpen(true)}
+      />
 
       {/* Optional Header */}
       {header && (
@@ -1333,15 +664,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Function Manager + Node Palette */}
         <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
-          {/* Function Manager Section */}
           <div className="border-b border-gray-700 max-h-64 flex-shrink-0">
             <FunctionManager
               onFunctionSelect={handleFunctionSelect}
               onFunctionDeleted={handleFunctionDeleted}
             />
           </div>
-
-          {/* Node Palette Section */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <h2 className="text-lg font-semibold text-white p-4 pb-0 flex-shrink-0">Node Palette</h2>
             <NodePalette
@@ -1357,50 +685,201 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           style={{ paddingBottom: executionPanelHeight }}
         >
           <div className="flex-1 relative" ref={reactFlowWrapper}>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={handleNodesChange}
-              onEdgesChange={handleEdgesChange}
-              onConnect={onConnect}
-              isValidConnection={isValidConnection}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onEdgeDoubleClick={handleEdgeDoubleClick}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              defaultEdgeOptions={{
-                type: 'data',
-              }}
-              // Enable multi-selection with box select and edge selection
-              // Left-click drag = box select, Right-click/Middle-click drag = pan (like UE5 Blueprint)
-              selectionOnDrag
-              panOnDrag={[2]}
-              selectionMode={SelectionMode.Partial}
-              selectNodesOnDrag={false}
-              edgesReconnectable
-              fitView
-              fitViewOptions={{ maxZoom: 1 }}
-              minZoom={0.1}
-              maxZoom={2}
-              defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-              colorMode="dark"
-            >
-              <Background color="#444" gap={16} />
-              <Controls />
-              <MiniMap
-                nodeColor={(node) => {
-                  switch (node.type) {
-                    case 'function-entry': return '#22c55e';
-                    case 'function-return': return '#ef4444';
-                    case 'function-call': return '#a855f7';
-                    default: return '#3b82f6';
+            {showCanvasPreview ? (
+              <CanvasEditorWrapper 
+                nodes={nodes.map(n => ({
+                  id: n.id,
+                  type: n.type as EditorNode['type'],
+                  position: n.position,
+                  data: n.data,
+                  selected: n.selected,
+                }))}
+                edges={edges.map(e => ({
+                  id: e.id,
+                  source: e.source,
+                  sourceHandle: e.sourceHandle ?? '',
+                  target: e.target,
+                  targetHandle: e.targetHandle ?? '',
+                  selected: e.selected,
+                  type: e.type as 'execution' | 'data' | undefined,
+                  data: e.data,
+                }))}
+                onNodesChange={(changes: EditorNodeChange[]) => {
+                  for (const change of changes) {
+                    if (change.type === 'position') {
+                      setNodes(nds => nds.map(n => 
+                        n.id === change.id ? { ...n, position: change.position } : n
+                      ));
+                    }
+                  }
+                }}
+                onSelectionChange={(selection: EditorSelection) => {
+                  setNodes(nds => nds.map(n => ({
+                    ...n,
+                    selected: selection.nodeIds.includes(n.id),
+                  })));
+                  if (selection.nodeIds.length === 1) {
+                    const node = nodes.find(n => n.id === selection.nodeIds[0]);
+                    if (node) setSelectedNode(node);
+                  } else {
+                    setSelectedNode(null);
+                  }
+                }}
+                onConnect={(request: ConnectionRequest) => {
+                  const connection: Connection = {
+                    source: request.source,
+                    sourceHandle: request.sourceHandle,
+                    target: request.target,
+                    targetHandle: request.targetHandle,
+                  };
+                  
+                  const existingEdges = edges.map(e => ({
+                    source: e.source,
+                    sourceHandle: e.sourceHandle ?? null,
+                    target: e.target,
+                    targetHandle: e.targetHandle ?? null,
+                  }));
+
+                  const validationResult = validateConnection(
+                    connection,
+                    nodes,
+                    undefined,
+                    existingEdges
+                  );
+
+                  if (!validationResult.isValid) {
+                    setConnectionError(validationResult.errorMessage || 'Invalid connection');
+                    setTimeout(() => setConnectionError(null), 3000);
+                    return;
+                  }
+
+                  const isExec = request.sourceHandle.startsWith('exec-') || request.targetHandle.startsWith('exec-');
+                  const edgeWithStyle: Edge = {
+                    ...connection,
+                    id: generateEdgeId({
+                      source: request.source,
+                      sourceHandle: request.sourceHandle,
+                      target: request.target,
+                      targetHandle: request.targetHandle,
+                    }),
+                    type: isExec ? 'execution' : 'data',
+                    data: isExec ? undefined : { color: getEdgeColor(nodes, request.source, request.sourceHandle) },
+                  };
+
+                  const newEdges = [...edges, edgeWithStyle];
+                  setEdges(newEdges);
+
+                  if (!isExec) {
+                    setNodes(nds => {
+                      const result = triggerTypePropagationWithSignature(
+                        nds, newEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
+                      );
+                      return result.nodes;
+                    });
+                  }
+                }}
+                onDeleteRequest={(nodeIds, edgeIds) => {
+                  if (nodeIds.length > 0 || edgeIds.length > 0) {
+                    deleteSelected();
+                  }
+                }}
+                onEdgeDoubleClick={(edgeId) => {
+                  const edge = edges.find(e => {
+                    const computedId = `${e.source}-${e.sourceHandle}-${e.target}-${e.targetHandle}`;
+                    return computedId === edgeId || e.id === edgeId;
+                  });
+                  if (edge) {
+                    const remainingEdges = edges.filter(e => e.id !== edge.id);
+                    setEdges(remainingEdges);
+
+                    if (!edge.sourceHandle?.startsWith('exec-')) {
+                      setNodes(nds => {
+                        const result = triggerTypePropagationWithSignature(
+                          nds, remainingEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
+                        );
+                        return result.nodes;
+                      });
+                    }
+                  }
+                }}
+                onDrop={(x, y, dataTransfer) => {
+                  const functionData = dataTransfer.getData('application/reactflow-function');
+                  if (functionData) {
+                    try {
+                      const functionCallData = JSON.parse(functionData);
+                      const newNode: Node = {
+                        id: generateNodeId(),
+                        type: 'function-call',
+                        position: { x, y },
+                        data: functionCallData,
+                      };
+                      setNodes((nds) => [...nds, newNode]);
+                      return;
+                    } catch (err) {
+                      console.error('Failed to parse dropped function:', err);
+                    }
+                  }
+
+                  const data = dataTransfer.getData('application/json');
+                  if (!data) return;
+
+                  try {
+                    const operation: OperationDef = JSON.parse(data);
+                    const newNode: Node = {
+                      id: generateNodeId(),
+                      type: 'operation',
+                      position: { x, y },
+                      data: createBlueprintNodeData(operation),
+                    };
+                    setNodes((nds) => [...nds, newNode]);
+                  } catch (err) {
+                    console.error('Failed to parse dropped operation:', err);
                   }
                 }}
               />
-            </ReactFlow>
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={handleNodesChange}
+                onEdgesChange={handleEdgesChange}
+                onConnect={onConnect}
+                isValidConnection={isValidConnection}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onEdgeDoubleClick={handleEdgeDoubleClick}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                defaultEdgeOptions={{
+                  type: 'data',
+                }}
+                selectionOnDrag
+                panOnDrag={[2]}
+                selectionMode={SelectionMode.Partial}
+                selectNodesOnDrag={false}
+                edgesReconnectable
+                fitView
+                fitViewOptions={{ maxZoom: 1 }}
+                minZoom={0.1}
+                maxZoom={2}
+                defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                colorMode="dark"
+              >
+                <Background color="#444" gap={16} />
+                <Controls />
+                <MiniMap
+                  nodeColor={(node) => {
+                    switch (node.type) {
+                      case 'function-entry': return '#22c55e';
+                      case 'function-return': return '#ef4444';
+                      case 'function-call': return '#a855f7';
+                      default: return '#3b82f6';
+                    }
+                  }}
+                />
+              </ReactFlow>
+            )}
 
-            {/* Connection Error Toast */}
             {connectionError && (
               <ConnectionErrorToast
                 message={connectionError}
@@ -1410,7 +889,7 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           </div>
         </div>
 
-        {/* Right Panel - Properties (只在选中单个节点时显示) */}
+        {/* Right Panel - Properties */}
         {effectiveSelectedNode && (
           <div className="w-72 bg-gray-800 border-l border-gray-700 flex-shrink-0 overflow-hidden">
             <PropertiesPanel selectedNode={effectiveSelectedNode} />
@@ -1418,12 +897,12 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
         )}
       </div>
 
-      {/* Bottom Panel - Execution (动态调整右边距) */}
+      {/* Bottom Panel - Execution */}
       <div
         className="flex-shrink-0 absolute bottom-0 left-64"
         style={{
           height: executionPanelHeight,
-          right: effectiveSelectedNode ? 288 : 0, // w-72 = 288px
+          right: effectiveSelectedNode ? 288 : 0,
         }}
       >
         <ExecutionPanel
@@ -1438,11 +917,9 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           onSaveProject={async () => {
             if (!project?.path) return false;
             const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
-            // 先保存当前图到 projectStore
             if (currentFunctionId) {
               saveCurrentGraph(currentFunctionId);
             }
-            // 然后保存到磁盘
             return await saveProjectToPath(project.path);
           }}
         />

@@ -237,8 +237,8 @@ describe('convertToBackendGraph', () => {
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'const1', target: 'add', sourceHandle: 'data-out-result', targetHandle: 'data-in-lhs' },
-        { id: 'e2', source: 'const2', target: 'add', sourceHandle: 'data-out-result', targetHandle: 'data-in-rhs' },
+        { source: 'const1', target: 'add', sourceHandle: 'data-out-result', targetHandle: 'data-in-lhs' },
+        { source: 'const2', target: 'add', sourceHandle: 'data-out-result', targetHandle: 'data-in-rhs' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -274,8 +274,8 @@ describe('convertToBackendGraph', () => {
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'entry', target: 'add', sourceHandle: 'data-out-a', targetHandle: 'data-in-lhs' },
-        { id: 'e2', source: 'entry', target: 'add', sourceHandle: 'data-out-b', targetHandle: 'data-in-rhs' },
+        { source: 'entry', target: 'add', sourceHandle: 'data-out-a', targetHandle: 'data-in-lhs' },
+        { source: 'entry', target: 'add', sourceHandle: 'data-out-b', targetHandle: 'data-in-rhs' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -308,7 +308,7 @@ describe('convertToBackendGraph', () => {
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'add', target: 'return', sourceHandle: 'data-out-result', targetHandle: 'data-in-result' },
+        { source: 'add', target: 'return', sourceHandle: 'data-out-result', targetHandle: 'data-in-result' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -336,8 +336,8 @@ describe('convertToBackendGraph', () => {
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'entry', target: 'const', sourceHandle: 'exec-out', targetHandle: 'exec-in' },
-        { id: 'e2', source: 'const', target: 'return', sourceHandle: 'exec-out', targetHandle: 'exec-in' },
+        { source: 'entry', target: 'const', sourceHandle: 'exec-out', targetHandle: 'exec-in' },
+        { source: 'const', target: 'return', sourceHandle: 'exec-out', targetHandle: 'exec-in' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);
@@ -364,9 +364,9 @@ describe('convertToBackendGraph', () => {
       ];
       
       const edges: GraphEdge[] = [
-        { id: 'e1', source: 'entry', target: 'add', sourceHandle: 'data-out-a', targetHandle: 'data-in-lhs' },
-        { id: 'e2', source: 'entry', target: 'add', sourceHandle: 'data-out-b', targetHandle: 'data-in-rhs' },
-        { id: 'e3', source: 'add', target: 'return', sourceHandle: 'data-out-result', targetHandle: 'data-in-result' },
+        { source: 'entry', target: 'add', sourceHandle: 'data-out-a', targetHandle: 'data-in-lhs' },
+        { source: 'entry', target: 'add', sourceHandle: 'data-out-b', targetHandle: 'data-in-rhs' },
+        { source: 'add', target: 'return', sourceHandle: 'data-out-result', targetHandle: 'data-in-result' },
       ];
       
       const result = convertToBackendGraph(nodes, edges);

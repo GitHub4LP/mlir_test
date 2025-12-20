@@ -524,7 +524,7 @@ export const AttributeEditor = memo(function AttributeEditor({
       {inputType === 'typed-attr' && (
         <TypedAttrInput
           value={value}
-          onChange={handleChange as (v: number) => void}
+          onChange={handleChange}
           disabled={disabled}
           name={attribute.name}
         />
