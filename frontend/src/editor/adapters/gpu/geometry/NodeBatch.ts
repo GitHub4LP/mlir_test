@@ -126,8 +126,9 @@ export class NodeBatchManager {
       // headerHeight (float) - 从 header 矩形获取，或使用默认值
       data[offset + 4] = header?.height ?? DEFAULT_HEADER_HEIGHT;
       
-      // borderRadius (float)
-      data[offset + 5] = rect.borderRadius;
+      // borderRadius (float) - 如果是对象则取平均值
+      const br = rect.borderRadius;
+      data[offset + 5] = typeof br === 'number' ? br : (br.topLeft + br.topRight + br.bottomLeft + br.bottomRight) / 4;
       
       // bodyColor (vec4)
       const bodyColor = parseColor(rect.fillColor);

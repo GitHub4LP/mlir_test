@@ -7,9 +7,11 @@
 
 import { useCallback, useMemo } from 'react';
 import { useReactFlow, useEdges } from '@xyflow/react';
+import type { Node, Edge } from '@xyflow/react';
 import { useProjectStore } from '../stores/projectStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { handlePinnedTypeChange, type TypeChangeHandlerDeps } from '../services/typeChangeHandler';
+import type { EditorNode, EditorEdge } from '../editor/types';
 
 export interface UseTypeChangeHandlerOptions {
   /** 节点 ID */
@@ -21,6 +23,33 @@ export interface UseTypeChangeHandlerResult {
   handleTypeChange: (portId: string, type: string, originalConstraint?: string) => void;
   /** 类型变更依赖项（供其他需要的地方使用） */
   typeChangeDeps: TypeChangeHandlerDeps;
+}
+
+/**
+ * 将 React Flow Node 转换为 EditorNode
+ */
+function toEditorNode(node: Node): EditorNode {
+  return {
+    id: node.id,
+    type: node.type as EditorNode['type'],
+    position: node.position,
+    data: node.data,
+    selected: node.selected,
+  };
+}
+
+/**
+ * 将 React Flow Edge 转换为 EditorEdge
+ */
+function toEditorEdge(edge: Edge): EditorEdge {
+  return {
+    id: edge.id,
+    source: edge.source,
+    sourceHandle: edge.sourceHandle ?? '',
+    target: edge.target,
+    targetHandle: edge.targetHandle ?? '',
+    selected: edge.selected,
+  };
 }
 
 /**
@@ -38,21 +67,35 @@ export function useTypeChangeHandler(options: UseTypeChangeHandlerOptions): UseT
   const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
 
+  // 将 React Flow edges 转换为 EditorEdge
+  const editorEdges = useMemo(() => edges.map(toEditorEdge), [edges]);
+
   // 构建类型变更依赖项
   const typeChangeDeps = useMemo((): TypeChangeHandlerDeps => {
     return {
-      edges,
+      edges: editorEdges,
       getCurrentFunction,
       getConstraintElements,
       pickConstraintName,
     };
-  }, [edges, getCurrentFunction, getConstraintElements, pickConstraintName]);
+  }, [editorEdges, getCurrentFunction, getConstraintElements, pickConstraintName]);
 
   // 类型变更处理回调
   const handleTypeChange = useCallback((portId: string, type: string, originalConstraint?: string) => {
-    setNodes(currentNodes => handlePinnedTypeChange(
-      nodeId, portId, type, originalConstraint, currentNodes, typeChangeDeps
-    ));
+    setNodes(currentNodes => {
+      const editorNodes = currentNodes.map(toEditorNode);
+      const updatedEditorNodes = handlePinnedTypeChange(
+        nodeId, portId, type, originalConstraint, editorNodes, typeChangeDeps
+      );
+      // 将 EditorNode 转换回 React Flow Node，保持原始节点结构，只更新 data
+      return currentNodes.map((node, index) => {
+        const updatedData = updatedEditorNodes[index]?.data;
+        return {
+          ...node,
+          data: (updatedData ?? node.data) as Record<string, unknown>,
+        };
+      });
+    });
   }, [nodeId, setNodes, typeChangeDeps]);
 
   return { handleTypeChange, typeChangeDeps };

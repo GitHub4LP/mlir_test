@@ -2,20 +2,21 @@
  * FunctionReturnNode 组件
  * 
  * 函数返回节点（UE5 风格）：左侧显示 exec-in + 返回值输入
- * 每个 Return 节点可有 branchName 用于多出口函数
  */
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
-import type { FunctionReturnData, DataPin } from '../types';
-import { getTypeColor } from '../services/typeSystem';
-import { useProjectStore } from '../stores/projectStore';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-import { UnifiedTypeSelector } from './UnifiedTypeSelector';
-import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../services/typeSelectorRenderer';
-import { EditableName, execPinStyle, dataPinStyle } from './shared';
-import { dataInHandle } from '../services/port';
-import { useCurrentFunction, useTypeChangeHandler } from '../hooks';
+import type { FunctionReturnData, DataPin } from '../../../../types';
+import { getTypeColor } from '../../../../services/typeSystem';
+import { useProjectStore } from '../../../../stores/projectStore';
+import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
+import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
+import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
+import { EditableName, execPinStyle, dataPinStyle, getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { dataInHandle } from '../../../../services/port';
+import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
+import { StyleSystem } from '../../../core/StyleSystem';
+import { toEditorNodes, toEditorEdges } from '../typeConversions';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
@@ -54,14 +55,12 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     if (ret && functionId) updateReturnType(functionId, oldName, { ...ret, name: newName });
   }, [functionId, updateReturnType, getFunctionById]);
 
-  // 同步 FunctionDef.returnTypes 到 React Flow 节点的 data.inputs
-  // 这是为了让类型传播函数能读取到正确的端口列表
+  // Sync FunctionDef.returnTypes to React Flow node data.inputs
   useEffect(() => {
     if (isMain) return;
     
     const returnTypes = currentFunction?.returnTypes || [];
     
-    // 构建新的 inputs
     const newInputs = returnTypes.map((ret, idx) => ({
       id: dataInHandle(ret.name || `result_${idx}`),
       name: ret.name || `result_${idx}`,
@@ -70,7 +69,6 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
       color: getTypeColor(ret.constraint),
     }));
     
-    // 检查是否需要更新（避免无限循环）
     const currentNames = (data.inputs || []).map((i: { name: string }) => i.name).join(',');
     const newNames = newInputs.map(i => i.name).join(',');
     
@@ -81,9 +79,8 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     }
   }, [id, isMain, currentFunction?.returnTypes, data.inputs, setNodes]);
 
-  // 构建 DataPin 列表 - 直接从 FunctionDef.returnTypes 派生（单一数据源）
+  // Build DataPin list from FunctionDef.returnTypes
   const dataPins: DataPin[] = useMemo(() => {
-    // main 函数返回固定的 I32，自定义函数从 FunctionDef 读取
     const returns = isMain 
       ? [{ name: 'result', constraint: 'I32' }] 
       : (currentFunction?.returnTypes || []);
@@ -91,21 +88,21 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
       const name = ret.name || `result_${idx}`;
       const portId = dataInHandle(name);
       const constraint = ret.constraint;
-    return {
-      id: portId,
+      return {
+        id: portId,
         label: name,
-      typeConstraint: constraint,
-      displayName: constraint,
+        typeConstraint: constraint,
+        displayName: constraint,
         color: getTypeColor(inputTypes[name] || pinnedTypes[portId] || constraint),
-    };
+      };
     });
   }, [isMain, currentFunction?.returnTypes, inputTypes, pinnedTypes]);
 
   const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({
     nodeId: id,
     data,
-    nodes,
-    edges,
+    nodes: toEditorNodes(nodes),
+    edges: toEditorEdges(edges),
     currentFunction: currentFunction ?? undefined,
     getConstraintElements,
     onTypeSelect: (portId: string, type: string, originalConstraint: string) => {
@@ -115,11 +112,15 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
 
   const headerColor = isMain ? '#dc2626' : '#ef4444';
   const headerText = branchName ? `Return "${branchName}"` : 'Return';
+  const nodeStyle = StyleSystem.getNodeStyle();
 
   return (
-    <div className={`min-w-48 rounded-lg overflow-visible shadow-lg relative ${selected ? 'ring-2 ring-blue-400' : ''}`}
-      style={{ backgroundColor: '#2d2d3d', border: `1px solid ${selected ? '#60a5fa' : '#3d3d4d'}` }}>
-      <div className="px-3 py-2" style={{ backgroundColor: headerColor }}>
+    <div className="overflow-visible shadow-lg relative"
+      style={{
+        ...getNodeContainerStyle(selected),
+        minWidth: `${nodeStyle.minWidth}px`,
+      }}>
+      <div style={getNodeHeaderStyle(headerColor)}>
         <span className="text-sm font-semibold text-white">{headerText}</span>
         {isMain && <span className="ml-1 text-xs text-white/70">(main)</span>}
       </div>

@@ -2,8 +2,8 @@
  * CustomEdge Components
  * 
  * Custom edge types for the blueprint editor:
- * - ExecutionEdge: White edge with arrow for execution flow
- * - DataEdge: Colored edge based on data type (color passed via data prop)
+ * - ExecutionEdge: White edge for execution flow
+ * - DataEdge: Colored edge based on data type
  */
 
 import { memo } from 'react';
@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 
 /**
- * Execution Edge - White edge, same style as DataEdge but thicker
+ * Execution Edge - White edge, thicker than data edge
  */
 export const ExecutionEdge = memo(function ExecutionEdge({
   id,
@@ -42,7 +42,7 @@ export const ExecutionEdge = memo(function ExecutionEdge({
       path={edgePath}
       style={{
         stroke: 'white',
-        strokeWidth: selected ? 4 : 3,  // 比数据线粗（数据线是 selected ? 3 : 2）
+        strokeWidth: selected ? 4 : 3,
         filter: selected ? 'drop-shadow(0 0 4px white)' : undefined,
       }}
     />
@@ -80,7 +80,6 @@ export const DataEdge = memo(function DataEdge({
     targetPosition,
   });
 
-  // Use color from data, or from style, or default
   const color = data?.color || (style as React.CSSProperties)?.stroke || '#4A90D9';
 
   return (
@@ -95,5 +94,3 @@ export const DataEdge = memo(function DataEdge({
     />
   );
 });
-
-

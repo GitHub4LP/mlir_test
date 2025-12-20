@@ -8,7 +8,7 @@
 import type { Project } from '../../types';
 
 /** 渲染器类型 */
-export type RendererType = 'reactflow' | 'canvas' | 'webgl' | 'webgpu';
+export type RendererType = 'reactflow' | 'canvas' | 'webgl' | 'webgpu' | 'vueflow';
 
 export interface ProjectToolbarProps {
   project: Project | null;
@@ -20,6 +20,8 @@ export interface ProjectToolbarProps {
   webglAvailable?: boolean;
   /** WebGPU 是否可用 */
   webgpuAvailable?: boolean;
+  /** Vue Flow 是否可用 */
+  vueflowAvailable?: boolean;
   onCreateClick: () => void;
   onOpenClick: () => void;
   onSaveClick: () => void;
@@ -35,6 +37,7 @@ export function ProjectToolbar({
   onRendererChange,
   webglAvailable = true,
   webgpuAvailable = false,
+  vueflowAvailable = true,
   onCreateClick,
   onOpenClick,
   onSaveClick,
@@ -130,6 +133,18 @@ export function ProjectToolbar({
           title="React Flow renderer"
         >
           ReactFlow
+        </button>
+        <button
+          onClick={() => handleRendererChange('vueflow')}
+          disabled={!project || !vueflowAvailable}
+          className={`px-2 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            effectiveRenderer === 'vueflow'
+              ? 'bg-emerald-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+          title={vueflowAvailable ? 'Vue Flow renderer' : 'Vue Flow not available'}
+        >
+          VueFlow
         </button>
         <button
           onClick={() => handleRendererChange('canvas')}

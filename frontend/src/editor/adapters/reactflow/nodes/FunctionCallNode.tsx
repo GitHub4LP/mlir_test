@@ -4,22 +4,24 @@
  * 自定义函数调用节点：
  * - 左侧：exec-in + 输入参数
  * - 右侧：exec-out + 返回值
- * - 类型选择逻辑与 Operation 节点相同
  */
 
 import { memo, useCallback, useMemo } from 'react';
 import { type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
-import type { FunctionCallData, DataPin } from '../types';
-import { getTypeColor } from '../services/typeSystem';
-import { UnifiedTypeSelector } from './UnifiedTypeSelector';
-import { NodePins } from './NodePins';
-import { buildPinRows } from '../services/pinUtils';
-import { useProjectStore } from '../stores/projectStore';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
-import { computeTypeSelectionState } from '../services/typeSelection';
-import { getDisplayType } from '../services/typeSelectorRenderer';
-import { useTypeChangeHandler } from '../hooks';
+import type { FunctionCallData, DataPin } from '../../../../types';
+import { getTypeColor } from '../../../../services/typeSystem';
+import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
+import { NodePins } from '../../../../components/NodePins';
+import { buildPinRows } from '../../../../services/pinUtils';
+import { useProjectStore } from '../../../../stores/projectStore';
+import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
+import { dataInHandle, dataOutHandle, PortRef } from '../../../../services/port';
+import { computeTypeSelectionState } from '../../../../services/typeSelection';
+import { getDisplayType } from '../../../../services/typeSelectorRenderer';
+import { useTypeChangeHandler } from '../../../../hooks';
+import { StyleSystem } from '../../../core/StyleSystem';
+import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { toEditorNodes, toEditorEdges } from '../typeConversions';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -34,16 +36,14 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
 
-  // 从 data 中获取传播结果
   const { inputTypes = {}, outputTypes = {} } = data;
 
-  // 使用统一的 hook
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
   // Build pin rows
   const pinRows = useMemo(() => {
     const dataInputs: DataPin[] = inputs.map((port) => ({
-      id: dataInHandle(port.name),  // 统一格式：data-in-{name}
+      id: dataInHandle(port.name),
       label: port.name,
       typeConstraint: port.typeConstraint,
       displayName: port.typeConstraint,
@@ -51,7 +51,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     }));
 
     const dataOutputs: DataPin[] = outputs.map((port) => ({
-      id: dataOutHandle(port.name),  // 统一格式：data-out-{name}
+      id: dataOutHandle(port.name),
       label: port.name,
       typeConstraint: port.typeConstraint,
       displayName: port.typeConstraint,
@@ -61,16 +61,16 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     return buildPinRows({ execIn, execOuts: execOuts || [], dataInputs, dataOutputs });
   }, [inputs, outputs, inputTypes, outputTypes, execIn, execOuts]);
 
-  // Render type selector（使用统一的 getDisplayType）
+  // Render type selector
   const nodes = useNodes();
   const renderTypeSelector = useCallback((pin: DataPin) => {
-    // 使用统一的 getDisplayType
     const displayType = getDisplayType(pin, data);
 
-    // 统一使用 computeTypeSelectionState 计算可选集和 canEdit
     const currentFunction = getCurrentFunction();
+    const editorNodes = toEditorNodes(nodes);
+    const editorEdges = toEditorEdges(edges);
     const { options, canEdit } = computeTypeSelectionState(
-      id, pin.id, nodes, edges, currentFunction ?? undefined, getConstraintElements
+      id, pin.id, editorNodes, editorEdges, currentFunction ?? undefined, getConstraintElements
     );
 
     return (
@@ -88,7 +88,6 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   const getPortTypeWrapper = useCallback((pinId: string) => {
     if (pinnedTypes[pinId]) return pinnedTypes[pinId];
     
-    // 使用 PortRef 解析端口 ID
     const parsed = PortRef.parseHandleId(pinId);
     if (!parsed) return undefined;
     
@@ -102,10 +101,16 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     return undefined;
   }, [pinnedTypes, inputs, outputs, inputTypes, outputTypes]);
 
+  const headerColor = StyleSystem.getDialectColor('scf');
+  const nodeStyle = StyleSystem.getNodeStyle();
+
   return (
-    <div className={`min-w-48 rounded-lg overflow-visible shadow-lg ${selected ? 'ring-2 ring-blue-400' : ''}`}
-      style={{ backgroundColor: '#2d2d3d', border: `1px solid ${selected ? '#60a5fa' : '#3d3d4d'}` }}>
-      <div className="px-3 py-2" style={{ backgroundColor: '#9B59B6' }}>
+    <div className="overflow-visible shadow-lg"
+      style={{
+        ...getNodeContainerStyle(selected),
+        minWidth: `${nodeStyle.minWidth}px`,
+      }}>
+      <div style={getNodeHeaderStyle(headerColor)}>
         <span className="text-xs font-medium text-white/70 uppercase">call</span>
         <span className="text-sm font-semibold text-white ml-1">{functionName}</span>
       </div>

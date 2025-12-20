@@ -1,0 +1,255 @@
+{
+  "id": "main",
+  "name": "main",
+  "parameters": [],
+  "returnTypes": [
+    {
+      "name": "result",
+      "constraint": "I32"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "entry",
+        "type": "function-entry",
+        "position": {
+          "x": -255.0,
+          "y": 159.0
+        },
+        "data": {
+          "execOut": {
+            "id": "exec-out",
+            "label": ""
+          },
+          "isMain": true
+        }
+      },
+      {
+        "id": "return-0",
+        "type": "function-return",
+        "position": {
+          "x": 1604.074135418802,
+          "y": 180.79923584488438
+        },
+        "data": {
+          "branchName": "",
+          "execIn": {
+            "id": "exec-in",
+            "label": ""
+          },
+          "isMain": true
+        }
+      },
+      {
+        "id": "node_1766142769422_429bgpv",
+        "type": "operation",
+        "position": {
+          "x": -181.70314446967012,
+          "y": 274.28167500970306
+        },
+        "data": {
+          "fullName": "arith.constant",
+          "attributes": {
+            "value": 2
+          },
+          "inputTypes": {},
+          "outputTypes": {
+            "result": "I32"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      },
+      {
+        "id": "node_1766142833413_wpnwci2",
+        "type": "function-call",
+        "position": {
+          "x": 204.0,
+          "y": 161.0
+        },
+        "data": {
+          "functionId": "add1",
+          "functionName": "add1",
+          "pinnedTypes": {
+            "data-in-arg0": "I32"
+          },
+          "inputTypes": {
+            "arg0": "I32"
+          },
+          "outputTypes": {
+            "ret0": "I32"
+          },
+          "execIn": {
+            "id": "exec-in",
+            "label": ""
+          },
+          "execOuts": [
+            {
+              "id": "exec-out-0",
+              "label": ""
+            }
+          ]
+        }
+      },
+      {
+        "id": "node_1766166297058_ski66mr",
+        "type": "function-call",
+        "position": {
+          "x": 797.0442849749953,
+          "y": 166.4395657755176
+        },
+        "data": {
+          "functionId": "add2",
+          "functionName": "add2",
+          "pinnedTypes": {
+            "data-out-ret1": "F32"
+          },
+          "inputTypes": {
+            "arg0": "F32"
+          },
+          "outputTypes": {
+            "ret1": "F32"
+          },
+          "execIn": {
+            "id": "exec-in",
+            "label": ""
+          },
+          "execOuts": [
+            {
+              "id": "exec-out-0",
+              "label": ""
+            }
+          ]
+        }
+      },
+      {
+        "id": "node_1766166329232_hsac0au",
+        "type": "operation",
+        "position": {
+          "x": 207.6882852907111,
+          "y": 518.6193428869752
+        },
+        "data": {
+          "fullName": "arith.uitofp",
+          "attributes": {},
+          "pinnedTypes": {
+            "data-out-out": "F32"
+          },
+          "inputTypes": {
+            "in": "I32"
+          },
+          "outputTypes": {
+            "out": "F32"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      },
+      {
+        "id": "node_1766166348779_2ce0omk",
+        "type": "operation",
+        "position": {
+          "x": 1119.1547250617527,
+          "y": 418.50602810792094
+        },
+        "data": {
+          "fullName": "arith.addi",
+          "attributes": {},
+          "inputTypes": {
+            "lhs": "I32",
+            "rhs": "I32"
+          },
+          "outputTypes": {
+            "result": "I32"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      },
+      {
+        "id": "node_1766166374065_c7xs95u",
+        "type": "operation",
+        "position": {
+          "x": 772.7597493862461,
+          "y": 518.7665252602854
+        },
+        "data": {
+          "fullName": "arith.fptoui",
+          "attributes": {},
+          "inputTypes": {
+            "in": "F32"
+          },
+          "outputTypes": {
+            "out": "I32"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "entry",
+        "sourceHandle": "exec-out",
+        "target": "node_1766142833413_wpnwci2",
+        "targetHandle": "exec-in"
+      },
+      {
+        "source": "node_1766142769422_429bgpv",
+        "sourceHandle": "data-out-result",
+        "target": "node_1766142833413_wpnwci2",
+        "targetHandle": "data-in-arg0"
+      },
+      {
+        "source": "node_1766142769422_429bgpv",
+        "sourceHandle": "data-out-result",
+        "target": "node_1766166329232_hsac0au",
+        "targetHandle": "data-in-in"
+      },
+      {
+        "source": "node_1766166329232_hsac0au",
+        "sourceHandle": "data-out-out",
+        "target": "node_1766166297058_ski66mr",
+        "targetHandle": "data-in-arg0"
+      },
+      {
+        "source": "node_1766142833413_wpnwci2",
+        "sourceHandle": "exec-out-0",
+        "target": "node_1766166297058_ski66mr",
+        "targetHandle": "exec-in"
+      },
+      {
+        "source": "node_1766166348779_2ce0omk",
+        "sourceHandle": "data-out-result",
+        "target": "return-0",
+        "targetHandle": "data-in-result"
+      },
+      {
+        "source": "node_1766166297058_ski66mr",
+        "sourceHandle": "exec-out-0",
+        "target": "return-0",
+        "targetHandle": "exec-in"
+      },
+      {
+        "source": "node_1766166297058_ski66mr",
+        "sourceHandle": "data-out-ret1",
+        "target": "node_1766166374065_c7xs95u",
+        "targetHandle": "data-in-in"
+      },
+      {
+        "source": "node_1766166374065_c7xs95u",
+        "sourceHandle": "data-out-out",
+        "target": "node_1766166348779_2ce0omk",
+        "targetHandle": "data-in-rhs"
+      },
+      {
+        "source": "node_1766142833413_wpnwci2",
+        "sourceHandle": "data-out-ret0",
+        "target": "node_1766166348779_2ce0omk",
+        "targetHandle": "data-in-lhs"
+      }
+    ]
+  },
+  "isMain": true
+}

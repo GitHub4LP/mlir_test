@@ -12,6 +12,10 @@ import { Handle, Position } from '@xyflow/react';
 import type { DataPin, PinRow } from '../types';
 import { getTypeColor } from '../services/typeSystem';
 import { execPinStyle, dataPinStyle } from './shared';
+import { StyleSystem } from '../editor/core/StyleSystem';
+
+// 从 StyleSystem 获取引脚行高，确保与其他渲染器一致
+const PIN_ROW_HEIGHT = StyleSystem.getNodeStyle().pinRowHeight;
 
 interface PinRowProps {
   row: PinRow;
@@ -32,7 +36,7 @@ const PinRowComponent = memo(function PinRowComponent({
   const rightPin = row.right;
 
   return (
-    <div className="flex justify-between items-center min-h-7">
+    <div className="flex justify-between items-center" style={{ minHeight: PIN_ROW_HEIGHT }}>
       {/* Left pin (input) */}
       <div className="relative flex items-center py-1">
         {leftPin && (
@@ -142,7 +146,7 @@ const VariadicControlRow = memo(function VariadicControlRow({
   );
 
   return (
-    <div className="flex justify-between items-center min-h-6 px-4">
+    <div className="flex justify-between items-center px-4" style={{ minHeight: PIN_ROW_HEIGHT }}>
       {side === 'left' ? controls : <div />}
       {side === 'right' ? controls : <div />}
     </div>

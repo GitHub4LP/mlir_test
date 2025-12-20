@@ -2,9 +2,9 @@
  * 测试：constant 连接 addi 时的收窄
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { Node, Edge } from '@xyflow/react';
 import { computePropagationWithNarrowing, applyPropagationResult } from './propagator';
 import type { BlueprintNodeData, OperationDef } from '../../types';
+import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import type { ConstraintDef } from '../../stores/typeConstraintStore';
 
@@ -51,7 +51,7 @@ describe('constant → addi narrowing', () => {
       assemblyFormat: '',
     };
     
-    const constantNode: Node = {
+    const constantNode: EditorNode = {
       id: 'const1',
       type: 'operation',
       position: { x: 0, y: 0 },
@@ -86,7 +86,7 @@ describe('constant → addi narrowing', () => {
       assemblyFormat: '',
     };
     
-    const addiNode: Node = {
+    const addiNode: EditorNode = {
       id: 'addi1',
       type: 'operation',
       position: { x: 0, y: 0 },
@@ -102,7 +102,7 @@ describe('constant → addi narrowing', () => {
     };
 
     // 连线：constant.result → addi.lhs
-    const edges: Edge[] = [{
+    const edges: EditorEdge[] = [{
       id: 'e1',
       source: 'const1',
       sourceHandle: 'data-out-result',

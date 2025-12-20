@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { Node } from '@xyflow/react';
 import { extractTypeSources, buildPropagationGraph, propagateTypes } from './propagator';
 import type { BlueprintNodeData, OperationDef } from '../../types';
+import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import type { ConstraintDef } from '../../stores/typeConstraintStore';
 
@@ -82,7 +82,7 @@ function createOperationNode(
   id: string,
   operation: OperationDef,
   pinnedTypes: Record<string, string> = {}
-): Node {
+): EditorNode {
   const inputTypes: Record<string, string> = {};
   const outputTypes: Record<string, string> = {};
 
@@ -209,7 +209,7 @@ describe('type propagation with auto-resolved types', () => {
     const selectNode = createOperationNode('select', selectOp);
 
     const nodes = [cmpiNode, selectNode];
-    const edges = [{
+    const edges: EditorEdge[] = [{
       id: 'e1',
       source: 'cmpi',
       sourceHandle: 'data-out-result',

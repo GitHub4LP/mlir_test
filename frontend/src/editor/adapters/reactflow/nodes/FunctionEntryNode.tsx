@@ -6,16 +6,18 @@
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
-import type { FunctionEntryData, DataPin, FunctionTrait } from '../types';
-import { getTypeColor } from '../services/typeSystem';
-import { useProjectStore } from '../stores/projectStore';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-import { UnifiedTypeSelector } from './UnifiedTypeSelector';
-import { FunctionTraitsEditor } from './FunctionTraitsEditor';
-import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../services/typeSelectorRenderer';
-import { EditableName, execPinStyle, dataPinStyle } from './shared';
-import { dataOutHandle } from '../services/port';
-import { useCurrentFunction, useTypeChangeHandler } from '../hooks';
+import type { FunctionEntryData, DataPin, FunctionTrait } from '../../../../types';
+import { getTypeColor } from '../../../../services/typeSystem';
+import { useProjectStore } from '../../../../stores/projectStore';
+import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
+import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
+import { FunctionTraitsEditor } from '../../../../components/FunctionTraitsEditor';
+import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
+import { EditableName, execPinStyle, dataPinStyle, getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { dataOutHandle } from '../../../../services/port';
+import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
+import { StyleSystem } from '../../../core/StyleSystem';
+import { toEditorNodes, toEditorEdges } from '../typeConversions';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
@@ -32,7 +34,6 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const setFunctionTraits = useProjectStore(state => state.setFunctionTraits);
   const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
 
-  // 使用统一的 hooks
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
   
@@ -62,12 +63,10 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     if (param) updateParameter(functionId, oldName, { ...param, name: newName });
   }, [functionId, updateParameter, getCurrentFunction]);
 
-  // 同步 FunctionDef.parameters 到 React Flow 节点的 data.outputs
-  // 这是为了让类型传播函数能读取到正确的端口列表
+  // Sync FunctionDef.parameters to React Flow node data.outputs
   useEffect(() => {
     if (isMain) return;
     
-    // 构建新的 outputs
     const newOutputs = parameters.map((param) => ({
       id: dataOutHandle(param.name),
       name: param.name,
@@ -76,7 +75,6 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
       color: getTypeColor(param.constraint),
     }));
     
-    // 检查是否需要更新（避免无限循环）
     const currentNames = (data.outputs || []).map((o: { name: string }) => o.name).join(',');
     const newNames = newOutputs.map(o => o.name).join(',');
     
@@ -87,28 +85,27 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     }
   }, [id, isMain, parameters, data.outputs, setNodes]);
 
-  // 构建 DataPin 列表 - 直接从 FunctionDef.parameters 派生（单一数据源）
+  // Build DataPin list from FunctionDef.parameters
   const dataPins: DataPin[] = useMemo(() => {
-    // main 函数没有参数，自定义函数从 FunctionDef 读取
     const params = isMain ? [] : parameters;
     return params.map((param) => {
       const portId = dataOutHandle(param.name);
       const constraint = param.constraint;
-    return {
-      id: portId,
+      return {
+        id: portId,
         label: param.name,
-      typeConstraint: constraint,
-      displayName: constraint,
+        typeConstraint: constraint,
+        displayName: constraint,
         color: getTypeColor(outputTypes[param.name] || pinnedTypes[portId] || constraint),
-    };
+      };
     });
   }, [isMain, parameters, outputTypes, pinnedTypes]);
 
   const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({
     nodeId: id,
     data,
-    nodes,
-    edges,
+    nodes: toEditorNodes(nodes),
+    edges: toEditorEdges(edges),
     currentFunction: currentFunction ?? undefined,
     getConstraintElements,
     onTypeSelect: (portId: string, type: string, originalConstraint: string) => {
@@ -117,11 +114,15 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   }), [id, data, nodes, edges, currentFunction, getConstraintElements, handleTypeChange]);
 
   const headerColor = isMain ? '#f59e0b' : '#22c55e';
+  const nodeStyle = StyleSystem.getNodeStyle();
 
   return (
-    <div className={`min-w-48 rounded-lg overflow-visible shadow-lg relative ${selected ? 'ring-2 ring-blue-400' : ''}`}
-      style={{ backgroundColor: '#2d2d3d', border: `1px solid ${selected ? '#60a5fa' : '#3d3d4d'}` }}>
-      <div className="px-3 py-2" style={{ backgroundColor: headerColor }}>
+    <div className="overflow-visible shadow-lg relative"
+      style={{
+        ...getNodeContainerStyle(selected),
+        minWidth: `${nodeStyle.minWidth}px`,
+      }}>
+      <div style={getNodeHeaderStyle(headerColor)}>
         <span className="text-sm font-semibold text-white">{functionName || 'Entry'}</span>
         {isMain && <span className="ml-1 text-xs text-white/70">(main)</span>}
       </div>
@@ -162,7 +163,6 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           </button>
         </div>}
-        {/* Function Traits Editor - only for non-main functions */}
         {!isMain && (
           <div className="px-2">
             <FunctionTraitsEditor

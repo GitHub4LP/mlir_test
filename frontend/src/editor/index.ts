@@ -43,6 +43,11 @@ export {
 export { ReactFlowEditorWrapper } from './adapters/ReactFlowEditorWrapper';
 export type { ReactFlowEditorHandle, ReactFlowEditorWrapperProps } from './adapters/ReactFlowEditorWrapper';
 
+// ReactFlow INodeEditor 实现
+export { ReactFlowNodeEditor, createReactFlowNodeEditor } from './adapters/reactflow/ReactFlowNodeEditor';
+export { ReactFlowCanvas } from './adapters/reactflow/ReactFlowCanvas';
+export type { ReactFlowCanvasHandle, ReactFlowCanvasProps } from './adapters/reactflow/ReactFlowCanvas';
+
 // Canvas 适配器
 export { CanvasNodeEditor, createCanvasNodeEditor } from './adapters/CanvasNodeEditor';
 export { CanvasEditorWrapper } from './adapters/CanvasEditorWrapper';
@@ -51,3 +56,7 @@ export type { CanvasEditorHandle, CanvasEditorWrapperProps } from './adapters/Ca
 // GPU 适配器
 export { GPUEditorWrapper } from './adapters/GPUEditorWrapper';
 export type { GPUEditorWrapperProps } from './adapters/GPUEditorWrapper';
+
+// Vue Flow 适配器
+export { VueFlowEditorWrapper } from './adapters/vueflow/VueFlowEditorWrapper';
+export type { VueFlowEditorWrapperProps } from './adapters/vueflow/VueFlowEditorWrapper';

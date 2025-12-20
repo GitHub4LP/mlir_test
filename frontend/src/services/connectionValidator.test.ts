@@ -11,7 +11,7 @@ import {
   validateConnection,
   getPortTypeConstraint,
   getNodeErrors,
-} from './connectionValidator';
+} from '../editor/adapters/reactflow/connectionUtils';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, OperationDef } from '../types';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import type { ConstraintDef } from '../stores/typeConstraintStore';
@@ -184,13 +184,13 @@ describe('connectionValidator', () => {
   describe('getPortTypeConstraint', () => {
     it('should get output type from operation node', () => {
       const node = createOperationNode('node1', {}, { result: 'I32' });
-      const type = getPortTypeConstraint(node, 'data-out-result', true);
+      const type = getPortTypeConstraint(node, 'data-out-result');
       expect(type).toBe('I32');
     });
 
     it('should get input type from operation node', () => {
       const node = createOperationNode('node1', { lhs: 'SignlessIntegerLike' }, {});
-      const type = getPortTypeConstraint(node, 'data-in-lhs', false);
+      const type = getPortTypeConstraint(node, 'data-in-lhs');
       expect(type).toBe('SignlessIntegerLike');
     });
 
@@ -198,7 +198,7 @@ describe('connectionValidator', () => {
       const node = createFunctionEntryNode('entry', [
         { id: 'data-out-x', name: 'x', typeConstraint: 'I32' },
       ]);
-      const type = getPortTypeConstraint(node, 'data-out-x', true);
+      const type = getPortTypeConstraint(node, 'data-out-x');
       expect(type).toBe('I32');
     });
 
@@ -206,7 +206,7 @@ describe('connectionValidator', () => {
       const node = createFunctionReturnNode('return', [
         { id: 'data-in-result', name: 'result', typeConstraint: 'F32' },
       ]);
-      const type = getPortTypeConstraint(node, 'data-in-result', false);
+      const type = getPortTypeConstraint(node, 'data-in-result');
       expect(type).toBe('F32');
     });
 
@@ -215,7 +215,7 @@ describe('connectionValidator', () => {
       const resolvedTypes = new Map([
         ['node1', new Map([['data-in-lhs', 'I32']])],
       ]);
-      const type = getPortTypeConstraint(node, 'data-in-lhs', false, resolvedTypes);
+      const type = getPortTypeConstraint(node, 'data-in-lhs', resolvedTypes);
       expect(type).toBe('I32');
     });
   });

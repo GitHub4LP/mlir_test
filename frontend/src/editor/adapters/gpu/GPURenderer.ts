@@ -16,6 +16,7 @@ import type { Viewport } from '../shared/Viewport';
 import { NodeBatchManager } from './geometry/NodeBatch';
 import { EdgeBatchManager } from './geometry/EdgeBatch';
 import { CircleBatchManager } from './geometry/CircleBatch';
+import { TriangleBatchManager } from './geometry/TriangleBatch';
 import { TextBatchManager } from './geometry/TextBatch';
 
 /**
@@ -37,6 +38,7 @@ export class GPURenderer implements IRenderer {
   private nodeBatch: NodeBatchManager = new NodeBatchManager();
   private edgeBatch: EdgeBatchManager = new EdgeBatchManager();
   private circleBatch: CircleBatchManager = new CircleBatchManager();
+  private triangleBatch: TriangleBatchManager = new TriangleBatchManager();
   private textBatch: TextBatchManager = new TextBatchManager();
   
   // 事件处理器引用
@@ -178,9 +180,17 @@ export class GPURenderer implements IRenderer {
     }
     this.backend.renderText(this.textBatch.getBatch());
     
-    // 更新并渲染圆形（端口）
+    // 更新并渲染圆形（数据端口）
+    // 同时将三角形（执行引脚）临时转换为小圆形渲染
+    // 更新并渲染圆形（数据端口）
     this.circleBatch.updateFromCircles(data.circles);
     this.backend.renderCircles(this.circleBatch.getBatch());
+    
+    // 更新并渲染三角形（执行引脚）
+    if (data.triangles && data.triangles.length > 0) {
+      this.triangleBatch.updateFromTriangles(data.triangles);
+      this.backend.renderTriangles(this.triangleBatch.getBatch());
+    }
     
     this.backend.endFrame();
     this._viewport = { ...data.viewport };

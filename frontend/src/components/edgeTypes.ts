@@ -1,18 +1,12 @@
 /**
  * Edge Types Configuration
  * 
- * Maps edge type names to their React components.
- * Separated from CustomEdge.tsx to satisfy React Fast Refresh requirements.
+ * Re-exports from the React Flow adapter for backward compatibility.
+ * @deprecated Import from '../editor/adapters/reactflow' instead.
  */
 
-import { ExecutionEdge, DataEdge } from './CustomEdge';
+export { edgeTypes } from '../editor/adapters/reactflow';
 
-/**
- * Edge types map for React Flow
- */
-export const edgeTypes = {
-  execution: ExecutionEdge,
-  data: DataEdge,
-};
-
-export default edgeTypes;
+// 为了兼容 default import
+import { edgeTypes as _edgeTypes } from '../editor/adapters/reactflow';
+export default _edgeTypes;

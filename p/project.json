@@ -1,0 +1,12 @@
+{
+  "name": "p",
+  "path": "./p",
+  "dialects": [
+    "arith"
+  ],
+  "mainFunctionId": "main",
+  "customFunctionIds": [
+    "add1",
+    "add2"
+  ]
+}

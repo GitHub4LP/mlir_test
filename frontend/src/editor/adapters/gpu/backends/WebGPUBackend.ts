@@ -12,6 +12,7 @@ import type {
   EdgeBatch,
   TextBatch,
   CircleBatch,
+  TriangleBatch,
   GPUBackendEvents,
 } from './IGPUBackend';
 
@@ -25,6 +26,9 @@ const EDGE_INSTANCE_FLOATS = 14;
 
 /** 圆形实例数据布局（每实例 floats 数量） */
 const CIRCLE_INSTANCE_FLOATS = 12;
+
+/** 三角形实例数据布局（每实例 floats 数量） */
+const TRIANGLE_INSTANCE_FLOATS = 13;
 
 /** 文字实例数据布局（每实例 floats 数量） */
 const TEXT_INSTANCE_FLOATS = 16;
@@ -49,6 +53,7 @@ export class WebGPUBackend implements IGPUBackend {
   private nodePipeline: GPURenderPipeline | null = null;
   private edgePipeline: GPURenderPipeline | null = null;
   private circlePipeline: GPURenderPipeline | null = null;
+  private trianglePipeline: GPURenderPipeline | null = null;
   private textPipeline: GPURenderPipeline | null = null;
   
   // 缓冲区
@@ -58,6 +63,8 @@ export class WebGPUBackend implements IGPUBackend {
   private edgeInstanceBuffer: GPUBuffer | null = null;
   private circleQuadBuffer: GPUBuffer | null = null;
   private circleInstanceBuffer: GPUBuffer | null = null;
+  private triangleQuadBuffer: GPUBuffer | null = null;
+  private triangleInstanceBuffer: GPUBuffer | null = null;
   private textQuadBuffer: GPUBuffer | null = null;
   private textInstanceBuffer: GPUBuffer | null = null;
   private uniformBuffer: GPUBuffer | null = null;
@@ -70,6 +77,7 @@ export class WebGPUBackend implements IGPUBackend {
   private nodeBindGroup: GPUBindGroup | null = null;
   private edgeBindGroup: GPUBindGroup | null = null;
   private circleBindGroup: GPUBindGroup | null = null;
+  private triangleBindGroup: GPUBindGroup | null = null;
   private textBindGroup: GPUBindGroup | null = null;
   private textBindGroupLayout: GPUBindGroupLayout | null = null;
 
@@ -147,6 +155,8 @@ export class WebGPUBackend implements IGPUBackend {
     this.edgeInstanceBuffer?.destroy();
     this.circleQuadBuffer?.destroy();
     this.circleInstanceBuffer?.destroy();
+    this.triangleQuadBuffer?.destroy();
+    this.triangleInstanceBuffer?.destroy();
     this.textQuadBuffer?.destroy();
     this.textInstanceBuffer?.destroy();
     this.uniformBuffer?.destroy();
@@ -354,6 +364,44 @@ export class WebGPUBackend implements IGPUBackend {
     this.device.queue.submit([commandEncoder.finish()]);
   }
 
+  renderTriangles(batch: TriangleBatch): void {
+    if (!this.device || !this.context || !this.trianglePipeline || batch.count === 0) return;
+    
+    const commandEncoder = this.device.createCommandEncoder();
+    const textureView = this.context.getCurrentTexture().createView();
+    
+    const renderPass = commandEncoder.beginRenderPass({
+      colorAttachments: [{
+        view: textureView,
+        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
+        loadOp: this.getLoadOp(),
+        storeOp: 'store',
+      }],
+    });
+    
+    // 更新 uniform buffer
+    const uniformData = new Float32Array([
+      ...this.viewMatrix,
+      this.width, this.height, 0, 0,
+    ]);
+    this.device.queue.writeBuffer(this.uniformBuffer!, 0, uniformData);
+    
+    // 更新实例数据
+    if (batch.dirty && this.triangleInstanceBuffer) {
+      this.device.queue.writeBuffer(this.triangleInstanceBuffer, 0, batch.instanceData.buffer);
+      batch.dirty = false;
+    }
+    
+    renderPass.setPipeline(this.trianglePipeline);
+    renderPass.setBindGroup(0, this.triangleBindGroup!);
+    renderPass.setVertexBuffer(0, this.triangleQuadBuffer!);
+    renderPass.setVertexBuffer(1, this.triangleInstanceBuffer!);
+    renderPass.draw(4, batch.count);
+    
+    renderPass.end();
+    this.device.queue.submit([commandEncoder.finish()]);
+  }
+
   updateTextTexture(canvas: OffscreenCanvas | HTMLCanvasElement): void {
     if (!this.device) return;
     
@@ -447,6 +495,9 @@ export class WebGPUBackend implements IGPUBackend {
     
     // 初始化圆形渲染资源
     await this.initCircleResources();
+    
+    // 初始化三角形渲染资源
+    await this.initTriangleResources();
     
     // 初始化文字渲染资源
     await this.initTextResources();
@@ -634,7 +685,7 @@ export class WebGPUBackend implements IGPUBackend {
     });
   }
 
-  private async loadShader(type: 'node' | 'edge' | 'circle' | 'text'): Promise<string> {
+  private async loadShader(type: 'node' | 'edge' | 'circle' | 'triangle' | 'text'): Promise<string> {
     // 动态导入 WGSL 着色器
     if (type === 'node') {
       const module = await import('../shaders/webgpu/node.wgsl?raw');
@@ -644,6 +695,9 @@ export class WebGPUBackend implements IGPUBackend {
       return module.default;
     } else if (type === 'circle') {
       const module = await import('../shaders/webgpu/circle.wgsl?raw');
+      return module.default;
+    } else if (type === 'triangle') {
+      const module = await import('../shaders/wgsl/triangle.wgsl?raw');
       return module.default;
     } else {
       const module = await import('../shaders/webgpu/text.wgsl?raw');
@@ -723,6 +777,94 @@ export class WebGPUBackend implements IGPUBackend {
       },
       fragment: {
         module: circleShaderModule,
+        entryPoint: 'fs_main',
+        targets: [{
+          format: this.format,
+          blend: {
+            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+          },
+        }],
+      },
+      primitive: {
+        topology: 'triangle-strip',
+      },
+    });
+  }
+
+  private async initTriangleResources(): Promise<void> {
+    if (!this.device) return;
+    
+    // 三角形着色器
+    const triangleShaderModule = this.device.createShaderModule({
+      label: 'Triangle Shader',
+      code: await this.loadShader('triangle'),
+    });
+    
+    // [-1, 1] 正方形顶点
+    const quadVertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+    this.triangleQuadBuffer = this.device.createBuffer({
+      size: quadVertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.triangleQuadBuffer, 0, quadVertices);
+    
+    // 实例缓冲区（预分配 500 个三角形）
+    this.triangleInstanceBuffer = this.device.createBuffer({
+      size: TRIANGLE_INSTANCE_FLOATS * 4 * 500,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    
+    // Bind group layout
+    const bindGroupLayout = this.device.createBindGroupLayout({
+      entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform' },
+      }],
+    });
+    
+    // Bind group
+    this.triangleBindGroup = this.device.createBindGroup({
+      layout: bindGroupLayout,
+      entries: [{
+        binding: 0,
+        resource: { buffer: this.uniformBuffer! },
+      }],
+    });
+    
+    // 渲染管线
+    this.trianglePipeline = this.device.createRenderPipeline({
+      layout: this.device.createPipelineLayout({
+        bindGroupLayouts: [bindGroupLayout],
+      }),
+      vertex: {
+        module: triangleShaderModule,
+        entryPoint: 'vs_main',
+        buffers: [
+          // 顶点缓冲区
+          {
+            arrayStride: 8,
+            stepMode: 'vertex',
+            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }],
+          },
+          // 实例缓冲区
+          {
+            arrayStride: TRIANGLE_INSTANCE_FLOATS * 4,
+            stepMode: 'instance',
+            attributes: [
+              { shaderLocation: 1, offset: 0, format: 'float32x2' },   // position
+              { shaderLocation: 2, offset: 8, format: 'float32' },     // size
+              { shaderLocation: 3, offset: 12, format: 'float32' },    // direction
+              { shaderLocation: 4, offset: 16, format: 'float32x4' },  // fillColor
+              { shaderLocation: 5, offset: 32, format: 'float32x4' },  // borderColor
+              { shaderLocation: 6, offset: 48, format: 'float32' },    // borderWidth
+            ],
+          },
+        ],
+      },
+      fragment: {
+        module: triangleShaderModule,
         entryPoint: 'fs_main',
         targets: [{
           format: this.format,

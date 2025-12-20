@@ -18,6 +18,7 @@ import type {
   RenderText,
   RenderPath,
   RenderCircle,
+  RenderTriangle,
   InteractionHint,
 } from './types';
 import type { RawInputCallback, MouseButton } from './input';
@@ -117,6 +118,11 @@ export class CanvasRenderer implements IRenderer {
     // 渲染端口
     for (const circle of data.circles) {
       this.renderCircle(ctx, circle);
+    }
+    
+    // 渲染执行引脚（三角形）
+    for (const triangle of data.triangles) {
+      this.renderTriangle(ctx, triangle);
     }
     
     // 渲染交互提示
@@ -348,7 +354,15 @@ export class CanvasRenderer implements IRenderer {
     if (rect.selected) {
       ctx.strokeStyle = '#3b82f6';
       ctx.lineWidth = 2;
-      this.roundRect(ctx, rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, (rect.borderRadius ?? 0) + 2);
+      const selectionRadius = typeof rect.borderRadius === 'number' 
+        ? (rect.borderRadius ?? 0) + 2 
+        : {
+            topLeft: (rect.borderRadius?.topLeft ?? 0) + 2,
+            topRight: (rect.borderRadius?.topRight ?? 0) + 2,
+            bottomLeft: (rect.borderRadius?.bottomLeft ?? 0) + 2,
+            bottomRight: (rect.borderRadius?.bottomRight ?? 0) + 2,
+          };
+      this.roundRect(ctx, rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, selectionRadius);
       ctx.stroke();
     }
     
@@ -357,6 +371,9 @@ export class CanvasRenderer implements IRenderer {
 
   private renderText(ctx: CanvasRenderingContext2D, text: RenderText): void {
     ctx.save();
+    // 启用高质量文字渲染
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? 'system-ui, sans-serif'}`;
     ctx.fillStyle = text.color ?? '#ffffff';
     ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
@@ -423,6 +440,42 @@ export class CanvasRenderer implements IRenderer {
     ctx.restore();
   }
 
+  private renderTriangle(ctx: CanvasRenderingContext2D, triangle: RenderTriangle): void {
+    ctx.save();
+    ctx.beginPath();
+    
+    const { x, y, size, direction } = triangle;
+    
+    if (direction === 'right') {
+      // 向右指的三角形（执行输出引脚）
+      // 三个顶点：左上、左下、右中
+      ctx.moveTo(x - size * 0.5, y - size * 0.6);
+      ctx.lineTo(x - size * 0.5, y + size * 0.6);
+      ctx.lineTo(x + size * 0.7, y);
+    } else {
+      // 向左指的三角形（执行输入引脚）
+      // 三个顶点：右上、右下、左中
+      ctx.moveTo(x + size * 0.5, y - size * 0.6);
+      ctx.lineTo(x + size * 0.5, y + size * 0.6);
+      ctx.lineTo(x - size * 0.7, y);
+    }
+    
+    ctx.closePath();
+    
+    if (triangle.fillColor && triangle.fillColor !== 'transparent') {
+      ctx.fillStyle = triangle.fillColor;
+      ctx.fill();
+    }
+    
+    if (triangle.borderWidth && triangle.borderWidth > 0 && triangle.borderColor) {
+      ctx.strokeStyle = triangle.borderColor;
+      ctx.lineWidth = triangle.borderWidth;
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }
+
   private renderHint(ctx: CanvasRenderingContext2D, hint: InteractionHint): void {
     if (hint.connectionPreview) {
       this.renderPath(ctx, hint.connectionPreview);
@@ -440,22 +493,34 @@ export class CanvasRenderer implements IRenderer {
 
   private roundRect(
     ctx: CanvasRenderingContext2D,
-    x: number, y: number, width: number, height: number, radius: number
+    x: number, y: number, width: number, height: number, 
+    radius: number | { topLeft: number; topRight: number; bottomLeft: number; bottomRight: number }
   ): void {
-    if (radius === 0) {
+    // 解析圆角配置
+    let tl: number, tr: number, bl: number, br: number;
+    if (typeof radius === 'number') {
+      tl = tr = bl = br = radius;
+    } else {
+      tl = radius.topLeft;
+      tr = radius.topRight;
+      bl = radius.bottomLeft;
+      br = radius.bottomRight;
+    }
+    
+    if (tl === 0 && tr === 0 && bl === 0 && br === 0) {
       ctx.rect(x, y, width, height);
       return;
     }
     ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.moveTo(x + tl, y);
+    ctx.lineTo(x + width - tr, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + tr);
+    ctx.lineTo(x + width, y + height - br);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - br, y + height);
+    ctx.lineTo(x + bl, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - bl);
+    ctx.lineTo(x, y + tl);
+    ctx.quadraticCurveTo(x, y, x + tl, y);
     ctx.closePath();
   }
 

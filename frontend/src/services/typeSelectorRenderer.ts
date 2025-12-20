@@ -5,9 +5,13 @@
  * 1. 计算 displayType（显示的类型）
  * 2. 计算 options 和 canEdit（可选集和是否可编辑）
  * 3. 渲染 UnifiedTypeSelector
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../editor/types';
 import type { DataPin, FunctionDef, TypePropagationData } from '../types';
 import { computeTypeSelectionState } from './typeSelection';
 import { PortRef } from './port';
@@ -58,10 +62,10 @@ export interface TypeSelectorRenderParams {
   nodeId: string;
   /** 节点的类型传播数据 */
   data: TypePropagationData;
-  /** 当前图的所有节点 */
-  nodes: Node[];
-  /** 当前图的所有边 */
-  edges: Edge[];
+  /** 当前图的所有节点（EditorNode 类型） */
+  nodes: EditorNode[];
+  /** 当前图的所有边（EditorEdge 类型） */
+  edges: EditorEdge[];
   /** 当前函数定义 */
   currentFunction: FunctionDef | undefined;
   /** 获取约束映射到的类型约束集合元素 */

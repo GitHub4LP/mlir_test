@@ -6,13 +6,31 @@
 
 // 快捷键配置
 export {
+  type KeyAction,
   type KeyBindings,
   type Modifiers,
+  type KeyBindingInfo,
+  type ReactFlowKeyConfig,
+  type VueFlowKeyConfig,
   defaultKeyBindings,
   matchesShortcut,
   matchesAction,
   extractModifiersFromEvent,
   createKeyHandler,
+  // React Flow / Vue Flow 配置生成
+  getReactFlowKeyConfig,
+  getReactFlowCustomActions,
+  getVueFlowKeyConfig,
+  getVueFlowCustomActions,
+  // 用户配置管理
+  getAllKeyBindingInfos,
+  loadUserKeyBindings,
+  saveUserKeyBindings,
+  resetKeyBindings,
+  exportKeyBindings,
+  importKeyBindings,
+  updateKeyBinding,
+  formatShortcutForDisplay,
 } from './KeyBindings';
 
 // 坐标系统
@@ -35,3 +53,31 @@ export {
   fromReactFlowViewport,
   toReactFlowViewport,
 } from './Viewport';
+
+// Handle 样式
+export {
+  getExecHandleStyle,
+  getExecHandleStyleRight,
+  getDataHandleStyle,
+  getExecHandleCSSLeft,
+  getExecHandleCSSRight,
+  getDataHandleCSS,
+  EXEC_COLOR,
+  HANDLE_RADIUS,
+  HANDLE_SIZE,
+} from './HandleStyles';
+
+// 连线验证适配器
+export {
+  type GetPortTypeFn,
+  type ConnectionValidationResult,
+  // 核心验证
+  validatePorts,
+  // 框架适配器
+  createReactFlowValidator,
+  createVueFlowValidator,
+  createValidatorWithStore,
+  // 端口类型检测（便捷重导出）
+  isExecPort,
+  isDataPort,
+} from './ConnectionValidator';

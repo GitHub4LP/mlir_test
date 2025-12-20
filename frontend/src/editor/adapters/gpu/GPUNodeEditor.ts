@@ -3,6 +3,10 @@
  * 
  * 实现 INodeEditor 接口，使用 GPURenderer 进行渲染。
  * 集成 GraphController 处理业务逻辑。
+ * 
+ * 覆盖层支持：
+ * - 使用 OverlayManager 管理 HTML 覆盖层
+ * - 支持类型选择器、属性编辑器等 UI 组件
  */
 
 import type { INodeEditor } from '../../INodeEditor';
@@ -17,6 +21,9 @@ import type {
 } from '../../types';
 import { GPURenderer } from './GPURenderer';
 import { GraphController } from '../canvas/GraphController';
+import { OverlayManager, type OverlayConfig, type ActiveOverlay } from '../canvas/OverlayManager';
+import { hitTestTypeLabel, getTypeLabelPosition } from '../canvas/HitTest';
+import { computeNodeLayout } from '../canvas/layout';
 import type { GraphState, GraphNode, GraphEdge } from '../../../types';
 
 /**
@@ -49,6 +56,7 @@ function toGraphEdge(edge: EditorEdge): GraphEdge {
 export class GPUNodeEditor implements INodeEditor {
   private renderer: GPURenderer;
   private controller: GraphController;
+  private overlayManager: OverlayManager;
   private container: HTMLElement | null = null;
   
   // 当前数据
@@ -66,11 +74,16 @@ export class GPUNodeEditor implements INodeEditor {
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
   onDeleteRequest: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
+  
+  // 覆盖层回调
+  onOverlayChange: ((overlays: ActiveOverlay[]) => void) | null = null;
+  onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null = null;
 
   
   constructor(preferWebGPU: boolean = true) {
     this.renderer = new GPURenderer(preferWebGPU);
     this.controller = new GraphController();
+    this.overlayManager = new OverlayManager();
     
     // 设置控制器回调
     this.setupControllerCallbacks();
@@ -121,6 +134,14 @@ export class GPUNodeEditor implements INodeEditor {
       this.onEdgeDoubleClick?.(edgeId);
     };
     
+    // 视口变化
+    this.controller.onViewportChange = (viewport) => {
+      this.onViewportChange?.(viewport);
+      // 更新覆盖层位置
+      this.overlayManager.updateViewport(viewport);
+      this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
+    };
+    
     // 拖放
     this.controller.onDrop = (x, y, dataTransfer) => {
       this.onDrop?.(x, y, dataTransfer);
@@ -141,6 +162,7 @@ export class GPUNodeEditor implements INodeEditor {
   mount(container: HTMLElement): void {
     this.container = container;
     this.renderer.mount(container);
+    this.overlayManager.mount(container);
     // 等待渲染器就绪后再渲染
     this.renderer.waitForReady().then(() => {
       this.requestRender();
@@ -148,6 +170,7 @@ export class GPUNodeEditor implements INodeEditor {
   }
   
   unmount(): void {
+    this.overlayManager.unmount();
     this.renderer.unmount();
     this.container = null;
   }
@@ -170,7 +193,9 @@ export class GPUNodeEditor implements INodeEditor {
   }
   
   setViewport(viewport: EditorViewport): void {
-    this.controller.setViewport({
+    // 直接设置视口，不触发回调（避免循环）
+    // 回调只在用户交互（拖拽、缩放）时触发
+    this.controller.setViewportSilent({
       x: viewport.x,
       y: viewport.y,
       zoom: viewport.zoom,
@@ -236,5 +261,102 @@ export class GPUNodeEditor implements INodeEditor {
     if (!this.renderer.isReady()) return;
     const renderData = this.controller.computeRenderData();
     this.renderer.render(renderData);
+  }
+
+  // ============================================================
+  // 覆盖层管理
+  // ============================================================
+
+  /**
+   * 显示类型选择器覆盖层
+   */
+  showTypeSelector(nodeId: string, handleId: string): string | null {
+    // 查找节点
+    const node = this.nodes.find(n => n.id === nodeId);
+    if (!node) return null;
+    
+    // 计算节点布局
+    const graphNode: GraphNode = {
+      id: node.id,
+      type: node.type as GraphNode['type'],
+      position: node.position,
+      data: node.data as GraphNode['data'],
+    };
+    const layout = computeNodeLayout(graphNode, false);
+    
+    // 获取类型标签位置
+    const pos = getTypeLabelPosition(layout, handleId);
+    if (!pos) return null;
+    
+    // 显示覆盖层
+    const config: OverlayConfig = {
+      type: 'type-selector',
+      nodeId,
+      portId: handleId,
+      canvasX: pos.canvasX,
+      canvasY: pos.canvasY,
+      data: { node: node.data },
+    };
+    
+    const id = this.overlayManager.show(config);
+    this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
+    return id;
+  }
+
+  /**
+   * 隐藏覆盖层
+   */
+  hideOverlay(id: string): void {
+    this.overlayManager.hide(id);
+    this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
+  }
+
+  /**
+   * 隐藏所有覆盖层
+   */
+  hideAllOverlays(): void {
+    this.overlayManager.hideAll();
+    this.onOverlayChange?.([]);
+  }
+
+  /**
+   * 获取覆盖层容器
+   */
+  getOverlayContainer(): HTMLDivElement | null {
+    return this.overlayManager.getContainer();
+  }
+
+  /**
+   * 获取活动覆盖层列表
+   */
+  getActiveOverlays(): ActiveOverlay[] {
+    return this.overlayManager.getActiveOverlays();
+  }
+
+  /**
+   * 处理类型标签点击（供外部调用）
+   */
+  handleTypeLabelClick(screenX: number, screenY: number): boolean {
+    // 转换为画布坐标
+    const canvasPos = this.controller.screenToCanvas(screenX, screenY);
+    
+    // 遍历节点进行命中测试
+    for (const node of this.nodes) {
+      const graphNode: GraphNode = {
+        id: node.id,
+        type: node.type as GraphNode['type'],
+        position: node.position,
+        data: node.data as GraphNode['data'],
+      };
+      const layout = computeNodeLayout(graphNode, false);
+      const hit = hitTestTypeLabel(canvasPos.x, canvasPos.y, layout);
+      
+      if (hit) {
+        this.onTypeLabelClick?.(hit.nodeId, hit.handleId, hit.canvasX, hit.canvasY);
+        return true;
+      }
+    }
+    
+    return false;
   }
 }

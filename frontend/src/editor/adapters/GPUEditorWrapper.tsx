@@ -72,7 +72,6 @@ export function GPUEditorWrapper({
   const editorRef = useRef<GPUNodeEditor | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [backendName, setBackendName] = useState<string>('');
-  const defaultViewportRef = useRef(defaultViewport);
   
   // 初始化编辑器
   useEffect(() => {
@@ -91,8 +90,9 @@ export function GPUEditorWrapper({
       setBackendName(editor.getName());
       setIsReady(true);
       
-      if (defaultViewportRef.current) {
-        editor.setViewport(defaultViewportRef.current);
+      // 首次就绪时应用初始视口
+      if (defaultViewport) {
+        editor.setViewport(defaultViewport);
       }
     });
     
@@ -102,7 +102,8 @@ export function GPUEditorWrapper({
       editorRef.current = null;
       setIsReady(false);
     };
-  }, [preferWebGPU]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferWebGPU]); // 注意：不依赖 defaultViewport，只在初始化时使用
   
   // 同步回调
   useEffect(() => {
@@ -130,24 +131,23 @@ export function GPUEditorWrapper({
     onDeleteRequest,
   ]);
   
-  // 跟踪是否已经执行过初始 fitView
-  const hasFitViewRef = useRef(false);
+  // 跟踪是否已经应用过初始视口
+  const hasAppliedInitialViewportRef = useRef(false);
   
   // 同步节点数据
   useEffect(() => {
     if (editorRef.current && isReady) {
       editorRef.current.setNodes(nodes);
       
-      // 首次有节点数据时自动 fitView
-      if (!hasFitViewRef.current && nodes.length > 0) {
-        hasFitViewRef.current = true;
-        // 延迟执行确保数据已同步
+      // 首次就绪时确保视口已应用
+      if (!hasAppliedInitialViewportRef.current && defaultViewport) {
+        hasAppliedInitialViewportRef.current = true;
         requestAnimationFrame(() => {
-          editorRef.current?.fitView({ padding: 50, maxZoom: 1 });
+          editorRef.current?.setViewport(defaultViewport);
         });
       }
     }
-  }, [nodes, isReady]);
+  }, [nodes, isReady, defaultViewport]);
   
   // 同步边数据
   useEffect(() => {
@@ -155,6 +155,19 @@ export function GPUEditorWrapper({
       editorRef.current.setEdges(edges);
     }
   }, [edges, isReady]);
+  
+  // 同步外部视口变化（从 store 来的）
+  useEffect(() => {
+    if (editorRef.current && isReady && defaultViewport) {
+      const current = editorRef.current.getViewport();
+      // 只有当视口确实不同时才更新，避免循环
+      if (Math.abs(current.x - defaultViewport.x) > 0.1 ||
+          Math.abs(current.y - defaultViewport.y) > 0.1 ||
+          Math.abs(current.zoom - defaultViewport.zoom) > 0.001) {
+        editorRef.current.setViewport(defaultViewport);
+      }
+    }
+  }, [defaultViewport, isReady]);
   
   // 同步选择状态
   useEffect(() => {

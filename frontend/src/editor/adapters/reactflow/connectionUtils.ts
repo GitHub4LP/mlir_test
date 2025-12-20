@@ -1,46 +1,57 @@
 /**
- * 连接验证服务
+ * React Flow 连接验证工具
  * 
- * 基于类型兼容性验证节点端口间的连接
+ * React Flow 特定的连接验证逻辑。
+ * 
+ * 职责划分：
+ * - 数据层 (services/typeSystem.ts)：类型兼容性计算
+ * - 数据层 (services/port.ts)：端口类型检测
+ * - 本模块：React Flow 特定的节点数据访问和验证
  */
 
 import type { Node, Connection } from '@xyflow/react';
-import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, PortConfig } from '../types';
-import { isCompatible, getConstraintElements } from './typeSystem';
-import { PortRef, PortKind } from './port';
+import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, PortConfig } from '../../../types';
+import { getConstraintElements, getTypeIntersectionCount } from '../../../services/typeSystem';
+import { PortRef, PortKind, PortKindUtils } from '../../../services/port';
+
+// ============================================================
+// 类型定义
+// ============================================================
 
 /**
- * Result of a connection validation
+ * 连接验证结果
  */
 export interface ConnectionValidationResult {
-  /** Whether the connection is valid */
+  /** 是否有效 */
   isValid: boolean;
-  /** Error message if invalid */
+  /** 错误信息（如果无效） */
   errorMessage?: string;
-  /** Source type constraint */
+  /** 源端口类型 */
   sourceType?: string;
-  /** Target type constraint */
+  /** 目标端口类型 */
   targetType?: string;
+  /** 类型交集大小 */
+  intersectionCount?: number;
 }
 
+// ============================================================
+// 端口类型获取（React Flow 特定）
+// ============================================================
+
 /**
- * Gets the type constraint for a port on a node
+ * 从 React Flow 节点获取端口类型约束
  * 
- * 统一逻辑：所有节点类型都从 data.inputTypes/outputTypes 获取传播结果
- * 
- * @param node - The node containing the port
- * @param handleId - The handle/port ID
- * @param _isSource - Whether this is a source (output) port (unused, kept for API compatibility)
- * @param resolvedTypes - Map of resolved concrete types (nodeId -> portId -> type)
- * @returns The type constraint string, or null if not found
+ * @param node - React Flow 节点
+ * @param handleId - 端口 ID
+ * @param resolvedTypes - 已解析的具体类型映射
+ * @returns 类型约束字符串，或 null
  */
 export function getPortTypeConstraint(
   node: Node,
   handleId: string,
-  _isSource: boolean,
   resolvedTypes?: Map<string, Map<string, string>>
 ): string | null {
-  // Check for resolved concrete type first
+  // 优先使用已解析的类型
   if (resolvedTypes) {
     const nodeTypes = resolvedTypes.get(node.id);
     if (nodeTypes) {
@@ -51,11 +62,11 @@ export function getPortTypeConstraint(
     }
   }
 
-  // 使用 PortRef 解析端口 ID
+  // 解析端口 ID
   const parsed = PortRef.parseHandleId(handleId);
   if (!parsed) return null;
 
-  // Handle different node types
+  // 根据节点类型获取端口类型
   if (node.type === 'function-entry') {
     const data = node.data as FunctionEntryData;
     if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
@@ -78,7 +89,7 @@ export function getPortTypeConstraint(
       return port ? (port.concreteType || port.typeConstraint) : null;
     }
   } else {
-    // Operation nodes
+    // Operation 节点
     const data = node.data as { inputTypes?: Record<string, string>; outputTypes?: Record<string, string> };
     const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
 
@@ -92,47 +103,40 @@ export function getPortTypeConstraint(
   return null;
 }
 
-/**
- * Checks if a handle is an execution pin
- */
-function isExecHandle(handleId: string): boolean {
-  const parsed = PortRef.parseHandleId(handleId);
-  return parsed !== null && (parsed.kind === PortKind.ExecIn || parsed.kind === PortKind.ExecOut);
-}
+// ============================================================
+// 连接计数验证
+// ============================================================
 
 /**
- * Connection count constraints:
- * - Execution output (exec-out): max 1 connection (single execution flow)
- * - Execution input (exec-in): unlimited connections (multiple branches can converge)
- * - Data output: unlimited connections (one value used in multiple places)
- * - Data input: max 1 connection (one input can only have one source)
- */
-interface ConnectionCountResult {
-  isValid: boolean;
-  errorMessage?: string;
-}
-
-/**
- * Validates connection count constraints
+ * 验证连接计数约束
  * 
- * @param connection - The new connection to validate
- * @param existingEdges - Existing edges in the graph
- * @returns Validation result
+ * 规则：
+ * - 执行输出 (exec-out)：最多 1 个连接
+ * - 执行输入 (exec-in)：无限制
+ * - 数据输出：无限制
+ * - 数据输入：最多 1 个连接
  */
 export function validateConnectionCount(
   connection: Connection,
   existingEdges: { source: string; sourceHandle: string | null; target: string; targetHandle: string | null }[]
-): ConnectionCountResult {
+): { isValid: boolean; errorMessage?: string } {
   const { source, sourceHandle, target, targetHandle } = connection;
 
   if (!sourceHandle || !targetHandle) {
     return { isValid: true };
   }
 
-  const isSourceExec = isExecHandle(sourceHandle);
-  const isTargetExec = isExecHandle(targetHandle);
+  const sourceParsed = PortRef.parseHandleId(sourceHandle);
+  const targetParsed = PortRef.parseHandleId(targetHandle);
+  
+  if (!sourceParsed || !targetParsed) {
+    return { isValid: true };
+  }
 
-  // Execution pins: exec-out can only have 1 outgoing connection
+  const isSourceExec = PortKindUtils.isExec(sourceParsed.kind);
+  const isTargetExec = PortKindUtils.isExec(targetParsed.kind);
+
+  // 执行输出只能有 1 个连接
   if (isSourceExec) {
     const existingFromSource = existingEdges.filter(
       e => e.source === source && e.sourceHandle === sourceHandle
@@ -140,12 +144,12 @@ export function validateConnectionCount(
     if (existingFromSource.length >= 1) {
       return {
         isValid: false,
-        errorMessage: 'Execution output can only have one connection',
+        errorMessage: '执行输出只能有一个连接',
       };
     }
   }
 
-  // Data pins: data input can only have 1 incoming connection
+  // 数据输入只能有 1 个连接
   if (!isTargetExec) {
     const existingToTarget = existingEdges.filter(
       e => e.target === target && e.targetHandle === targetHandle
@@ -153,7 +157,7 @@ export function validateConnectionCount(
     if (existingToTarget.length >= 1) {
       return {
         isValid: false,
-        errorMessage: 'Data input can only have one connection',
+        errorMessage: '数据输入只能有一个连接',
       };
     }
   }
@@ -161,22 +165,18 @@ export function validateConnectionCount(
   return { isValid: true };
 }
 
+// ============================================================
+// 完整连接验证
+// ============================================================
+
 /**
- * Validates a connection between two ports
+ * 验证 React Flow 连接
  * 
- * Requirements: 7.1, 7.2
- * 
- * Connection rules:
- * - Execution output (exec-out): max 1 connection
- * - Execution input (exec-in): unlimited connections
- * - Data output: unlimited connections
- * - Data input: max 1 connection
- * 
- * @param connection - The connection to validate
- * @param nodes - All nodes in the graph
- * @param resolvedTypes - Map of resolved concrete types
- * @param existingEdges - Existing edges for connection count validation
- * @returns Validation result with isValid flag and error message if invalid
+ * @param connection - React Flow 连接对象
+ * @param nodes - 所有节点
+ * @param resolvedTypes - 已解析的具体类型映射
+ * @param existingEdges - 现有连线（用于计数验证）
+ * @returns 验证结果
  */
 export function validateConnection(
   connection: Connection,
@@ -186,23 +186,23 @@ export function validateConnection(
 ): ConnectionValidationResult {
   const { source, sourceHandle, target, targetHandle } = connection;
 
-  // Basic validation - ensure all required fields are present
+  // 1. 基本验证
   if (!source || !sourceHandle || !target || !targetHandle) {
     return {
       isValid: false,
-      errorMessage: 'Invalid connection: missing source or target information',
+      errorMessage: '连接信息不完整',
     };
   }
 
-  // Prevent self-connections
+  // 2. 防止自连接
   if (source === target) {
     return {
       isValid: false,
-      errorMessage: 'Cannot connect a node to itself',
+      errorMessage: '不能连接到自身',
     };
   }
 
-  // Validate connection count constraints if edges are provided
+  // 3. 连接计数验证
   if (existingEdges) {
     const countResult = validateConnectionCount(connection, existingEdges);
     if (!countResult.isValid) {
@@ -213,74 +213,81 @@ export function validateConnection(
     }
   }
 
-  // Check that we're not mixing execution and data pins
-  const isSourceExec = isExecHandle(sourceHandle);
-  const isTargetExec = isExecHandle(targetHandle);
-
-  if (isSourceExec !== isTargetExec) {
+  // 4. 解析端口类型
+  const sourceParsed = PortRef.parseHandleId(sourceHandle);
+  const targetParsed = PortRef.parseHandleId(targetHandle);
+  
+  if (!sourceParsed || !targetParsed) {
     return {
       isValid: false,
-      errorMessage: 'Cannot connect execution pins to data pins',
+      errorMessage: '无效的端口 ID',
     };
   }
 
-  // For execution pins, no type checking needed
+  const isSourceExec = PortKindUtils.isExec(sourceParsed.kind);
+  const isTargetExec = PortKindUtils.isExec(targetParsed.kind);
+
+  // 5. 执行引脚和数据引脚不能混连
+  if (isSourceExec !== isTargetExec) {
+    return {
+      isValid: false,
+      errorMessage: '不能将执行引脚连接到数据引脚',
+    };
+  }
+
+  // 6. 执行引脚不需要类型检查
   if (isSourceExec && isTargetExec) {
     return {
       isValid: true,
       sourceType: 'exec',
       targetType: 'exec',
+      intersectionCount: 1,
     };
   }
 
-  // Find source and target nodes
+  // 7. 查找节点
   const sourceNode = nodes.find(n => n.id === source);
   const targetNode = nodes.find(n => n.id === target);
 
   if (!sourceNode) {
-    return {
-      isValid: false,
-      errorMessage: 'Source node not found',
-    };
+    return { isValid: false, errorMessage: '源节点不存在' };
   }
-
   if (!targetNode) {
-    return {
-      isValid: false,
-      errorMessage: 'Target node not found',
-    };
+    return { isValid: false, errorMessage: '目标节点不存在' };
   }
 
-  // Get type constraints for both ports
-  const sourceType = getPortTypeConstraint(sourceNode, sourceHandle, true, resolvedTypes);
-  const targetType = getPortTypeConstraint(targetNode, targetHandle, false, resolvedTypes);
+  // 8. 获取端口类型
+  const sourceType = getPortTypeConstraint(sourceNode, sourceHandle, resolvedTypes);
+  const targetType = getPortTypeConstraint(targetNode, targetHandle, resolvedTypes);
 
-  // If we can't determine types, allow the connection (permissive mode)
+  // 无法获取类型时，允许连接（宽松模式）
   if (!sourceType || !targetType) {
     return {
       isValid: true,
       sourceType: sourceType || 'unknown',
       targetType: targetType || 'unknown',
+      intersectionCount: 1,
     };
   }
 
-  // Check type compatibility
-  // The source type must satisfy the target's type constraint
-  if (isCompatible(sourceType, targetType)) {
+  // 9. 使用 typeSystem 计算类型交集
+  const intersectionCount = getTypeIntersectionCount(sourceType, targetType);
+
+  if (intersectionCount > 0) {
     return {
       isValid: true,
       sourceType,
       targetType,
+      intersectionCount,
     };
   }
 
-  // Generate helpful error message
+  // 10. 生成错误信息
   const sourceElements = getConstraintElements(sourceType);
   const targetElements = getConstraintElements(targetType);
 
-  let errorMessage = `Type mismatch: '${sourceType}' is not compatible with '${targetType}'`;
+  let errorMessage = `类型不兼容: '${sourceType}' 与 '${targetType}' 没有交集`;
 
-  // Add more detail if constraints map to multiple elements
   if (sourceElements.length > 1 || targetElements.length > 1) {
     const sourceTypesStr = sourceElements.length > 3
       ? `${sourceElements.slice(0, 3).join(', ')}...`
@@ -289,7 +296,7 @@ export function validateConnection(
       ? `${targetElements.slice(0, 3).join(', ')}...`
       : targetElements.join(', ');
 
-    errorMessage += `. Source accepts [${sourceTypesStr}], target requires [${targetTypesStr}]`;
+    errorMessage += `。源类型 [${sourceTypesStr}]，目标类型 [${targetTypesStr}]`;
   }
 
   return {
@@ -297,15 +304,16 @@ export function validateConnection(
     errorMessage,
     sourceType,
     targetType,
+    intersectionCount: 0,
   };
 }
 
+// ============================================================
+// 验证器工厂
+// ============================================================
+
 /**
- * Creates a connection validator function for React Flow's isValidConnection prop
- * 
- * @param nodes - All nodes in the graph
- * @param resolvedTypes - Map of resolved concrete types
- * @returns A function that validates connections
+ * 创建 React Flow isValidConnection 回调
  */
 export function createConnectionValidator(
   nodes: Node[],
@@ -317,15 +325,14 @@ export function createConnectionValidator(
   };
 }
 
+// ============================================================
+// 节点错误检查
+// ============================================================
+
 /**
- * Checks if a node has any type errors (unconnected required ports with unresolved types)
+ * 获取节点的错误列表
  * 
- * Requirements: 7.3
- * 
- * @param node - The node to check
- * @param edges - All edges in the graph
- * @param resolvedTypes - Map of resolved concrete types
- * @returns Array of error descriptions
+ * 检查未连接的必需端口
  */
 export function getNodeErrors(
   node: Node,
@@ -340,18 +347,17 @@ export function getNodeErrors(
   const data = node.data as BlueprintNodeData;
   const operation = data.operation;
 
-  // Check each required operand (input port)
+  // 检查每个必需的输入端口
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand' && !arg.isOptional) {
       const portId = `${PortKind.DataIn}-${arg.name}`;
 
-      // Check if port is connected
       const isConnected = edges.some(
         e => e.target === node.id && e.targetHandle === portId
       );
 
       if (!isConnected) {
-        errors.push(`Required input '${arg.name}' is not connected`);
+        errors.push(`必需输入 '${arg.name}' 未连接`);
       }
     }
   }

@@ -232,28 +232,78 @@ export function getPortTypeState(
 
 /**
  * Checks if a source type is compatible with a target type constraint.
+ * 
+ * 使用类型交集判断：交集非空即兼容
  */
 export function isCompatible(sourceType: string, targetConstraint: string): boolean {
   const normalizedSource = normalizeType(sourceType);
   const normalizedTarget = normalizeType(targetConstraint);
   
-  if (normalizedSource === normalizedTarget) {
+  // 快速路径：完全相同
+  if (normalizedSource === normalizedTarget || sourceType === targetConstraint) {
     return true;
   }
   
-  if (sourceType === targetConstraint) {
-    return true;
-  }
-  
+  // 展开约束到具体类型集合，计算交集
   const sourceElements = getConstraintElements(sourceType);
   const targetElements = getConstraintElements(targetConstraint);
   const targetTypeSet = new Set(targetElements);
   
-  if (sourceElements.length === 1) {
-    return targetTypeSet.has(sourceElements[0]);
+  // 交集非空即兼容
+  if (sourceElements.length === 0) {
+    // 源类型无法展开，检查目标是否包含源
+    return targetTypeSet.has(sourceType) || targetTypeSet.has(normalizedSource);
   }
   
   return sourceElements.some(type => targetTypeSet.has(type));
+}
+
+/**
+ * 计算两个类型约束的交集大小
+ * 
+ * 这是连线验证的核心函数：
+ * - 返回值 > 0：类型兼容，可以连接
+ * - 返回值 = 0：类型不兼容，不能连接
+ * 
+ * @param type1 第一个类型约束
+ * @param type2 第二个类型约束
+ * @returns 交集元素数量
+ */
+export function getTypeIntersectionCount(type1: string, type2: string): number {
+  const normalized1 = normalizeType(type1);
+  const normalized2 = normalizeType(type2);
+  
+  // 快速路径：完全相同
+  if (normalized1 === normalized2 || type1 === type2) {
+    const elements = getConstraintElements(type1);
+    return elements.length > 0 ? elements.length : 1;
+  }
+  
+  // 展开约束到具体类型集合
+  const elements1 = getConstraintElements(type1);
+  const elements2 = getConstraintElements(type2);
+  
+  // 如果任一为空，使用原始类型
+  const set1 = elements1.length > 0 ? elements1 : [type1];
+  const set2 = new Set(elements2.length > 0 ? elements2 : [type2]);
+  
+  // 计算交集大小
+  return set1.filter(t => set2.has(t)).length;
+}
+
+/**
+ * 获取两个类型约束的交集类型列表
+ * 
+ * 用于 UI 显示兼容的具体类型
+ */
+export function getTypeIntersection(type1: string, type2: string): string[] {
+  const elements1 = getConstraintElements(type1);
+  const elements2 = getConstraintElements(type2);
+  
+  const set1 = elements1.length > 0 ? elements1 : [type1];
+  const set2 = new Set(elements2.length > 0 ? elements2 : [type2]);
+  
+  return set1.filter(t => set2.has(t));
 }
 
 /**

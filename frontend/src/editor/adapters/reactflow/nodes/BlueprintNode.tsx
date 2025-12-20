@@ -12,35 +12,29 @@
 
 import { memo, useCallback, useMemo } from 'react';
 import { type NodeProps, type Node, useReactFlow, useEdges, useNodes } from '@xyflow/react';
-import type { BlueprintNodeData, DataPin } from '../types';
-import { getTypeColor } from '../services/typeSystem';
-import { getOperands, getAttributes } from '../services/dialectParser';
-import { getDisplayType } from '../services/typeSelectorRenderer';
-import { AttributeEditor } from './AttributeEditor';
-import { UnifiedTypeSelector } from './UnifiedTypeSelector';
-import { NodePins } from './NodePins';
-import { buildPinRows } from '../services/pinUtils';
-import { useProjectStore } from '../stores/projectStore';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-import { dataInHandle, dataOutHandle, PortRef } from '../services/port';
-import { computeTypeSelectionState } from '../services/typeSelection';
-import { useTypeChangeHandler } from '../hooks';
+import type { BlueprintNodeData, DataPin } from '../../../../types';
+import { getTypeColor } from '../../../../services/typeSystem';
+import { getOperands, getAttributes } from '../../../../services/dialectParser';
+import { getDisplayType } from '../../../../services/typeSelectorRenderer';
+import { AttributeEditor } from '../../../../components/AttributeEditor';
+import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
+import { NodePins } from '../../../../components/NodePins';
+import { buildPinRows } from '../../../../services/pinUtils';
+import { useProjectStore } from '../../../../stores/projectStore';
+import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
+import { dataInHandle, dataOutHandle, PortRef } from '../../../../services/port';
+import { computeTypeSelectionState } from '../../../../services/typeSelection';
+import { useTypeChangeHandler } from '../../../../hooks';
+import { StyleSystem } from '../../../core/StyleSystem';
+import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { toEditorNodes, toEditorEdges } from '../typeConversions';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
 
-function getDialectColor(dialect: string): string {
-  const colors: Record<string, string> = {
-    arith: '#4A90D9', func: '#50C878', scf: '#9B59B6', memref: '#E74C3C',
-    tensor: '#1ABC9C', linalg: '#F39C12', vector: '#F1C40F', affine: '#E67E22',
-    gpu: '#2ECC71', math: '#3498DB', cf: '#8E44AD', builtin: '#7F8C8D',
-  };
-  return colors[dialect] || '#95A5A6';
-}
-
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
   const { operation, attributes, inputTypes = {}, outputTypes = {}, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
-  const dialectColor = getDialectColor(operation.dialect);
+  const dialectColor = StyleSystem.getDialectColor(operation.dialect);
 
   const { setNodes } = useReactFlow();
   const edges = useEdges();
@@ -89,10 +83,8 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   // Build pin rows using unified model
   const pinRows = useMemo(() => {
     const dataInputs: DataPin[] = operands.map((operand) => {
-      const portId = dataInHandle(operand.name);  // 统一格式：data-in-{name}
+      const portId = dataInHandle(operand.name);
       const quantity = getQuantity(operand.isOptional, operand.isVariadic);
-      // typeConstraint 始终是操作定义的原始约束（用于判断是否可编辑）
-      // selectedType 通过 getPortTypeWrapper 获取（用于显示当前选择）
       return {
         id: portId,
         label: operand.name,
@@ -106,7 +98,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     });
 
     const dataOutputs: DataPin[] = results.map((result, idx) => {
-      const portId = dataOutHandle(result.name || `result_${idx}`);  // 统一格式：data-out-{name}
+      const portId = dataOutHandle(result.name || `result_${idx}`);
       const quantity = getQuantity(false, result.isVariadic);
       return {
         id: portId,
@@ -130,16 +122,16 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     });
   }, [operands, results, inputTypes, outputTypes, execIn, execOuts, regionPins, variadicCounts]);
 
-  // Render type selector for data pins（使用统一的 getDisplayType）
+  // Render type selector for data pins
   const nodes = useNodes();
   const renderTypeSelector = useCallback((pin: DataPin) => {
-    // 使用统一的 getDisplayType
     const displayType = getDisplayType(pin, data);
     
-    // 统一使用 computeTypeSelectionState 计算可选集和 canEdit
     const currentFunction = getCurrentFunction();
+    const editorNodes = toEditorNodes(nodes);
+    const editorEdges = toEditorEdges(edges);
     const { options, canEdit } = computeTypeSelectionState(
-      id, pin.id, nodes, edges, currentFunction ?? undefined, getConstraintElements
+      id, pin.id, editorNodes, editorEdges, currentFunction ?? undefined, getConstraintElements
     );
 
     return (
@@ -153,19 +145,15 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     );
   }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
 
-  // Get port type: 从节点数据中获取显示类型
+  // Get port type from node data
   const getPortTypeWrapper = useCallback((pinId: string) => {
-    // 优先检查是否是 pinned 的类型
     const pinnedType = pinnedTypes[pinId];
     if (pinnedType) return pinnedType;
 
-    // 否则使用传播结果（存储在 inputTypes/outputTypes 中）
-    // 使用 PortRef 解析端口 ID
     const parsed = PortRef.parseHandleId(pinId);
     if (!parsed) return undefined;
     
     let portName = parsed.name;
-    // 移除 variadic 索引后缀：name_0 → name
     const match = portName.match(/^(.+)_\d+$/);
     if (match) portName = match[1];
     
@@ -177,7 +165,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     return undefined;
   }, [pinnedTypes, inputTypes, outputTypes]);
 
-  // Variadic 端口添加
+  // Variadic port add
   const handleVariadicAdd = useCallback((groupName: string) => {
     setNodes(nodes => nodes.map(node => {
       if (node.id === id) {
@@ -199,7 +187,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     }));
   }, [id, setNodes]);
 
-  // Variadic 端口删除
+  // Variadic port remove
   const handleVariadicRemove = useCallback((groupName: string) => {
     setNodes(nodes => nodes.map(node => {
       if (node.id === id) {
@@ -223,14 +211,18 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     }));
   }, [id, setNodes]);
 
-  return (
-    <div className={`min-w-56 rounded-lg overflow-visible shadow-lg ${selected ? 'ring-2 ring-blue-400' : ''}`}
-      style={{ backgroundColor: '#2d2d3d', border: `1px solid ${selected ? '#60a5fa' : '#3d3d4d'}` }}>
+  const nodeStyle = StyleSystem.getNodeStyle();
 
-      {/* Header - 悬停显示 description */}
+  return (
+    <div className="overflow-visible shadow-lg"
+      style={{
+        ...getNodeContainerStyle(selected),
+        minWidth: `${nodeStyle.minWidth}px`,
+      }}>
+
+      {/* Header */}
       <div
-        className="px-3 py-2"
-        style={{ backgroundColor: dialectColor }}
+        style={getNodeHeaderStyle(dialectColor)}
         title={operation.description || undefined}
       >
         <div className="flex items-center justify-between">
@@ -238,7 +230,6 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
             <span className="text-xs font-medium text-white/70 uppercase">{operation.dialect}</span>
             <span className="text-sm font-semibold text-white ml-1">{operation.opName}</span>
           </div>
-          {/* Traits 图标 */}
           <div className="flex gap-1">
             {operation.isPure && (
               <span className="text-xs text-white/60" title="Pure - no side effects">ƒ</span>
@@ -250,7 +241,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         </div>
       </div>
 
-      {/* Body - Unified pin rendering */}
+      {/* Body */}
       <NodePins
         rows={pinRows}
         nodeId={id}

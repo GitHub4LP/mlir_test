@@ -25,6 +25,8 @@ export interface CanvasEditorWrapperProps {
   nodes: EditorNode[];
   /** 初始边 */
   edges: EditorEdge[];
+  /** 默认视口 */
+  defaultViewport?: EditorViewport;
   /** 节点变更回调 */
   onNodesChange?: (changes: NodeChange[]) => void;
   /** 边变更回调 */
@@ -64,6 +66,7 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
     const {
       nodes,
       edges,
+      defaultViewport,
       onNodesChange,
       onEdgesChange,
       onSelectionChange,
@@ -131,12 +134,18 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
       
       editor.mount(containerRef.current);
       
+      // 应用初始视口
+      if (defaultViewport) {
+        editor.setViewport(defaultViewport);
+      }
+      
       return () => {
         editor.unmount();
         editorRef.current = null;
         initializedRef.current = false;
       };
-    }, []);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 注意：不依赖 defaultViewport，只在初始化时使用
 
     // 同步 nodes
     useEffect(() => {
@@ -147,6 +156,19 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
     useEffect(() => {
       editorRef.current?.setEdges(edges);
     }, [edges]);
+
+    // 同步外部视口变化（从 store 来的）
+    useEffect(() => {
+      if (defaultViewport && editorRef.current) {
+        const current = editorRef.current.getViewport();
+        // 只有当视口确实不同时才更新，避免循环
+        if (Math.abs(current.x - defaultViewport.x) > 0.1 ||
+            Math.abs(current.y - defaultViewport.y) > 0.1 ||
+            Math.abs(current.zoom - defaultViewport.zoom) > 0.001) {
+          editorRef.current.setViewport(defaultViewport);
+        }
+      }
+    }, [defaultViewport]);
 
     // 暴露命令式 API
     useImperativeHandle(ref, () => ({

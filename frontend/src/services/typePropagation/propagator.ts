@@ -3,9 +3,13 @@
  * 
  * 从用户选择的类型源，沿着 Trait 和连线传播到其他端口。
  * 支持操作节点 Traits、函数级 Traits、跨函数边界传播。
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../../editor/types';
 import type { PropagationGraph, PropagationResult, VariableId, TypeSource } from './types';
 import { makeVariableId } from './types';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, FunctionDef } from '../../types';
@@ -21,13 +25,13 @@ import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
  * 2. 函数级别传播：由函数的 Traits 决定（如 SameType）
  * 3. 节点间传播：由连线决定（双向）
  * 
- * @param nodes - 当前函数图的节点
- * @param edges - 当前函数图的边
+ * @param nodes - 当前函数图的节点（EditorNode 类型）
+ * @param edges - 当前函数图的边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义（用于获取函数级别 Traits）
  */
 export function buildPropagationGraph(
-  nodes: Node[],
-  edges: Edge[],
+  nodes: EditorNode[],
+  edges: EditorEdge[],
   currentFunction?: FunctionDef
 ): PropagationGraph {
   const graph: PropagationGraph = new Map();
@@ -209,7 +213,7 @@ export function propagateTypes(
  * - function-call: 从 pinnedTypes 提取 + 自动解析单一元素约束
  */
 export function extractTypeSources(
-  nodes: Node[]
+  nodes: EditorNode[]
 ): TypeSource[] {
   const sources: TypeSource[] = [];
   // 用于去重：同一端口只添加一次
@@ -421,13 +425,13 @@ export function extractTypeSources(
  * 1. 传播结果（如果有）
  * 2. 原始类型约束
  * 
- * @param nodes - 当前函数图的节点
- * @param edges - 当前函数图的边
+ * @param nodes - 当前函数图的节点（EditorNode 类型）
+ * @param edges - 当前函数图的边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义（用于获取函数级别 Traits）
  */
 export function computeDisplayTypes(
-  nodes: Node[],
-  edges: Edge[],
+  nodes: EditorNode[],
+  edges: EditorEdge[],
   currentFunction?: FunctionDef
 ): Map<VariableId, string> {
   // 1. 构建传播图（包含函数级别 Traits）
@@ -451,15 +455,15 @@ export function computeDisplayTypes(
  * 3. 传播类型
  * 4. 计算约束收窄
  * 
- * @param nodes - 当前函数图的节点
- * @param edges - 当前函数图的边
+ * @param nodes - 当前函数图的节点（EditorNode 类型）
+ * @param edges - 当前函数图的边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义
  * @param getConstraintElements - 获取约束映射到的类型约束集合元素（来自 store）
  * @param pickConstraintName - 选择约束名称（来自 store）
  */
 export function computePropagationWithNarrowing(
-  nodes: Node[],
-  edges: Edge[],
+  nodes: EditorNode[],
+  edges: EditorEdge[],
   currentFunction: FunctionDef | undefined,
   getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null
@@ -500,9 +504,9 @@ export function computePropagationWithNarrowing(
  * - function-call: 更新 inputs[].concreteType 和 outputs[].concreteType
  */
 export function applyPropagationResult(
-  nodes: Node[],
+  nodes: EditorNode[],
   propagationResult: PropagationResult
-): Node[] {
+): EditorNode[] {
   const { types, narrowedConstraints } = propagationResult;
   
   // 辅助函数：获取端口的显示类型
@@ -711,12 +715,12 @@ export function applyPropagationResult(
 /**
  * 提取每个端口的原始约束
  * 
- * @param nodes - 当前函数图的节点
+ * @param nodes - 当前函数图的节点（EditorNode 类型）
  * @param currentFunction - 当前函数定义（用于 Entry/Return 节点）
  * @returns varId → 原始约束名
  */
 export function extractPortConstraints(
-  nodes: Node[],
+  nodes: EditorNode[],
   currentFunction?: FunctionDef
 ): Map<VariableId, string> {
   const constraints = new Map<VariableId, string>();
@@ -900,16 +904,16 @@ export function computeNarrowedConstraints(
  * 3. 可选集 = 自己原始约束 ∩ 邻居有效类型
  * 
  * @param portKey - 要计算可选集的端口 key
- * @param nodes - 当前函数图的节点
- * @param edges - 当前函数图的边
+ * @param nodes - 当前函数图的节点（EditorNode 类型）
+ * @param edges - 当前函数图的边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义
  * @param getConstraintElements - 获取约束映射到的类型约束集合元素
  * @returns 可选的类型约束集合元素列表
  */
 export function computeOptionsExcludingSelf(
   portKey: VariableId,
-  nodes: Node[],
-  edges: Edge[],
+  nodes: EditorNode[],
+  edges: EditorEdge[],
   currentFunction: FunctionDef | undefined,
   getConstraintElements: (constraint: string) => string[]
 ): string[] {

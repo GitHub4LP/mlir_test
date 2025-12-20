@@ -2,9 +2,9 @@
  * 端到端传播测试：验证 Return I32 → constant 的传播
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { Node, Edge } from '@xyflow/react';
 import { buildPropagationGraph, propagateTypes, extractTypeSources, applyPropagationResult } from './propagator';
 import type { BlueprintNodeData, FunctionReturnData, OperationDef } from '../../types';
+import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import type { ConstraintDef } from '../../stores/typeConstraintStore';
 
@@ -27,7 +27,7 @@ beforeAll(() => {
 describe('Return I32 → constant propagation', () => {
   it('should propagate I32 from Return to connected constant', () => {
     // 1. 创建 Return 节点（main 函数）
-    const returnNode: Node = {
+    const returnNode: EditorNode = {
       id: 'main-return',
       type: 'function-return',
       position: { x: 0, y: 0 },
@@ -65,7 +65,7 @@ describe('Return I32 → constant propagation', () => {
       assemblyFormat: '',
     };
     
-    const constantNode: Node = {
+    const constantNode: EditorNode = {
       id: 'const1',
       type: 'operation',
       position: { x: 0, y: 0 },
@@ -81,7 +81,7 @@ describe('Return I32 → constant propagation', () => {
     };
 
     // 3. 创建连线
-    const edges: Edge[] = [{
+    const edges: EditorEdge[] = [{
       id: 'e1',
       source: 'const1',
       sourceHandle: 'data-out-result',

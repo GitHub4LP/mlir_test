@@ -16,10 +16,14 @@
  * - 内部约束：函数内部连接到该端口的操作约束
  * - 外部约束：所有调用处传入/接收的具体类型
  * - 可选范围 = 内部约束交集 ∩ 外部类型兼容集
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../editor/types';
 import type { 
   Project, 
   BlueprintNodeData, 
@@ -295,14 +299,14 @@ export function getPropagatedType(
  * 
  * @param portId - 端口 handleId（如 "data-out-a" 或 "data-in-result"）
  * @param nodeId - Entry/Return 节点 ID
- * @param nodes - 函数图中的所有节点
- * @param edges - 函数图中的所有边
+ * @param nodes - 函数图中的所有节点（EditorNode 类型）
+ * @param edges - 函数图中的所有边（EditorEdge 类型）
  */
 export function getInternalConnectedConstraints(
   portId: string,
   nodeId: string,
-  nodes: Node[],
-  edges: Edge[]
+  nodes: EditorNode[],
+  edges: EditorEdge[]
 ): string[] {
   const constraints: string[] = [];
   const parsed = PortRef.parseHandleId(portId);
@@ -453,7 +457,7 @@ export function getExternalConnectedConstraints(
  * 获取源端口的类型/约束
  * 优先返回具体类型，否则返回约束
  */
-function getSourcePortType(node: Node, portId: string): string | null {
+function getSourcePortType(node: EditorNode, portId: string): string | null {
   const parsed = PortRef.parseHandleId(portId);
   
   switch (node.type) {
@@ -490,7 +494,7 @@ function getSourcePortType(node: Node, portId: string): string | null {
 /**
  * 获取目标端口的约束
  */
-function getTargetPortConstraint(node: Node, portId: string): string | null {
+function getTargetPortConstraint(node: EditorNode, portId: string): string | null {
   const parsed = PortRef.parseHandleId(portId);
   
   switch (node.type) {

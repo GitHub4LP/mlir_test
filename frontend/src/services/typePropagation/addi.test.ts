@@ -2,9 +2,9 @@
  * 测试：Return I32 → addi 的传播
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { Node, Edge } from '@xyflow/react';
 import { buildPropagationGraph, propagateTypes, extractTypeSources } from './propagator';
 import type { BlueprintNodeData, FunctionReturnData, OperationDef } from '../../types';
+import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import type { ConstraintDef } from '../../stores/typeConstraintStore';
 
@@ -28,7 +28,7 @@ beforeAll(() => {
 describe('Return I32 → addi propagation', () => {
   it('should propagate I32 from Return to connected addi', () => {
     // 1. Return 节点
-    const returnNode: Node = {
+    const returnNode: EditorNode = {
       id: 'main-return',
       type: 'function-return',
       position: { x: 0, y: 0 },
@@ -69,7 +69,7 @@ describe('Return I32 → addi propagation', () => {
       assemblyFormat: '',
     };
     
-    const addiNode: Node = {
+    const addiNode: EditorNode = {
       id: 'addi1',
       type: 'operation',
       position: { x: 0, y: 0 },
@@ -85,7 +85,7 @@ describe('Return I32 → addi propagation', () => {
     };
 
     // 3. 连线：addi.result → return.result
-    const edges: Edge[] = [{
+    const edges: EditorEdge[] = [{
       id: 'e1',
       source: 'addi1',
       sourceHandle: 'data-out-result',

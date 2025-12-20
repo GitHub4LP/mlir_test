@@ -12,9 +12,13 @@
  * - displayType = pinnedTypes[portId] > inputTypes/outputTypes[portName] > 原始约束
  * 
  * Entry/Return 的显示类型就是函数签名。
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../editor/types';
 import type { FunctionDef } from '../types';
 import { isAbstractConstraint } from './typeSystem';
 import { triggerTypePropagationWithSignature } from './typePropagation';
@@ -34,7 +38,7 @@ export function shouldPinType(type: string, originalConstraint?: string): boolea
  * 类型变更处理的依赖项
  */
 export interface TypeChangeHandlerDeps {
-  edges: Edge[];
+  edges: EditorEdge[];
   getCurrentFunction: () => FunctionDef | null;
   getConstraintElements: (constraint: string) => string[];
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;
@@ -50,9 +54,9 @@ export function handlePinnedTypeChange<T extends { pinnedTypes?: Record<string, 
   portId: string,
   type: string,
   originalConstraint: string | undefined,
-  currentNodes: Node[],
+  currentNodes: EditorNode[],
   deps: TypeChangeHandlerDeps
-): Node[] {
+): EditorNode[] {
   const shouldPin = shouldPinType(type, originalConstraint);
 
   // 1. 更新当前节点的 pinnedTypes
@@ -102,9 +106,9 @@ export function handlePinnedTypeChange<T extends { pinnedTypes?: Record<string, 
  * - 添加/删除参数后
  */
 export function triggerPropagationOnly(
-  currentNodes: Node[],
+  currentNodes: EditorNode[],
   deps: TypeChangeHandlerDeps
-): Node[] {
+): EditorNode[] {
   const currentFunction = deps.getCurrentFunction() ?? undefined;
   const result = triggerTypePropagationWithSignature(
     currentNodes,

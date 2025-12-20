@@ -16,6 +16,7 @@ import type {
   RenderText,
   RenderPath,
   RenderCircle,
+  RenderTriangle,
   InteractionHint,
   OverlayInfo,
 } from './types';
@@ -177,6 +178,9 @@ export class GraphController {
   /** 选择变化回调 */
   onSelectionChange: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
 
+  /** 视口变化回调 */
+  onViewportChange: ((viewport: Viewport) => void) | null = null;
+
   /** 双击边删除回调 */
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
 
@@ -203,7 +207,7 @@ export class GraphController {
     this.renderer = renderer;
     
     // 注册输入回调
-    renderer.onInput((input) => this.handleInput(input));
+    renderer.onInput((input: RawInput) => this.handleInput(input));
   }
 
   /**
@@ -228,7 +232,7 @@ export class GraphController {
     
     // 设置新后端
     this.renderer = newRenderer;
-    newRenderer.onInput((input) => this.handleInput(input));
+    newRenderer.onInput((input: RawInput) => this.handleInput(input));
     newRenderer.mount(container);
     
     // 恢复视口
@@ -278,6 +282,16 @@ export class GraphController {
    */
   setViewport(viewport: Viewport): void {
     this.viewport = { ...viewport };
+    this.onViewportChange?.(this.viewport);
+    this.requestRender();
+  }
+
+  /**
+   * 设置视口（静默，不触发回调）
+   * 用于外部同步视口状态，避免循环
+   */
+  setViewportSilent(viewport: Viewport): void {
+    this.viewport = { ...viewport };
     this.requestRender();
   }
 
@@ -287,6 +301,7 @@ export class GraphController {
   panViewport(deltaX: number, deltaY: number): void {
     this.viewport.x += deltaX;
     this.viewport.y += deltaY;
+    this.onViewportChange?.(this.viewport);
     this.requestRender();
   }
 
@@ -302,6 +317,7 @@ export class GraphController {
     this.viewport.y = centerY * oldZoom + this.viewport.y - centerY * newZoom;
     this.viewport.zoom = newZoom;
     
+    this.onViewportChange?.(this.viewport);
     this.requestRender();
   }
 
@@ -325,6 +341,7 @@ export class GraphController {
     this.viewport.y = screenY - worldY * newZoom;
     this.viewport.zoom = newZoom;
     
+    this.onViewportChange?.(this.viewport);
     this.requestRender();
   }
 
@@ -544,6 +561,8 @@ export class GraphController {
       this.viewport.y = this.state.viewportStartY + deltaY;
       this.requestRender();
     } else if (data.type === 'up') {
+      // 拖拽结束，通知视口变化
+      this.onViewportChange?.(this.viewport);
       this.state = { kind: 'idle' };
     }
   }
@@ -914,6 +933,7 @@ export class GraphController {
     const texts: RenderText[] = [];
     const paths: RenderPath[] = [];
     const circles: RenderCircle[] = [];
+    const triangles: RenderTriangle[] = [];
     const overlays: OverlayInfo[] = [];
 
     // 计算所有节点布局
@@ -937,7 +957,7 @@ export class GraphController {
         zIndex: layout.zIndex,
       });
 
-      // 生成节点头部矩形
+      // 生成节点头部矩形（只有上方圆角）
       rects.push({
         id: `header-${node.id}`,
         x: layout.x,
@@ -947,44 +967,83 @@ export class GraphController {
         fillColor: layout.headerColor,
         borderColor: 'transparent',
         borderWidth: 0,
-        borderRadius: NODE_LAYOUT.BORDER_RADIUS,
+        borderRadius: {
+          topLeft: NODE_LAYOUT.BORDER_RADIUS,
+          topRight: NODE_LAYOUT.BORDER_RADIUS,
+          bottomLeft: 0,
+          bottomRight: 0,
+        },
         selected: false,
         zIndex: layout.zIndex + 1,
       });
 
-      // 生成节点标题文字
+      // 生成节点标题文字 - 与 React Flow 一致
+      // Operation/FunctionCall: subtitle(uppercase) + title
+      // Entry/Return: title + subtitle (不 uppercase)
       if (layout.subtitle) {
-        // 有副标题时：副标题在上，标题在下
-        texts.push({
-          id: `subtitle-${node.id}`,
-          text: layout.subtitle.toUpperCase(),
-          x: layout.x + NODE_LAYOUT.PADDING,
-          y: layout.y + 6,
-          fontSize: 9,
-          fontFamily: 'system-ui, sans-serif',
-          color: 'rgba(255,255,255,0.7)',
-          align: 'left',
-          baseline: 'top',
-        });
-        texts.push({
-          id: `title-${node.id}`,
-          text: layout.title,
-          x: layout.x + NODE_LAYOUT.PADDING,
-          y: layout.y + 18,
-          fontSize: 12,
-          fontFamily: 'system-ui, sans-serif',
-          color: '#ffffff',
-          align: 'left',
-          baseline: 'top',
-        });
+        const isEntryOrReturn = node.type === 'function-entry' || node.type === 'function-return';
+        
+        if (isEntryOrReturn) {
+          // Entry/Return: title 在前，subtitle (main) 在后，不 uppercase
+          texts.push({
+            id: `title-${node.id}`,
+            text: layout.title,
+            x: layout.x + NODE_LAYOUT.PADDING,
+            y: layout.y + layout.headerHeight / 2,
+            fontSize: 14,
+            fontFamily: 'system-ui, sans-serif',
+            color: '#ffffff',
+            align: 'left',
+            baseline: 'middle',
+          });
+          // 计算 title 宽度（近似），subtitle 紧跟其后
+          const titleWidth = layout.title.length * 8; // 近似每字符 8px (14px font)
+          texts.push({
+            id: `subtitle-${node.id}`,
+            text: layout.subtitle, // 不 uppercase
+            x: layout.x + NODE_LAYOUT.PADDING + titleWidth + 4,
+            y: layout.y + layout.headerHeight / 2,
+            fontSize: 12,
+            fontFamily: 'system-ui, sans-serif',
+            color: 'rgba(255,255,255,0.7)',
+            align: 'left',
+            baseline: 'middle',
+          });
+        } else {
+          // Operation/FunctionCall: subtitle(uppercase) 在前，title 在后
+          texts.push({
+            id: `subtitle-${node.id}`,
+            text: layout.subtitle.toUpperCase(),
+            x: layout.x + NODE_LAYOUT.PADDING,
+            y: layout.y + layout.headerHeight / 2,
+            fontSize: 12,
+            fontFamily: 'system-ui, sans-serif',
+            color: 'rgba(255,255,255,0.7)',
+            align: 'left',
+            baseline: 'middle',
+          });
+          // 计算 subtitle 宽度（近似），title 紧跟其后
+          const subtitleWidth = layout.subtitle.length * 8; // 近似每字符 8px (12px font)
+          texts.push({
+            id: `title-${node.id}`,
+            text: layout.title,
+            x: layout.x + NODE_LAYOUT.PADDING + subtitleWidth + 4,
+            y: layout.y + layout.headerHeight / 2,
+            fontSize: 14,
+            fontFamily: 'system-ui, sans-serif',
+            color: '#ffffff',
+            align: 'left',
+            baseline: 'middle',
+          });
+        }
       } else {
-        // 无副标题时：标题居中
+        // 无副标题时：只有标题
         texts.push({
           id: `title-${node.id}`,
           text: layout.title,
           x: layout.x + NODE_LAYOUT.PADDING,
           y: layout.y + layout.headerHeight / 2,
-          fontSize: 12,
+          fontSize: 14,
           fontFamily: 'system-ui, sans-serif',
           color: '#ffffff',
           align: 'left',
@@ -992,18 +1051,32 @@ export class GraphController {
         });
       }
 
-      // 生成端口圆形和标签
+      // 生成端口圆形/三角形和标签
       for (const handle of layout.handles) {
-        // 端口圆形
-        circles.push({
-          id: `handle-${node.id}-${handle.handleId}`,
-          x: layout.x + handle.x,
-          y: layout.y + handle.y,
-          radius: NODE_LAYOUT.HANDLE_RADIUS,
-          fillColor: handle.kind === 'exec' ? 'transparent' : handle.color,
-          borderColor: handle.kind === 'exec' ? '#ffffff' : handle.color,
-          borderWidth: handle.kind === 'exec' ? 2 : 1,
-        });
+        if (handle.kind === 'exec') {
+          // 执行引脚使用三角形，统一向右
+          triangles.push({
+            id: `handle-${node.id}-${handle.handleId}`,
+            x: layout.x + handle.x,
+            y: layout.y + handle.y,
+            size: NODE_LAYOUT.HANDLE_RADIUS * 1.5,
+            fillColor: '#ffffff',
+            borderColor: '#ffffff',
+            borderWidth: 0,
+            direction: 'right',
+          });
+        } else {
+          // 数据引脚使用圆形
+          circles.push({
+            id: `handle-${node.id}-${handle.handleId}`,
+            x: layout.x + handle.x,
+            y: layout.y + handle.y,
+            radius: NODE_LAYOUT.HANDLE_RADIUS,
+            fillColor: handle.color,
+            borderColor: handle.color,
+            borderWidth: 1,
+          });
+        }
         
         // 端口标签
         if (handle.label) {
@@ -1082,6 +1155,7 @@ export class GraphController {
       texts,
       paths,
       circles,
+      triangles,
       hint,
       overlays,
     };

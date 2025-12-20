@@ -95,8 +95,9 @@ export class TextBatchManager {
       dirty: true,
     };
     
-    // 获取 DPR，图集使用物理像素尺寸
-    this.dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    // 强制至少 2x 渲染，确保缩小时仍清晰
+    const systemDpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    this.dpr = Math.max(2, systemDpr);
     this.atlasSize = Math.ceil(ATLAS_BASE_SIZE * this.dpr);
     
     // 创建离屏 Canvas（物理像素尺寸）
@@ -112,6 +113,9 @@ export class TextBatchManager {
     
     // 初始化 Canvas 状态
     this.atlasCtx.textBaseline = 'top';
+    // 启用高质量文字渲染
+    this.atlasCtx.imageSmoothingEnabled = true;
+    this.atlasCtx.imageSmoothingQuality = 'high';
   }
   
   getBatch(): TextBatch {

@@ -1,0 +1,119 @@
+{
+  "id": "add1",
+  "name": "add1",
+  "parameters": [
+    {
+      "name": "arg0",
+      "constraint": "AnySignlessIntegerOrIndex"
+    }
+  ],
+  "returnTypes": [
+    {
+      "name": "ret0",
+      "constraint": "AnySignlessIntegerOrIndex"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "entry",
+        "type": "function-entry",
+        "position": {
+          "x": -256.0,
+          "y": 113.0
+        },
+        "data": {
+          "execOut": {
+            "id": "exec-out",
+            "label": ""
+          },
+          "isMain": false
+        }
+      },
+      {
+        "id": "return-0",
+        "type": "function-return",
+        "position": {
+          "x": 1162.1522341189802,
+          "y": 179.9554332452402
+        },
+        "data": {
+          "branchName": "",
+          "execIn": {
+            "id": "exec-in",
+            "label": ""
+          },
+          "isMain": false
+        }
+      },
+      {
+        "id": "node_1766142810957_palcasj",
+        "type": "operation",
+        "position": {
+          "x": 267.0,
+          "y": 348.0
+        },
+        "data": {
+          "fullName": "arith.addi",
+          "attributes": {},
+          "inputTypes": {
+            "lhs": "SignlessIntegerOrIndexLike",
+            "rhs": "SignlessIntegerOrIndexLike"
+          },
+          "outputTypes": {
+            "result": "SignlessIntegerOrIndexLike"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      },
+      {
+        "id": "node_1766142812997_s2r862a",
+        "type": "operation",
+        "position": {
+          "x": -9.0,
+          "y": 470.0
+        },
+        "data": {
+          "fullName": "arith.constant",
+          "attributes": {
+            "value": 1
+          },
+          "inputTypes": {},
+          "outputTypes": {
+            "result": "AnySignlessIntegerOrIndex"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "node_1766142812997_s2r862a",
+        "sourceHandle": "data-out-result",
+        "target": "node_1766142810957_palcasj",
+        "targetHandle": "data-in-rhs"
+      },
+      {
+        "source": "entry",
+        "sourceHandle": "data-out-arg0",
+        "target": "node_1766142810957_palcasj",
+        "targetHandle": "data-in-lhs"
+      },
+      {
+        "source": "node_1766142810957_palcasj",
+        "sourceHandle": "data-out-result",
+        "target": "return-0",
+        "targetHandle": "data-in-ret0"
+      },
+      {
+        "source": "entry",
+        "sourceHandle": "exec-out",
+        "target": "return-0",
+        "targetHandle": "exec-in"
+      }
+    ]
+  },
+  "isMain": false
+}

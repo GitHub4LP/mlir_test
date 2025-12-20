@@ -12,6 +12,7 @@ import type {
   EdgeBatch,
   TextBatch,
   CircleBatch,
+  TriangleBatch,
   GPUBackendEvents,
 } from './IGPUBackend';
 
@@ -22,6 +23,8 @@ import edgeVertSource from '../shaders/webgl/edge.vert.glsl?raw';
 import edgeFragSource from '../shaders/webgl/edge.frag.glsl?raw';
 import circleVertSource from '../shaders/webgl/circle.vert.glsl?raw';
 import circleFragSource from '../shaders/webgl/circle.frag.glsl?raw';
+import triangleVertSource from '../shaders/webgl/triangle.vert.glsl?raw';
+import triangleFragSource from '../shaders/webgl/triangle.frag.glsl?raw';
 import textVertSource from '../shaders/webgl/text.vert.glsl?raw';
 import textFragSource from '../shaders/webgl/text.frag.glsl?raw';
 
@@ -35,6 +38,9 @@ const EDGE_INSTANCE_FLOATS = 14;
 
 /** 圆形实例数据布局（每实例 floats 数量） */
 const CIRCLE_INSTANCE_FLOATS = 12;
+
+/** 三角形实例数据布局（每实例 floats 数量） */
+const TRIANGLE_INSTANCE_FLOATS = 13;
 
 /** 文字实例数据布局（每实例 floats 数量） */
 const TEXT_INSTANCE_FLOATS = 16;
@@ -57,6 +63,7 @@ export class WebGLBackend implements IGPUBackend {
   private nodeProgram: WebGLProgram | null = null;
   private edgeProgram: WebGLProgram | null = null;
   private circleProgram: WebGLProgram | null = null;
+  private triangleProgram: WebGLProgram | null = null;
   private textProgram: WebGLProgram | null = null;
   
   // 节点渲染资源
@@ -73,6 +80,11 @@ export class WebGLBackend implements IGPUBackend {
   private circleVAO: WebGLVertexArrayObject | null = null;
   private circleQuadBuffer: WebGLBuffer | null = null;
   private circleInstanceBuffer: WebGLBuffer | null = null;
+  
+  // 三角形渲染资源
+  private triangleVAO: WebGLVertexArrayObject | null = null;
+  private triangleQuadBuffer: WebGLBuffer | null = null;
+  private triangleInstanceBuffer: WebGLBuffer | null = null;
   
   // 文字渲染资源
   private textVAO: WebGLVertexArrayObject | null = null;
@@ -92,6 +104,11 @@ export class WebGLBackend implements IGPUBackend {
   } = { viewMatrix: null, resolution: null };
   
   private circleUniforms: {
+    viewMatrix: WebGLUniformLocation | null;
+    resolution: WebGLUniformLocation | null;
+  } = { viewMatrix: null, resolution: null };
+  
+  private triangleUniforms: {
     viewMatrix: WebGLUniformLocation | null;
     resolution: WebGLUniformLocation | null;
   } = { viewMatrix: null, resolution: null };
@@ -183,6 +200,11 @@ export class WebGLBackend implements IGPUBackend {
       if (this.circleQuadBuffer) this.gl.deleteBuffer(this.circleQuadBuffer);
       if (this.circleInstanceBuffer) this.gl.deleteBuffer(this.circleInstanceBuffer);
       
+      // 删除三角形渲染资源
+      if (this.triangleVAO) this.gl.deleteVertexArray(this.triangleVAO);
+      if (this.triangleQuadBuffer) this.gl.deleteBuffer(this.triangleQuadBuffer);
+      if (this.triangleInstanceBuffer) this.gl.deleteBuffer(this.triangleInstanceBuffer);
+      
       // 删除文字渲染资源
       if (this.textVAO) this.gl.deleteVertexArray(this.textVAO);
       if (this.textQuadBuffer) this.gl.deleteBuffer(this.textQuadBuffer);
@@ -193,6 +215,7 @@ export class WebGLBackend implements IGPUBackend {
       if (this.nodeProgram) this.gl.deleteProgram(this.nodeProgram);
       if (this.edgeProgram) this.gl.deleteProgram(this.edgeProgram);
       if (this.circleProgram) this.gl.deleteProgram(this.circleProgram);
+      if (this.triangleProgram) this.gl.deleteProgram(this.triangleProgram);
       if (this.textProgram) this.gl.deleteProgram(this.textProgram);
     }
     
@@ -333,6 +356,31 @@ export class WebGLBackend implements IGPUBackend {
     gl.bindVertexArray(null);
   }
 
+  renderTriangles(batch: TriangleBatch): void {
+    if (!this.gl || !this.triangleProgram || !this.triangleVAO || batch.count === 0) return;
+    
+    const gl = this.gl;
+    
+    gl.useProgram(this.triangleProgram);
+    gl.bindVertexArray(this.triangleVAO);
+    
+    // 设置 uniforms
+    gl.uniformMatrix3fv(this.triangleUniforms.viewMatrix, false, this.viewMatrix);
+    gl.uniform2f(this.triangleUniforms.resolution, this.width, this.height);
+    
+    // 更新实例数据
+    if (batch.dirty) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.triangleInstanceBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, batch.instanceData, gl.DYNAMIC_DRAW);
+      batch.dirty = false;
+    }
+    
+    // 绘制实例化四边形
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, batch.count);
+    
+    gl.bindVertexArray(null);
+  }
+
   updateTextTexture(canvas: OffscreenCanvas | HTMLCanvasElement): void {
     if (!this.gl) return;
     const gl = this.gl;
@@ -423,6 +471,16 @@ export class WebGLBackend implements IGPUBackend {
       this.initCircleBuffers();
     } else {
       console.error('Failed to create circle program');
+    }
+    
+    // 编译三角形着色器
+    this.triangleProgram = this.createProgram(triangleVertSource, triangleFragSource);
+    if (this.triangleProgram) {
+      this.triangleUniforms.viewMatrix = this.gl.getUniformLocation(this.triangleProgram, 'u_viewMatrix');
+      this.triangleUniforms.resolution = this.gl.getUniformLocation(this.triangleProgram, 'u_resolution');
+      this.initTriangleBuffers();
+    } else {
+      console.error('Failed to create triangle program');
     }
     
     // 编译文字着色器
@@ -595,6 +653,60 @@ export class WebGLBackend implements IGPUBackend {
     
     setupInstanceAttrib('a_instancePosition', 2);
     setupInstanceAttrib('a_instanceRadius', 1);
+    setupInstanceAttrib('a_fillColor', 4);
+    setupInstanceAttrib('a_borderColor', 4);
+    setupInstanceAttrib('a_borderWidth', 1);
+    
+    gl.bindVertexArray(null);
+  }
+  
+  private initTriangleBuffers(): void {
+    if (!this.gl || !this.triangleProgram) return;
+    const gl = this.gl;
+    const program = this.triangleProgram;
+    
+    this.triangleVAO = gl.createVertexArray();
+    gl.bindVertexArray(this.triangleVAO);
+    
+    // 正方形顶点 [-1, 1] 范围
+    const quadVertices = new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+       1,  1,
+    ]);
+    
+    this.triangleQuadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.triangleQuadBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+    
+    const posLoc = gl.getAttribLocation(program, 'a_position');
+    if (posLoc >= 0) {
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    }
+    
+    // 实例缓冲区
+    this.triangleInstanceBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.triangleInstanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, TRIANGLE_INSTANCE_FLOATS * 4 * 100, gl.DYNAMIC_DRAW);
+    
+    const stride = TRIANGLE_INSTANCE_FLOATS * 4;
+    let offset = 0;
+    
+    const setupInstanceAttrib = (name: string, size: number) => {
+      const loc = gl.getAttribLocation(program, name);
+      if (loc >= 0) {
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
+        gl.vertexAttribDivisor(loc, 1);
+      }
+      offset += size * 4;
+    };
+    
+    setupInstanceAttrib('a_instancePosition', 2);
+    setupInstanceAttrib('a_instanceSize', 1);
+    setupInstanceAttrib('a_direction', 1);
     setupInstanceAttrib('a_fillColor', 4);
     setupInstanceAttrib('a_borderColor', 4);
     setupInstanceAttrib('a_borderWidth', 1);

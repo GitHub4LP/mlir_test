@@ -1,0 +1,119 @@
+{
+  "id": "add1",
+  "name": "add1",
+  "parameters": [
+    {
+      "name": "arg0",
+      "constraint": "AnySignlessIntegerOrIndex"
+    }
+  ],
+  "returnTypes": [
+    {
+      "name": "ret0",
+      "constraint": "AnySignlessIntegerOrIndex"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "entry",
+        "type": "function-entry",
+        "position": {
+          "x": 100.0,
+          "y": 200.0
+        },
+        "data": {
+          "execOut": {
+            "id": "exec-out",
+            "label": ""
+          },
+          "isMain": false
+        }
+      },
+      {
+        "id": "return-0",
+        "type": "function-return",
+        "position": {
+          "x": 878.496107971523,
+          "y": 194.83085740251335
+        },
+        "data": {
+          "branchName": "",
+          "execIn": {
+            "id": "exec-in",
+            "label": ""
+          },
+          "isMain": false
+        }
+      },
+      {
+        "id": "node_1766135160228_0893a3m",
+        "type": "operation",
+        "position": {
+          "x": 577.4691910811753,
+          "y": 326.0369667856988
+        },
+        "data": {
+          "fullName": "arith.addi",
+          "attributes": {},
+          "inputTypes": {
+            "lhs": "SignlessIntegerOrIndexLike",
+            "rhs": "SignlessIntegerOrIndexLike"
+          },
+          "outputTypes": {
+            "result": "SignlessIntegerOrIndexLike"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      },
+      {
+        "id": "node_1766135162587_gjg31t6",
+        "type": "operation",
+        "position": {
+          "x": 150.15340302227833,
+          "y": 525.9104805551827
+        },
+        "data": {
+          "fullName": "arith.constant",
+          "attributes": {
+            "value": 1
+          },
+          "inputTypes": {},
+          "outputTypes": {
+            "result": "AnySignlessIntegerOrIndex"
+          },
+          "execOuts": [],
+          "regionPins": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "node_1766135162587_gjg31t6",
+        "sourceHandle": "data-out-result",
+        "target": "node_1766135160228_0893a3m",
+        "targetHandle": "data-in-rhs"
+      },
+      {
+        "source": "entry",
+        "sourceHandle": "data-out-arg0",
+        "target": "node_1766135160228_0893a3m",
+        "targetHandle": "data-in-lhs"
+      },
+      {
+        "source": "node_1766135160228_0893a3m",
+        "sourceHandle": "data-out-result",
+        "target": "return-0",
+        "targetHandle": "data-in-ret0"
+      },
+      {
+        "source": "entry",
+        "sourceHandle": "exec-out",
+        "target": "return-0",
+        "targetHandle": "exec-in"
+      }
+    ]
+  },
+  "isMain": false
+}

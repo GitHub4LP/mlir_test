@@ -2,9 +2,13 @@
  * Edge color utilities
  * 
  * Provides functions to calculate and update edge colors based on source port types.
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../editor/types';
 import type { BlueprintNodeData, FunctionEntryData, FunctionCallData, DataPin } from '../types';
 import { getTypeColor } from '../services/typeSystem';
 import { getDisplayType } from '../services/typeSelectorRenderer';
@@ -14,7 +18,7 @@ import { PortRef, PortKind } from '../services/port';
  * Gets the display type for a source port
  */
 function getSourcePortDisplayType(
-  sourceNode: Node,
+  sourceNode: EditorNode,
   sourceHandleId: string
 ): string | null {
   if (sourceNode.type === 'function-entry') {
@@ -66,7 +70,7 @@ function getSourcePortDisplayType(
  * Gets the color for a data edge based on the source handle type
  */
 export function getEdgeColor(
-  nodes: Node[],
+  nodes: EditorNode[],
   sourceNodeId: string,
   sourceHandleId: string | null | undefined
 ): string {
@@ -82,7 +86,7 @@ export function getEdgeColor(
 /**
  * Updates colors for all data edges based on current node types
  */
-export function updateEdgeColors(nodes: Node[], edges: Edge[]): Edge[] {
+export function updateEdgeColors(nodes: EditorNode[], edges: EditorEdge[]): EditorEdge[] {
   return edges.map(edge => {
     if (edge.type === 'execution' || !edge.sourceHandle) {
       return edge;

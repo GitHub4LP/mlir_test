@@ -12,7 +12,7 @@
 
 import { useEffect } from 'react';
 import '@xyflow/react/dist/style.css';
-import { MainLayout } from './components';
+import { MainLayout } from './app/MainLayout';
 import { useTypeConstraintStore } from './stores/typeConstraintStore';
 
 function App() {

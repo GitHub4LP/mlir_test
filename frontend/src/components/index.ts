@@ -4,10 +4,27 @@
  * Re-exports all components for easy importing.
  */
 
-export { BlueprintNode, type BlueprintNodeProps, type BlueprintNodeType } from './BlueprintNode';
-export { FunctionEntryNode, type FunctionEntryNodeProps, type FunctionEntryNodeType } from './FunctionEntryNode';
-export { FunctionReturnNode, type FunctionReturnNodeProps, type FunctionReturnNodeType } from './FunctionReturnNode';
-export { FunctionCallNode, type FunctionCallNodeProps, type FunctionCallNodeType } from './FunctionCallNode';
+// React Flow 节点/边组件从 adapter 导出
+export {
+  BlueprintNode,
+  FunctionEntryNode,
+  FunctionReturnNode,
+  FunctionCallNode,
+  ExecutionEdge,
+  DataEdge,
+  nodeTypes,
+  edgeTypes,
+  type BlueprintNodeProps,
+  type BlueprintNodeType,
+  type FunctionEntryNodeProps,
+  type FunctionEntryNodeType,
+  type FunctionReturnNodeProps,
+  type FunctionReturnNodeType,
+  type FunctionCallNodeProps,
+  type FunctionCallNodeType,
+} from '../editor/adapters/reactflow';
+
+// UI 组件
 export { AttributeEditor, type AttributeEditorProps } from './AttributeEditor';
 export { UnifiedTypeSelector } from './UnifiedTypeSelector';
 export { type TypeNode, type ScalarNode, type CompositeNode, parseType, serializeType } from '../services/typeNodeUtils';
@@ -15,8 +32,7 @@ export { NodePalette, type NodePaletteProps } from './NodePalette';
 export { FunctionManager, type FunctionManagerProps } from './FunctionManager';
 export { ExecutionPanel } from './ExecutionPanel';
 export { ExecutionPin } from './ExecutionPin';
-export { ExecutionEdge, DataEdge } from './CustomEdge';
-export { edgeTypes } from './edgeTypes';
-export { MainLayout, type MainLayoutProps } from './MainLayout';
 export { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
-export { nodeTypes } from './nodeTypes';
+
+// MainLayout 已移动到 app/ 目录
+// 使用: import { MainLayout } from './app/MainLayout'

@@ -1,8 +1,12 @@
 /**
  * Graph utility functions for node and edge operations
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../editor/types';
 import type { OperationDef, BlueprintNodeData, GraphNode, GraphEdge } from '../types';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
 
@@ -23,7 +27,7 @@ export function generateEdgeId(edge: { source: string; sourceHandle: string; tar
 /**
  * Checks if two edges are equal based on four-tuple
  */
-export function edgesEqual(e1: GraphEdge | Edge, e2: GraphEdge | Edge): boolean {
+export function edgesEqual(e1: GraphEdge | EditorEdge, e2: GraphEdge | EditorEdge): boolean {
   return e1.source === e2.source && 
          e1.sourceHandle === e2.sourceHandle && 
          e1.target === e2.target && 
@@ -31,14 +35,14 @@ export function edgesEqual(e1: GraphEdge | Edge, e2: GraphEdge | Edge): boolean 
 }
 
 /**
- * Converts GraphEdge to React Flow Edge format
+ * Converts GraphEdge to EditorEdge format
  * 
  * Derives type and initial data from handle IDs:
  * - type: 'execution' if sourceHandle or targetHandle starts with 'exec-', otherwise 'data'
  * - data: undefined for execution edges, {} for data edges (color will be calculated later)
- * - id: generated deterministically from four-tuple (required by React Flow)
+ * - id: generated deterministically from four-tuple
  */
-export function convertGraphEdgeToReactFlowEdge(edge: GraphEdge): Edge {
+export function convertGraphEdgeToReactFlowEdge(edge: GraphEdge): EditorEdge {
   const isExec = edge.sourceHandle.startsWith('exec-') || edge.targetHandle.startsWith('exec-');
   return {
     ...edge,
@@ -49,18 +53,17 @@ export function convertGraphEdgeToReactFlowEdge(edge: GraphEdge): Edge {
 }
 
 /**
- * Converts GraphNode to React Flow Node format
+ * Converts GraphNode to EditorNode format
  * 
- * GraphNode already has all required fields for React Flow Node,
+ * GraphNode already has all required fields for EditorNode,
  * but we ensure it has the correct type structure.
  */
-export function convertGraphNodeToReactFlowNode(node: GraphNode): Node {
+export function convertGraphNodeToReactFlowNode(node: GraphNode): EditorNode {
   return {
     ...node,
     // Ensure type is set (should already be set in GraphNode)
     type: node.type || 'operation',
-    // React Flow Node may have additional optional fields, but these are the essentials
-  } as Node;
+  };
 }
 
 /**

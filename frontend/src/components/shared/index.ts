@@ -3,4 +3,9 @@
  */
 
 export { EditableName } from './EditableName';
-export { execPinStyle, dataPinStyle } from './pinStyles';
+export { 
+  execPinStyle, 
+  dataPinStyle, 
+  getNodeContainerStyle, 
+  getNodeHeaderStyle 
+} from './pinStyles';

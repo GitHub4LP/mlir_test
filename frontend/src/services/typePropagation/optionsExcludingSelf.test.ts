@@ -5,9 +5,9 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { Node, Edge } from '@xyflow/react';
 import { computeOptionsExcludingSelf } from './propagator';
 import type { BlueprintNodeData, OperationDef } from '../../types';
+import type { EditorNode, EditorEdge } from '../../editor/types';
 import { getConstraintElements } from '../constraintResolver';
 import type { ConstraintDef } from '../constraintResolver';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
@@ -94,7 +94,7 @@ function createOperationNode(
   id: string,
   operation: OperationDef,
   pinnedTypes: Record<string, string> = {}
-): Node {
+): EditorNode {
   const inputTypes: Record<string, string> = {};
   const outputTypes: Record<string, string> = {};
 
@@ -152,7 +152,7 @@ describe('computeOptionsExcludingSelf', () => {
       const nodeB = createOperationNode('nodeB', opB);
 
       const nodes = [nodeA, nodeB];
-      const edges: Edge[] = [{
+      const edges: EditorEdge[] = [{
         id: 'e1',
         source: 'nodeA',
         sourceHandle: 'data-out-result',
@@ -211,7 +211,7 @@ describe('computeOptionsExcludingSelf', () => {
       const nodeC = createOperationNode('nodeC', opC);
 
       const nodes = [nodeA, nodeB, nodeC];
-      const edges: Edge[] = [
+      const edges: EditorEdge[] = [
         {
           id: 'e1',
           source: 'nodeA',

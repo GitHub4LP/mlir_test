@@ -76,3 +76,24 @@ export { CanvasRenderer } from './CanvasRenderer';
 // 性能监控
 export { PerformanceMonitor, performanceMonitor } from './PerformanceMonitor';
 export type { PerformanceMetrics, PerformanceCallback } from './PerformanceMonitor';
+
+// 覆盖层管理
+export { OverlayManager, getOverlayManager, resetOverlayManager } from './OverlayManager';
+export type { OverlayType, OverlayConfig, ActiveOverlay, OverlayRenderCallback } from './OverlayManager';
+
+// 扩展命中测试
+export {
+  hitTestTypeLabel,
+  hitTestHandle,
+  hitTestNode,
+  hitTestNodeComplete,
+  getTypeLabelPosition,
+} from './HitTest';
+export type {
+  HitNone,
+  HitNode,
+  HitHandle,
+  HitTypeLabel,
+  HitAttribute,
+  HitEdge,
+} from './HitTest';

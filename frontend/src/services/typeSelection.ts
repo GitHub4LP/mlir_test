@@ -12,9 +12,13 @@
  * main 函数不需要特殊处理：
  * - main Entry 没有参数端口
  * - main Return 的返回值是 I32，options = [I32]，canEdit = false
+ * 
+ * 设计原则：
+ * - 使用框架无关的 EditorNode/EditorEdge 类型
+ * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import type { Node, Edge } from '@xyflow/react';
+import type { EditorNode, EditorEdge } from '../editor/types';
 import type { FunctionDef } from '../types';
 import { computeOptionsExcludingSelf } from './typePropagation/propagator';
 import { PortRef } from './port';
@@ -31,16 +35,16 @@ export interface TypeSelectionResult {
  *
  * @param nodeId - 节点 ID
  * @param portId - 端口 handle ID（如 'data-out-a'）
- * @param nodes - 当前图的所有节点
- * @param edges - 当前图的所有边
+ * @param nodes - 当前图的所有节点（EditorNode 类型）
+ * @param edges - 当前图的所有边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义
  * @param getConstraintElements - 获取约束映射到的类型约束集合元素
  */
 export function computeTypeSelectionState(
   nodeId: string,
   portId: string,
-  nodes: Node[],
-  edges: Edge[],
+  nodes: EditorNode[],
+  edges: EditorEdge[],
   currentFunction: FunctionDef | undefined,
   getConstraintElements: (constraint: string) => string[]
 ): TypeSelectionResult {

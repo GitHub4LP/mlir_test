@@ -47,6 +47,16 @@ export interface CircleBatch {
   dirty: boolean;
 }
 
+/** 三角形批次数据 */
+export interface TriangleBatch {
+  /** 实例数量 */
+  count: number;
+  /** 实例数据 */
+  instanceData: Float32Array;
+  /** 是否需要更新 GPU 缓冲区 */
+  dirty: boolean;
+}
+
 /** GPU 后端事件 */
 export interface GPUBackendEvents {
   /** 上下文/设备丢失 */
@@ -114,6 +124,11 @@ export interface IGPUBackend {
    * 渲染圆形批次
    */
   renderCircles(batch: CircleBatch): void;
+  
+  /**
+   * 渲染三角形批次
+   */
+  renderTriangles(batch: TriangleBatch): void;
   
   /**
    * 更新文字纹理
