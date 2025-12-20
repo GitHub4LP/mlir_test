@@ -8,7 +8,7 @@
  * - 底部：执行面板
  */
 
-import { useCallback, useRef, useState, useEffect, type ReactNode } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo, type ReactNode } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -32,7 +32,7 @@ import { NodePalette } from './NodePalette';
 import { FunctionManager } from './FunctionManager';
 import { ExecutionPanel } from './ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
-import { CanvasEditorWrapper } from '../editor';
+import { CanvasEditorWrapper, GPUEditorWrapper } from '../editor';
 import type { EditorNode, NodeChange as EditorNodeChange, EditorSelection, ConnectionRequest } from '../editor';
 import { nodeTypes } from './nodeTypes';
 import { edgeTypes } from './edgeTypes';
@@ -46,7 +46,7 @@ import { dataInHandle, dataOutHandle } from '../services/port';
 import { getDisplayType } from '../services/typeSelectorRenderer';
 
 // Layout components
-import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar } from './layout';
+import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar, type RendererType } from './layout';
 
 // Utility functions
 import {
@@ -100,8 +100,23 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
-  // Canvas preview state
-  const [showCanvasPreview, setShowCanvasPreview] = useState(false);
+  // Renderer state
+  const [renderer, setRenderer] = useState<RendererType>('reactflow');
+  
+  // GPU availability detection (computed once on mount)
+  const webglAvailable = useMemo(() => {
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2');
+      return !!gl;
+    } catch {
+      return false;
+    }
+  }, []);
+  
+  const webgpuAvailable = useMemo(() => {
+    return 'gpu' in navigator;
+  }, []);
 
   // Get project state and actions
   const project = useProjectStore(state => state.project);
@@ -646,8 +661,10 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
       {/* Project Toolbar */}
       <ProjectToolbar
         project={project}
-        showCanvasPreview={showCanvasPreview}
-        onShowCanvasPreviewChange={setShowCanvasPreview}
+        renderer={renderer}
+        onRendererChange={setRenderer}
+        webglAvailable={webglAvailable}
+        webgpuAvailable={webgpuAvailable}
         onCreateClick={() => setIsCreateDialogOpen(true)}
         onOpenClick={() => setIsOpenDialogOpen(true)}
         onSaveClick={() => setIsSaveDialogOpen(true)}
@@ -685,8 +702,161 @@ function MainLayoutInner({ header, footer }: MainLayoutProps) {
           style={{ paddingBottom: executionPanelHeight }}
         >
           <div className="flex-1 relative" ref={reactFlowWrapper}>
-            {showCanvasPreview ? (
+            {renderer === 'canvas' ? (
               <CanvasEditorWrapper 
+                nodes={nodes.map(n => ({
+                  id: n.id,
+                  type: n.type as EditorNode['type'],
+                  position: n.position,
+                  data: n.data,
+                  selected: n.selected,
+                }))}
+                edges={edges.map(e => ({
+                  id: e.id,
+                  source: e.source,
+                  sourceHandle: e.sourceHandle ?? '',
+                  target: e.target,
+                  targetHandle: e.targetHandle ?? '',
+                  selected: e.selected,
+                  type: e.type as 'execution' | 'data' | undefined,
+                  data: e.data,
+                }))}
+                onNodesChange={(changes: EditorNodeChange[]) => {
+                  for (const change of changes) {
+                    if (change.type === 'position') {
+                      setNodes(nds => nds.map(n => 
+                        n.id === change.id ? { ...n, position: change.position } : n
+                      ));
+                    }
+                  }
+                }}
+                onSelectionChange={(selection: EditorSelection) => {
+                  setNodes(nds => nds.map(n => ({
+                    ...n,
+                    selected: selection.nodeIds.includes(n.id),
+                  })));
+                  if (selection.nodeIds.length === 1) {
+                    const node = nodes.find(n => n.id === selection.nodeIds[0]);
+                    if (node) setSelectedNode(node);
+                  } else {
+                    setSelectedNode(null);
+                  }
+                }}
+                onConnect={(request: ConnectionRequest) => {
+                  const connection: Connection = {
+                    source: request.source,
+                    sourceHandle: request.sourceHandle,
+                    target: request.target,
+                    targetHandle: request.targetHandle,
+                  };
+                  
+                  const existingEdges = edges.map(e => ({
+                    source: e.source,
+                    sourceHandle: e.sourceHandle ?? null,
+                    target: e.target,
+                    targetHandle: e.targetHandle ?? null,
+                  }));
+
+                  const validationResult = validateConnection(
+                    connection,
+                    nodes,
+                    undefined,
+                    existingEdges
+                  );
+
+                  if (!validationResult.isValid) {
+                    setConnectionError(validationResult.errorMessage || 'Invalid connection');
+                    setTimeout(() => setConnectionError(null), 3000);
+                    return;
+                  }
+
+                  const isExec = request.sourceHandle.startsWith('exec-') || request.targetHandle.startsWith('exec-');
+                  const edgeWithStyle: Edge = {
+                    ...connection,
+                    id: generateEdgeId({
+                      source: request.source,
+                      sourceHandle: request.sourceHandle,
+                      target: request.target,
+                      targetHandle: request.targetHandle,
+                    }),
+                    type: isExec ? 'execution' : 'data',
+                    data: isExec ? undefined : { color: getEdgeColor(nodes, request.source, request.sourceHandle) },
+                  };
+
+                  const newEdges = [...edges, edgeWithStyle];
+                  setEdges(newEdges);
+
+                  if (!isExec) {
+                    setNodes(nds => {
+                      const result = triggerTypePropagationWithSignature(
+                        nds, newEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
+                      );
+                      return result.nodes;
+                    });
+                  }
+                }}
+                onDeleteRequest={(nodeIds, edgeIds) => {
+                  if (nodeIds.length > 0 || edgeIds.length > 0) {
+                    deleteSelected();
+                  }
+                }}
+                onEdgeDoubleClick={(edgeId) => {
+                  const edge = edges.find(e => {
+                    const computedId = `${e.source}-${e.sourceHandle}-${e.target}-${e.targetHandle}`;
+                    return computedId === edgeId || e.id === edgeId;
+                  });
+                  if (edge) {
+                    const remainingEdges = edges.filter(e => e.id !== edge.id);
+                    setEdges(remainingEdges);
+
+                    if (!edge.sourceHandle?.startsWith('exec-')) {
+                      setNodes(nds => {
+                        const result = triggerTypePropagationWithSignature(
+                          nds, remainingEdges, currentFunction ?? undefined, getConstraintElements, pickConstraintName
+                        );
+                        return result.nodes;
+                      });
+                    }
+                  }
+                }}
+                onDrop={(x, y, dataTransfer) => {
+                  const functionData = dataTransfer.getData('application/reactflow-function');
+                  if (functionData) {
+                    try {
+                      const functionCallData = JSON.parse(functionData);
+                      const newNode: Node = {
+                        id: generateNodeId(),
+                        type: 'function-call',
+                        position: { x, y },
+                        data: functionCallData,
+                      };
+                      setNodes((nds) => [...nds, newNode]);
+                      return;
+                    } catch (err) {
+                      console.error('Failed to parse dropped function:', err);
+                    }
+                  }
+
+                  const data = dataTransfer.getData('application/json');
+                  if (!data) return;
+
+                  try {
+                    const operation: OperationDef = JSON.parse(data);
+                    const newNode: Node = {
+                      id: generateNodeId(),
+                      type: 'operation',
+                      position: { x, y },
+                      data: createBlueprintNodeData(operation),
+                    };
+                    setNodes((nds) => [...nds, newNode]);
+                  } catch (err) {
+                    console.error('Failed to parse dropped operation:', err);
+                  }
+                }}
+              />
+            ) : (renderer === 'webgl' || renderer === 'webgpu') ? (
+              <GPUEditorWrapper
+                preferWebGPU={renderer === 'webgpu'}
                 nodes={nodes.map(n => ({
                   id: n.id,
                   type: n.type as EditorNode['type'],

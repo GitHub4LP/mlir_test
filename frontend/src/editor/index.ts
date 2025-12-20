@@ -47,3 +47,7 @@ export type { ReactFlowEditorHandle, ReactFlowEditorWrapperProps } from './adapt
 export { CanvasNodeEditor, createCanvasNodeEditor } from './adapters/CanvasNodeEditor';
 export { CanvasEditorWrapper } from './adapters/CanvasEditorWrapper';
 export type { CanvasEditorHandle, CanvasEditorWrapperProps } from './adapters/CanvasEditorWrapper';
+
+// GPU 适配器
+export { GPUEditorWrapper } from './adapters/GPUEditorWrapper';
+export type { GPUEditorWrapperProps } from './adapters/GPUEditorWrapper';

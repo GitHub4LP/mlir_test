@@ -2,28 +2,56 @@
  * Project toolbar component
  * 
  * Displays project actions (New, Open, Save), current project info,
- * and renderer switch (ReactFlow/Canvas).
+ * and renderer switch (ReactFlow/Canvas/WebGL/WebGPU).
  */
 
 import type { Project } from '../../types';
 
+/** 渲染器类型 */
+export type RendererType = 'reactflow' | 'canvas' | 'webgl' | 'webgpu';
+
 export interface ProjectToolbarProps {
   project: Project | null;
-  showCanvasPreview: boolean;
-  onShowCanvasPreviewChange: (show: boolean) => void;
+  /** 当前渲染器类型 */
+  renderer: RendererType;
+  /** 渲染器变更回调 */
+  onRendererChange: (renderer: RendererType) => void;
+  /** WebGL 是否可用 */
+  webglAvailable?: boolean;
+  /** WebGPU 是否可用 */
+  webgpuAvailable?: boolean;
   onCreateClick: () => void;
   onOpenClick: () => void;
   onSaveClick: () => void;
+  /** @deprecated 使用 renderer 和 onRendererChange */
+  showCanvasPreview?: boolean;
+  /** @deprecated 使用 renderer 和 onRendererChange */
+  onShowCanvasPreviewChange?: (show: boolean) => void;
 }
 
 export function ProjectToolbar({
   project,
-  showCanvasPreview,
-  onShowCanvasPreviewChange,
+  renderer,
+  onRendererChange,
+  webglAvailable = true,
+  webgpuAvailable = false,
   onCreateClick,
   onOpenClick,
   onSaveClick,
+  // 兼容旧 API
+  showCanvasPreview,
+  onShowCanvasPreviewChange,
 }: ProjectToolbarProps) {
+  // 兼容旧 API
+  const effectiveRenderer = renderer ?? (showCanvasPreview ? 'canvas' : 'reactflow');
+  const handleRendererChange = (r: RendererType) => {
+    onRendererChange?.(r);
+    // 兼容旧 API
+    if (onShowCanvasPreviewChange) {
+      onShowCanvasPreviewChange(r === 'canvas');
+    }
+  };
+
   return (
     <div className="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-4">
       {/* Logo/Title */}
@@ -93,9 +121,9 @@ export function ProjectToolbar({
       {/* Renderer Switch */}
       <div className="flex items-center gap-1 bg-gray-700 rounded p-0.5">
         <button
-          onClick={() => onShowCanvasPreviewChange(false)}
+          onClick={() => handleRendererChange('reactflow')}
           className={`px-2 py-1 text-xs rounded transition-colors ${
-            !showCanvasPreview
+            effectiveRenderer === 'reactflow'
               ? 'bg-blue-600 text-white'
               : 'text-gray-400 hover:text-white'
           }`}
@@ -104,16 +132,40 @@ export function ProjectToolbar({
           ReactFlow
         </button>
         <button
-          onClick={() => onShowCanvasPreviewChange(true)}
+          onClick={() => handleRendererChange('canvas')}
           disabled={!project}
           className={`px-2 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            showCanvasPreview
+            effectiveRenderer === 'canvas'
               ? 'bg-blue-600 text-white'
               : 'text-gray-400 hover:text-white'
           }`}
-          title="Canvas 2D renderer (read-only)"
+          title="Canvas 2D renderer"
         >
           Canvas
+        </button>
+        <button
+          onClick={() => handleRendererChange('webgl')}
+          disabled={!project || !webglAvailable}
+          className={`px-2 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            effectiveRenderer === 'webgl'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+          title={webglAvailable ? 'WebGL 2.0 renderer' : 'WebGL not available'}
+        >
+          WebGL
+        </button>
+        <button
+          onClick={() => handleRendererChange('webgpu')}
+          disabled={!project || !webgpuAvailable}
+          className={`px-2 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            effectiveRenderer === 'webgpu'
+              ? 'bg-purple-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+          title={webgpuAvailable ? 'WebGPU renderer' : 'WebGPU not available'}
+        >
+          WebGPU
         </button>
       </div>
 
