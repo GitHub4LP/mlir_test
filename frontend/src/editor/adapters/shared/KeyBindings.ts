@@ -241,7 +241,7 @@ export function getReactFlowCustomActions(): KeyAction[] {
 /** Vue Flow 快捷键配置 */
 export interface VueFlowKeyConfig {
   deleteKeyCode: string | string[] | null;
-  selectionKeyCode: string | string[] | null;
+  selectionKeyCode: boolean | null;  // Vue Flow 期望 boolean | null，不是字符串
   multiSelectionKeyCode: string | string[] | null;
   zoomActivationKeyCode: string | string[] | null;
 }
@@ -251,18 +251,18 @@ export interface VueFlowKeyConfig {
  * 
  * Vue Flow 内置支持的快捷键：
  * - deleteKeyCode: 删除选中元素
- * - selectionKeyCode: 框选修饰键
+ * - selectionKeyCode: 框选启用（boolean | null）
  * - multiSelectionKeyCode: 多选修饰键
  * - zoomActivationKeyCode: 缩放激活键
+ * 
+ * 注意：Vue Flow 的 selectionKeyCode 与 React Flow 不同，
+ * 它期望 boolean | null 而不是字符串。
+ * true = 启用框选，null = 禁用框选
  */
-export function getVueFlowKeyConfig(bindings: KeyBindings = defaultKeyBindings): VueFlowKeyConfig {
-  // 提取删除键（不含修饰键的）
-  const deleteKeys = bindings.delete
-    .filter(s => !s.includes('+'));
-  
+export function getVueFlowKeyConfig(): VueFlowKeyConfig {
   return {
-    deleteKeyCode: deleteKeys.length > 0 ? deleteKeys : null,
-    selectionKeyCode: 'Shift',
+    deleteKeyCode: null,  // 我们在 onKeyDown 中自己处理删除
+    selectionKeyCode: true,  // 启用框选
     multiSelectionKeyCode: ['Meta', 'Control'],
     zoomActivationKeyCode: null,  // 默认滚轮缩放
   };

@@ -145,24 +145,9 @@ export const TEXT = {
 
 /** 获取 CSS 变量对象 - 可用于 :style 绑定到根元素 */
 export function getCSSVariables() {
+  // 注意：主要的 CSS Variables 已在 App.tsx 根元素注入
+  // 这里返回一些 Vue 组件特定的变量（如 Handle 相关）
   return {
-    '--node-header-height': `${nodeStyle.headerHeight}px`,
-    '--node-pin-row-height': `${nodeStyle.pinRowHeight}px`,
-    '--node-padding': `${nodeStyle.padding}px`,
-    '--node-handle-radius': `${nodeStyle.handleRadius}px`,
-    '--node-min-width': `${nodeStyle.minWidth}px`,
-    '--node-border-radius': `${nodeStyle.borderRadius}px`,
-    '--node-bg-color': nodeStyle.backgroundColor,
-    // 文字样式
-    '--text-title-size': `${textStyle.titleFontSize}px`,
-    '--text-subtitle-size': `${textStyle.subtitleFontSize}px`,
-    '--text-label-size': `${textStyle.labelFontSize}px`,
-    '--text-title-color': textStyle.titleColor,
-    '--text-subtitle-color': textStyle.subtitleColor,
-    '--text-label-color': textStyle.labelColor,
-    '--text-title-weight': textStyle.titleFontWeight,
-    '--text-subtitle-weight': textStyle.subtitleFontWeight,
-    // Handle 相关
     '--handle-radius': `${HANDLE_RADIUS}px`,
     '--handle-size': `${HANDLE_SIZE}px`,
     '--exec-color': EXEC_COLOR,

@@ -164,6 +164,9 @@ export class GraphController {
   /** 节点位置变化回调 */
   onNodePositionChange: ((nodeId: string, x: number, y: number) => void) | null = null;
 
+  /** 渲染数据扩展回调（用于添加额外的渲染元素，如类型标签、按钮等） */
+  onExtendRenderData: ((data: RenderData, nodeLayouts: Map<string, NodeLayout>) => void) | null = null;
+
   /** 连接尝试回调 */
   onConnectionAttempt: ((
     sourceNodeId: string,
@@ -1149,7 +1152,7 @@ export class GraphController {
     // 计算交互提示
     const hint = this.computeInteractionHint();
 
-    return {
+    const renderData: RenderData = {
       viewport: { ...this.viewport },
       rects,
       texts,
@@ -1159,6 +1162,11 @@ export class GraphController {
       hint,
       overlays,
     };
+
+    // 调用扩展回调，允许外部添加额外的渲染元素
+    this.onExtendRenderData?.(renderData, nodeLayouts);
+
+    return renderData;
   }
 
   /**

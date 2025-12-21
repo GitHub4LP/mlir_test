@@ -96,14 +96,6 @@ export interface OperationClassification {
   isTerminator: boolean;    // True if operation is a terminator (yield, return)
 }
 
-// 类型系统
-export interface TypeConstraint {
-  name: string;
-  summary: string;
-  concreteTypes: string[];
-  isAbstract: boolean;
-}
-
 // 前向声明（定义在 operationClassifier.ts）
 export interface RegionPinConfig {
   regionName: string;
@@ -171,7 +163,6 @@ export interface PortConfig {
   name: string;
   kind: 'input' | 'output';
   typeConstraint: string;
-  concreteType?: string;
   color: string;
 }
 

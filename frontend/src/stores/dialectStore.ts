@@ -56,9 +56,9 @@ interface DialectStoreActions {
   getDialectOperations(name: string): OperationDef[];
 }
 
-type DialectStore = DialectStoreState & DialectStoreActions;
+export type DialectState = DialectStoreState & DialectStoreActions;
 
-export const useDialectStore = create<DialectStore>((set, get) => ({
+export const useDialectStore = create<DialectState>((set, get) => ({
   // Initial state
   dialectNames: [],
   dialects: new Map(),

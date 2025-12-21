@@ -81,7 +81,7 @@ function createOperationNode(
 }
 
 // 创建函数入口节点
-function createEntryNode(id: string, outputs: { id: string; name: string; concreteType: string }[]): GraphNode {
+function createEntryNode(id: string, outputs: { id: string; name: string; typeConstraint: string }[]): GraphNode {
   const data: FunctionEntryData = {
     functionId: 'test-func',
     functionName: 'test',
@@ -89,8 +89,7 @@ function createEntryNode(id: string, outputs: { id: string; name: string; concre
       id: o.id,
       name: o.name,
       kind: 'output' as const,
-      typeConstraint: o.concreteType,
-      concreteType: o.concreteType,
+      typeConstraint: o.typeConstraint,
       color: '#fff',
     })),
     execOut: { id: 'exec-out', label: '' },
@@ -105,7 +104,7 @@ function createEntryNode(id: string, outputs: { id: string; name: string; concre
 }
 
 // 创建函数返回节点
-function createReturnNode(id: string, inputs: { id: string; name: string; concreteType: string }[]): GraphNode {
+function createReturnNode(id: string, inputs: { id: string; name: string; typeConstraint: string }[]): GraphNode {
   const data: FunctionReturnData = {
     functionId: 'test-func',
     functionName: 'test',
@@ -114,8 +113,7 @@ function createReturnNode(id: string, inputs: { id: string; name: string; concre
       id: i.id,
       name: i.name,
       kind: 'input' as const,
-      typeConstraint: i.concreteType,
-      concreteType: i.concreteType,
+      typeConstraint: i.typeConstraint,
       color: '#fff',
     })),
     execIn: { id: 'exec-in', label: '' },
@@ -133,8 +131,8 @@ describe('convertToBackendGraph', () => {
   describe('节点转换', () => {
     it('应该转换函数入口节点', () => {
       const entryNode = createEntryNode('entry', [
-        { id: 'data-out-a', name: 'a', concreteType: 'I32' },
-        { id: 'data-out-b', name: 'b', concreteType: 'I32' },
+        { id: 'data-out-a', name: 'a', typeConstraint: 'I32' },
+        { id: 'data-out-b', name: 'b', typeConstraint: 'I32' },
       ]);
       
       const result = convertToBackendGraph([entryNode], []);
@@ -151,7 +149,7 @@ describe('convertToBackendGraph', () => {
 
     it('应该转换函数返回节点', () => {
       const returnNode = createReturnNode('return', [
-        { id: 'data-in-result', name: 'result', concreteType: 'I32' },
+        { id: 'data-in-result', name: 'result', typeConstraint: 'I32' },
       ]);
       
       const result = convertToBackendGraph([returnNode], []);
@@ -267,8 +265,8 @@ describe('convertToBackendGraph', () => {
       
       const nodes: GraphNode[] = [
         createEntryNode('entry', [
-          { id: 'data-out-a', name: 'a', concreteType: 'I32' },
-          { id: 'data-out-b', name: 'b', concreteType: 'I32' },
+          { id: 'data-out-a', name: 'a', typeConstraint: 'I32' },
+          { id: 'data-out-b', name: 'b', typeConstraint: 'I32' },
         ]),
         createOperationNode('add', operation, { result: 'I32' }),
       ];
@@ -304,7 +302,7 @@ describe('convertToBackendGraph', () => {
       
       const nodes: GraphNode[] = [
         createOperationNode('add', operation, { result: 'I32' }),
-        createReturnNode('return', [{ id: 'data-in-result', name: 'result', concreteType: 'I32' }]),
+        createReturnNode('return', [{ id: 'data-in-result', name: 'result', typeConstraint: 'I32' }]),
       ];
       
       const edges: GraphEdge[] = [
@@ -356,11 +354,11 @@ describe('convertToBackendGraph', () => {
       
       const nodes: GraphNode[] = [
         createEntryNode('entry', [
-          { id: 'data-out-a', name: 'a', concreteType: 'I32' },
-          { id: 'data-out-b', name: 'b', concreteType: 'I32' },
+          { id: 'data-out-a', name: 'a', typeConstraint: 'I32' },
+          { id: 'data-out-b', name: 'b', typeConstraint: 'I32' },
         ]),
         createOperationNode('add', addiOp, { result: 'I32' }),
-        createReturnNode('return', [{ id: 'data-in-result', name: 'result', concreteType: 'I32' }]),
+        createReturnNode('return', [{ id: 'data-in-result', name: 'result', typeConstraint: 'I32' }]),
       ];
       
       const edges: GraphEdge[] = [

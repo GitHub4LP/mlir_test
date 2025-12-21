@@ -71,22 +71,22 @@ export function getPortTypeConstraint(
     const data = node.data as FunctionEntryData;
     if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
       const port = data.outputs.find((p: PortConfig) => p.id === handleId);
-      return port ? (port.concreteType || port.typeConstraint) : null;
+      return port?.typeConstraint || null;
     }
   } else if (node.type === 'function-return') {
     const data = node.data as FunctionReturnData;
     if (parsed.kind === PortKind.DataIn && Array.isArray(data.inputs)) {
       const port = data.inputs.find((p: PortConfig) => p.id === handleId);
-      return port ? (port.concreteType || port.typeConstraint) : null;
+      return port?.typeConstraint || null;
     }
   } else if (node.type === 'function-call') {
     const data = node.data as FunctionCallData;
     if (parsed.kind === PortKind.DataIn && Array.isArray(data.inputs)) {
       const port = data.inputs.find((p: PortConfig) => p.id === handleId);
-      return port ? (port.concreteType || port.typeConstraint) : null;
+      return port?.typeConstraint || null;
     } else if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
       const port = data.outputs.find((p: PortConfig) => p.id === handleId);
-      return port ? (port.concreteType || port.typeConstraint) : null;
+      return port?.typeConstraint || null;
     }
   } else {
     // Operation 节点

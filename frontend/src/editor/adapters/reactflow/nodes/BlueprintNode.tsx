@@ -13,21 +13,20 @@
 import { memo, useCallback, useMemo } from 'react';
 import { type NodeProps, type Node, useReactFlow, useEdges, useNodes } from '@xyflow/react';
 import type { BlueprintNodeData, DataPin } from '../../../../types';
-import { getTypeColor } from '../../../../services/typeSystem';
 import { getOperands, getAttributes } from '../../../../services/dialectParser';
 import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { AttributeEditor } from '../../../../components/AttributeEditor';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { NodePins } from '../../../../components/NodePins';
-import { buildPinRows } from '../../../../services/pinUtils';
-import { useProjectStore } from '../../../../stores/projectStore';
-import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
-import { dataInHandle, dataOutHandle, PortRef } from '../../../../services/port';
+import { buildPinRows, buildOperationDataPins } from '../../../../services/pinUtils';
+import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
 import { computeTypeSelectionState } from '../../../../services/typeSelection';
 import { useTypeChangeHandler } from '../../../../hooks';
 import { StyleSystem } from '../../../core/StyleSystem';
 import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
+import { getPortType } from '../../../../services/portTypeService';
+import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
@@ -38,8 +37,8 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
 
   const { setNodes } = useReactFlow();
   const edges = useEdges();
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
+  const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
+  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
 
   // 使用统一的 hook
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -73,44 +72,13 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   // Variadic 端口实例数量
   const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);
 
-  // 计算端口数量约束
-  const getQuantity = (isOptional: boolean, isVariadic: boolean): 'required' | 'optional' | 'variadic' => {
-    if (isVariadic) return 'variadic';
-    if (isOptional) return 'optional';
-    return 'required';
-  };
-
-  // Build pin rows using unified model
+  // Build pin rows using unified model (使用公用服务构建 DataPin)
   const pinRows = useMemo(() => {
-    const dataInputs: DataPin[] = operands.map((operand) => {
-      const portId = dataInHandle(operand.name);
-      const quantity = getQuantity(operand.isOptional, operand.isVariadic);
-      return {
-        id: portId,
-        label: operand.name,
-        typeConstraint: operand.typeConstraint,
-        displayName: operand.displayName || operand.typeConstraint,
-        description: operand.description,
-        color: getTypeColor(inputTypes[operand.name] || operand.typeConstraint),
-        allowedTypes: operand.allowedTypes,
-        quantity,
-      };
-    });
-
-    const dataOutputs: DataPin[] = results.map((result, idx) => {
-      const portId = dataOutHandle(result.name || `result_${idx}`);
-      const quantity = getQuantity(false, result.isVariadic);
-      return {
-        id: portId,
-        label: result.name || `result_${idx}`,
-        typeConstraint: result.typeConstraint,
-        displayName: result.displayName || result.typeConstraint,
-        description: result.description,
-        color: getTypeColor(outputTypes[result.name] || result.typeConstraint),
-        allowedTypes: result.allowedTypes,
-        quantity,
-      };
-    });
+    const { inputs: dataInputs, outputs: dataOutputs } = buildOperationDataPins(
+      operands,
+      results,
+      { inputTypes, outputTypes }
+    );
 
     return buildPinRows({
       execIn,
@@ -145,67 +113,36 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     );
   }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
 
-  // Get port type from node data
+  // Get port type from node data (使用公用服务)
   const getPortTypeWrapper = useCallback((pinId: string) => {
-    const pinnedType = pinnedTypes[pinId];
-    if (pinnedType) return pinnedType;
-
-    const parsed = PortRef.parseHandleId(pinId);
-    if (!parsed) return undefined;
-    
-    let portName = parsed.name;
-    const match = portName.match(/^(.+)_\d+$/);
-    if (match) portName = match[1];
-    
-    if (parsed.kind === 'data-in') {
-      return inputTypes[portName];
-    } else if (parsed.kind === 'data-out') {
-      return outputTypes[portName];
-    }
-    return undefined;
+    return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
   }, [pinnedTypes, inputTypes, outputTypes]);
 
-  // Variadic port add
+  // Variadic port add (使用公用服务)
   const handleVariadicAdd = useCallback((groupName: string) => {
     setNodes(nodes => nodes.map(node => {
       if (node.id === id) {
         const nodeData = node.data as BlueprintNodeData;
-        const currentCounts = nodeData.variadicCounts || {};
-        const currentCount = currentCounts[groupName] ?? 1;
+        const newCounts = incrementVariadicCount(nodeData.variadicCounts || {}, groupName);
         return {
           ...node,
-          data: {
-            ...nodeData,
-            variadicCounts: {
-              ...currentCounts,
-              [groupName]: currentCount + 1,
-            },
-          },
+          data: { ...nodeData, variadicCounts: newCounts },
         };
       }
       return node;
     }));
   }, [id, setNodes]);
 
-  // Variadic port remove
+  // Variadic port remove (使用公用服务)
   const handleVariadicRemove = useCallback((groupName: string) => {
     setNodes(nodes => nodes.map(node => {
       if (node.id === id) {
         const nodeData = node.data as BlueprintNodeData;
-        const currentCounts = nodeData.variadicCounts || {};
-        const currentCount = currentCounts[groupName] ?? 1;
-        if (currentCount > 0) {
-          return {
-            ...node,
-            data: {
-              ...nodeData,
-              variadicCounts: {
-                ...currentCounts,
-                [groupName]: currentCount - 1,
-              },
-            },
-          };
-        }
+        const newCounts = decrementVariadicCount(nodeData.variadicCounts || {}, groupName, 0);
+        return {
+          ...node,
+          data: { ...nodeData, variadicCounts: newCounts },
+        };
       }
       return node;
     }));

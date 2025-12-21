@@ -10,7 +10,6 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
-  isAbstractConstraint,
   getConstraintElements,
   isCompatible,
   canConnect,
@@ -152,24 +151,6 @@ describe('getConstraintElements', () => {
     const types2 = getConstraintElements('SignlessIntegerLike');
     types1.push('Modified');
     expect(types2).not.toContain('Modified');
-  });
-});
-
-describe('isAbstractConstraint', () => {
-  it('should return true for abstract constraints', () => {
-    expect(isAbstractConstraint('SignlessIntegerLike')).toBe(true);
-    expect(isAbstractConstraint('AnyFloat')).toBe(true);
-    expect(isAbstractConstraint('AnyType')).toBe(true);
-  });
-
-  it('should return false for concrete types', () => {
-    expect(isAbstractConstraint('I32')).toBe(false);
-    expect(isAbstractConstraint('F64')).toBe(false);
-    expect(isAbstractConstraint('Index')).toBe(false);
-  });
-
-  it('should return false for unknown constraints', () => {
-    expect(isAbstractConstraint('UnknownType')).toBe(false);
   });
 });
 

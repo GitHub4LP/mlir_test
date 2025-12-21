@@ -20,18 +20,18 @@
 
 import type { EditorNode, EditorEdge } from '../editor/types';
 import type { FunctionDef } from '../types';
-import { isAbstractConstraint } from './typeSystem';
 import { triggerTypePropagationWithSignature } from './typePropagation';
 
 /**
- * 判断是否应该 pin 类型
+ * 判断是否应该保存用户选择
  * 
- * - 选择的类型等于原始约束 → 不 pin（恢复默认）
- * - 选择的是抽象约束 → 不 pin
- * - 其他情况 → pin
+ * - 选择的约束等于原始约束 → 不保存（相当于没选，恢复默认）
+ * - 其他情况 → 保存（代表用户意愿）
+ * 
+ * 注意：单元素和多元素集合都能作为传播源，传播本质是求交集。
  */
 export function shouldPinType(type: string, originalConstraint?: string): boolean {
-  return Boolean(type && type !== originalConstraint && !isAbstractConstraint(type));
+  return Boolean(type && type !== originalConstraint);
 }
 
 /**

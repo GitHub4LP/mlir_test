@@ -9,12 +9,20 @@
  * 使用场景：
  * - 点击节点端口的类型标签 → 显示类型选择器
  * - 点击节点属性区域 → 显示属性编辑器
+ * - 点击参数/返回值名 → 显示可编辑名称
+ * - 点击 Traits 按钮 → 显示 Traits 编辑器
+ * 
+ * 注意：对于 React 应用，推荐使用 overlays/OverlayContainer 组件
  */
 
 import type { Viewport } from '../../core/RenderData';
 
 /** 覆盖层类型 */
-export type OverlayType = 'type-selector' | 'attribute-editor';
+export type OverlayType = 
+  | 'type-selector' 
+  | 'attribute-editor'
+  | 'editable-name'
+  | 'traits-editor';
 
 /** 覆盖层配置 */
 export interface OverlayConfig {

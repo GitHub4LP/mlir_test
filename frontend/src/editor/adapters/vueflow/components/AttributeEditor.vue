@@ -232,7 +232,7 @@ const inputStyle = AttributeEditorStyles.inputBase;
 }
 
 .optional-mark {
-  color: #6b7280;
+  color: var(--text-muted-color, #6b7280);
   font-size: 12px;
   margin-left: 4px;
 }

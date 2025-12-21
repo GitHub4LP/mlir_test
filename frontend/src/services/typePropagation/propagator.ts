@@ -15,7 +15,7 @@ import { makeVariableId } from './types';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, FunctionDef } from '../../types';
 import { hasSameOperandsAndResultTypeTrait } from '../typeSystem';
 import { PortRef, dataIn, dataOut } from '../port';
-import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
+import { typeConstraintStore } from '../../stores';
 
 /**
  * 构建传播图
@@ -242,7 +242,7 @@ export function extractTypeSources(
       return null;
     }
 
-    const { isLoaded, getConstraintElements } = useTypeConstraintStore.getState();
+    const { isLoaded, getConstraintElements } = typeConstraintStore.getState();
     
     // 如果数据还没加载，返回 null
     if (!isLoaded) {
@@ -499,9 +499,9 @@ export function computePropagationWithNarrowing(
  * 
  * 统一处理所有节点类型：
  * - operation: 更新 inputTypes/outputTypes
- * - function-entry: 更新 outputs[].concreteType
- * - function-return: 更新 inputs[].concreteType
- * - function-call: 更新 inputs[].concreteType 和 outputs[].concreteType
+ * - function-entry: 更新 outputTypes
+ * - function-return: 更新 inputTypes
+ * - function-call: 更新 inputTypes/outputTypes
  */
 export function applyPropagationResult(
   nodes: EditorNode[],

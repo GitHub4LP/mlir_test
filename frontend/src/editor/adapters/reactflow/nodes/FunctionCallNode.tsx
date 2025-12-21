@@ -9,19 +9,17 @@
 import { memo, useCallback, useMemo } from 'react';
 import { type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionCallData, DataPin } from '../../../../types';
-import { getTypeColor } from '../../../../services/typeSystem';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { NodePins } from '../../../../components/NodePins';
-import { buildPinRows } from '../../../../services/pinUtils';
-import { useProjectStore } from '../../../../stores/projectStore';
-import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
-import { dataInHandle, dataOutHandle, PortRef } from '../../../../services/port';
+import { buildPinRows, buildCallDataPins } from '../../../../services/pinUtils';
+import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
 import { computeTypeSelectionState } from '../../../../services/typeSelection';
 import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { useTypeChangeHandler } from '../../../../hooks';
 import { StyleSystem } from '../../../core/StyleSystem';
 import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
+import { getPortType } from '../../../../services/portTypeService';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -33,30 +31,20 @@ export const FunctionCallNode = memo(function FunctionCallNode({
 }: FunctionCallNodeProps) {
   const { functionName, inputs, outputs, execIn, execOuts, pinnedTypes = {} } = data;
   const edges = useEdges();
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
+  const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
+  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
 
   const { inputTypes = {}, outputTypes = {} } = data;
 
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
-  // Build pin rows
+  // Build pin rows (使用公用服务)
   const pinRows = useMemo(() => {
-    const dataInputs: DataPin[] = inputs.map((port) => ({
-      id: dataInHandle(port.name),
-      label: port.name,
-      typeConstraint: port.typeConstraint,
-      displayName: port.typeConstraint,
-      color: getTypeColor(inputTypes[port.name] || port.typeConstraint),
-    }));
-
-    const dataOutputs: DataPin[] = outputs.map((port) => ({
-      id: dataOutHandle(port.name),
-      label: port.name,
-      typeConstraint: port.typeConstraint,
-      displayName: port.typeConstraint,
-      color: getTypeColor(outputTypes[port.name] || port.typeConstraint),
-    }));
+    const { inputs: dataInputs, outputs: dataOutputs } = buildCallDataPins(
+      inputs,
+      outputs,
+      { inputTypes, outputTypes }
+    );
 
     return buildPinRows({ execIn, execOuts: execOuts || [], dataInputs, dataOutputs });
   }, [inputs, outputs, inputTypes, outputTypes, execIn, execOuts]);
@@ -84,22 +72,10 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     );
   }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
 
-  // Get port type
+  // Get port type (使用公用服务)
   const getPortTypeWrapper = useCallback((pinId: string) => {
-    if (pinnedTypes[pinId]) return pinnedTypes[pinId];
-    
-    const parsed = PortRef.parseHandleId(pinId);
-    if (!parsed) return undefined;
-    
-    if (parsed.kind === 'data-in') {
-      const inputPort = inputs.find(p => p.name === parsed.name);
-      if (inputPort) return inputTypes[inputPort.name];
-    } else if (parsed.kind === 'data-out') {
-      const outputPort = outputs.find(p => p.name === parsed.name);
-      if (outputPort) return outputTypes[outputPort.name];
-    }
-    return undefined;
-  }, [pinnedTypes, inputs, outputs, inputTypes, outputTypes]);
+    return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
+  }, [pinnedTypes, inputTypes, outputTypes]);
 
   const headerColor = StyleSystem.getDialectColor('scf');
   const nodeStyle = StyleSystem.getNodeStyle();

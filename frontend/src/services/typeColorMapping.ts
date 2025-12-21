@@ -201,7 +201,7 @@ export function getBuildableTypeColor(buildableType: string): string | null {
  * 4. 多个类型 → RGB 平均
  * 
  * @param displayType - 显示类型（可能是 BuildableType 或约束）
- * @param getConcreteTypes - 获取约束的具体类型列表函数
+ * @param getConstraintElements - 获取约束的元素列表函数
  * @returns hex 颜色字符串
  */
 export function getTypeColor(

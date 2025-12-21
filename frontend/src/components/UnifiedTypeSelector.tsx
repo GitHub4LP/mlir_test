@@ -1,5 +1,5 @@
 /**
- * UnifiedTypeSelector - 统一类型选择器
+ * UnifiedTypeSelector - 统一类型选择器 (React 版本)
  * 
  * 设计原则（来自 type-selector-design.md）：
  * 1. 构建面板始终可见：显示当前类型结构，支持嵌套可视化
@@ -7,6 +7,8 @@
  * 3. 约束类型支持：AnyType、AnyFloat 等约束可作为类型使用
  * 4. 包装选项统一：在选择面板中提供 +tensor、+vector 等包装入口
  * 5. 方言分组：内置约束/类型 + 方言特有约束分组显示
+ * 
+ * 数据逻辑已抽取到 typeSelectorService.ts，本组件只负责渲染
  */
 
 import { memo, useCallback, useMemo, useRef, useEffect, useState } from 'react';
@@ -21,62 +23,12 @@ import {
   parseType,
   wrapWith,
 } from '../services/typeNodeUtils';
-
-// ============ 类型分组 ============
-
-interface TypeGroup {
-  label: string;
-  items: string[];
-}
-
-function buildTypeGroups(
-  constraintDefs: Map<string, { name: string; summary: string; rule: unknown }>,
-  buildableTypes: string[],
-  searchText: string,
-  showConstraints: boolean,
-  showTypes: boolean,
-  useRegex: boolean
-): TypeGroup[] {
-  const buildableSet = new Set(buildableTypes);
-  const groups: TypeGroup[] = [];
-
-  // 构建匹配函数
-  let matcher: (item: string) => boolean;
-  if (!searchText) {
-    matcher = () => true;
-  } else if (useRegex) {
-    try {
-      const regex = new RegExp(searchText, 'i');
-      matcher = (item) => regex.test(item);
-    } catch {
-      matcher = () => false;
-    }
-  } else {
-    const lower = searchText.toLowerCase();
-    matcher = (item) => item.toLowerCase().includes(lower);
-  }
-
-  // 1. 内置约束（排除具体类型）
-  if (showConstraints) {
-    const items = [...constraintDefs.keys()]
-      .filter(key => !buildableSet.has(key))
-      .filter(matcher)
-      .sort();
-    if (items.length > 0) {
-      groups.push({ label: '约束', items });
-    }
-  }
-
-  // 2. 内置类型
-  if (showTypes) {
-    const items = buildableTypes.filter(matcher).sort();
-    if (items.length > 0) {
-      groups.push({ label: '类型', items });
-    }
-  }
-
-  return groups;
-}
+import {
+  type SearchFilter,
+  computeTypeSelectorData,
+  computeTypeGroups,
+  hasConstraintLimit,
+} from '../services/typeSelectorService';
 
 // ============ 选择面板组件 ============
 
@@ -114,78 +66,36 @@ const SelectionPanel = memo(function SelectionPanel({
 
   const { buildableTypes, constraintDefs, getConstraintElements } = useTypeConstraintStore();
 
-  // 是否有约束限制（AnyType 视为无约束，显示完整过滤功能）
-  const hasConstraint = constraintTypes !== null && constraintName !== 'AnyType' && constraintName !== undefined;
+  // 是否有约束限制
+  const hasConstraint = hasConstraintLimit(constraintTypes, constraintName);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // 展开约束名到具体类型
-  const expandedConstraintTypes = useMemo(() => {
-    if (!constraintTypes) return null;
-
-    const buildableSet = new Set(buildableTypes);
-    const expanded = new Set<string>();
-
-    for (const t of constraintTypes) {
-      if (buildableSet.has(t)) {
-        expanded.add(t);
-        continue;
-      }
-      // 展开约束到集合元素
-      const elements = getConstraintElements(t);
-      if (elements.length > 0) {
-        elements.forEach(ct => expanded.add(ct));
-      } else {
-        expanded.add(t);
-      }
-    }
-
-    return [...expanded];
-  }, [constraintTypes, getConstraintElements, buildableTypes]);
-
+  // 使用 service 计算类型分组
   const typeGroups = useMemo(() => {
-    // 构建匹配函数
-    let matcher: (item: string) => boolean;
-    if (!search) {
-      matcher = () => true;
-    } else if (useRegex) {
-      try {
-        const regex = new RegExp(search, 'i');
-        matcher = (item) => regex.test(item);
-      } catch {
-        matcher = () => false;
-      }
-    } else {
-      const lower = search.toLowerCase();
-      matcher = (item) => item.toLowerCase().includes(lower);
-    }
-
-    // 如果有约束限制，显示约束 + 展开后的具体类型
-    if (hasConstraint && expandedConstraintTypes && expandedConstraintTypes.length > 0) {
-      const allItems = new Set<string>();
-      if (constraintName) allItems.add(constraintName);
-      expandedConstraintTypes.forEach(t => allItems.add(t));
-
-      const items = [...allItems].filter(matcher).sort((a, b) => {
-        if (a === constraintName) return -1;
-        if (b === constraintName) return 1;
-        return a.localeCompare(b);
-      });
-
-      if (items.length > 0) {
-        return [{ label: constraintName || '可选类型', items }];
-      }
-      return [];
-    }
-
-    // 无约束，显示所有
-    return buildTypeGroups(
-      constraintDefs, buildableTypes,
-      search, showConstraints, showTypes, useRegex
+    const filter: SearchFilter = { searchText: search, showConstraints, showTypes, useRegex };
+    const data = { 
+      analysis: { 
+        isUnconstrained: !hasConstraint, 
+        isCompositeConstraint: false, 
+        allowedWrappers: null, 
+        scalarTypes: constraintTypes 
+      }, 
+      allowedWrappers, 
+      constraintTypes 
+    };
+    return computeTypeGroups(
+      data,
+      filter,
+      constraintName,
+      buildableTypes,
+      constraintDefs,
+      getConstraintElements
     );
-  }, [hasConstraint, expandedConstraintTypes, constraintName, constraintDefs, buildableTypes, search, showConstraints, showTypes, useRegex]);
+  }, [hasConstraint, constraintTypes, constraintName, constraintDefs, buildableTypes, 
+      search, showConstraints, showTypes, useRegex, getConstraintElements, allowedWrappers]);
 
   const totalCount = useMemo(() =>
     typeGroups.reduce((sum, g) => sum + g.items.length, 0),
@@ -440,84 +350,6 @@ const BuildPanel = memo(function BuildPanel({
   );
 });
 
-// ============ 约束分析工具 ============
-
-/**
- * 分析约束类型，返回约束的特性
- * 
- * 约束分类：
- * 1. 无约束/AnyType：允许所有类型（标量 + 复合），显示完整选择面板
- * 2. 标量约束（如 SignlessIntegerLike）：只允许特定标量类型，不显示包装选项
- * 3. 复合类型约束（如 AnyTensor）：允许构建特定复合类型
- * 4. 元素类型约束（如 AnyTensorOf<[F32]>）：允许构建复合类型，但限制元素类型
- */
-interface ConstraintAnalysis {
-  /** 是否无约束或 AnyType */
-  isUnconstrained: boolean;
-  /** 是否是复合类型约束 */
-  isCompositeConstraint: boolean;
-  /** 允许的包装器（null 表示所有，[] 表示不允许） */
-  allowedWrappers: string[] | null;
-  /** 约束对应的具体标量类型（null 表示无限制） */
-  scalarTypes: string[] | null;
-}
-
-function analyzeConstraint(
-  constraint: string | undefined,
-  getConstraintElements: (name: string) => string[],
-  isShapedConstraint: (name: string) => boolean,
-  getAllowedContainers: (name: string) => string[]
-): ConstraintAnalysis {
-  // 无约束或 AnyType
-  if (!constraint || constraint === 'AnyType') {
-    return {
-      isUnconstrained: true,
-      isCompositeConstraint: false,
-      allowedWrappers: null,
-      scalarTypes: null,
-    };
-  }
-
-  // Variadic<...> 类型：解析内部类型
-  const variadicMatch = constraint.match(/^Variadic<(.+)>$/);
-  if (variadicMatch) {
-    const innerConstraint = variadicMatch[1];
-    return analyzeConstraint(innerConstraint, getConstraintElements, isShapedConstraint, getAllowedContainers);
-  }
-
-  // AnyOf<...> 类型：合成约束
-  if (constraint.startsWith('AnyOf<')) {
-    return {
-      isUnconstrained: false,
-      isCompositeConstraint: false,
-      allowedWrappers: [],
-      scalarTypes: null,
-    };
-  }
-
-  // 使用 store 的方法判断
-  const isShaped = isShapedConstraint(constraint);
-  if (isShaped) {
-    const containers = getAllowedContainers(constraint);
-    const scalarTypes = getConstraintElements(constraint);
-    return {
-      isUnconstrained: false,
-      isCompositeConstraint: true,
-      allowedWrappers: containers.length > 0 ? containers : ['tensor', 'memref', 'vector'],
-      scalarTypes: scalarTypes.length > 0 ? scalarTypes : null,
-    };
-  }
-
-  // 标量约束
-  const scalarTypes = getConstraintElements(constraint);
-  return {
-    isUnconstrained: false,
-    isCompositeConstraint: false,
-    allowedWrappers: [],
-    scalarTypes: scalarTypes.length > 0 ? scalarTypes : [constraint],
-  };
-}
-
 // ============ 主组件 ============
 
 interface UnifiedTypeSelectorProps {
@@ -551,19 +383,31 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   disabled = false,
   className = '',
 }: UnifiedTypeSelectorProps) {
-  const { getConstraintElements, isShapedConstraint, getAllowedContainers } = useTypeConstraintStore();
+  const { 
+    buildableTypes, 
+    constraintDefs, 
+    getConstraintElements, 
+    isShapedConstraint, 
+    getAllowedContainers 
+  } = useTypeConstraintStore();
 
-  // 分析约束
-  const analysis = useMemo(() =>
-    analyzeConstraint(constraint, getConstraintElements, isShapedConstraint, getAllowedContainers),
-    [constraint, getConstraintElements, isShapedConstraint, getAllowedContainers]
+  // 使用 service 计算数据
+  const selectorData = useMemo(() => 
+    computeTypeSelectorData({
+      constraint,
+      allowedTypes: propAllowedTypes,
+      buildableTypes,
+      constraintDefs,
+      getConstraintElements,
+      isShapedConstraint,
+      getAllowedContainers,
+    }),
+    [constraint, propAllowedTypes, buildableTypes, constraintDefs, 
+     getConstraintElements, isShapedConstraint, getAllowedContainers]
   );
 
-  // 允许的包装器
-  const allowedWrappers = useMemo(() => {
-    if (analysis.allowedWrappers === null) return WRAPPERS;
-    return WRAPPERS.filter(w => analysis.allowedWrappers!.includes(w.name));
-  }, [analysis.allowedWrappers]);
+  const { allowedWrappers, constraintTypes } = selectorData;
+
   const [isOpen, setIsOpen] = useState(false);
   const [selectorPos, setSelectorPos] = useState({ top: 0, left: 0 });
   // node 完全由 selectedType 派生（受控模式），无需本地 state
@@ -571,10 +415,6 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const clickedElementRef = useRef<Element | null>(null);
-
-  // 约束对应的标量类型（用于选择面板）
-  // 优先使用 prop 传入的 allowedTypes（来自后端 AnyTypeOf 解析）
-  const constraintTypes = propAllowedTypes || analysis.scalarTypes;
 
   // 更新位置（RAF 循环）- 跟随点击的元素
   useEffect(() => {
@@ -629,7 +469,6 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
 
   const handleWrap = useCallback((wrapper: string) => {
     // 包装最内层的 scalar，而不是整个 node
-    // 例如：vector<4xAnyFloat> + tensor => vector<4xtensor<4xAnyFloat>>
     const wrapLeaf = (n: TypeNode): TypeNode => {
       if (n.kind === 'scalar') {
         return wrapWith(n, wrapper);

@@ -5,17 +5,8 @@
  */
 
 import type { FunctionDef, FunctionCallData, FunctionReturnData, PortConfig, GraphNode, ExecPin } from '../types';
-import { getTypeColor } from './typeSystem';
+import { getTypeColor } from '../stores/typeColorCache';
 import { dataInHandle, dataOutHandle } from './port';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
-
-/**
- * 判断类型是否是具体类型（而非约束）
- */
-function getConcreteTypeOrUndefined(type: string): string | undefined {
-  const { isConcreteType } = useTypeConstraintStore.getState();
-  return isConcreteType(type) ? type : undefined;
-}
 
 /**
  * 从 FunctionDef 获取参数的签名类型
@@ -59,7 +50,6 @@ export function createInputPortsFromParams(func: FunctionDef): PortConfig[] {
       name: param.name,
       kind: 'input' as const,
       typeConstraint: constraint,
-      concreteType: getConcreteTypeOrUndefined(constraint),
       color: getTypeColor(constraint),
     };
   });
@@ -79,7 +69,6 @@ export function createOutputPortsFromReturns(func: FunctionDef): PortConfig[] {
       name,
       kind: 'output' as const,
       typeConstraint: constraint,
-      concreteType: getConcreteTypeOrUndefined(constraint),
       color: getTypeColor(constraint),
     };
   });

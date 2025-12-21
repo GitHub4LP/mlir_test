@@ -24,6 +24,8 @@ import type {
 } from '../../types';
 import { ReactFlowCanvas, type ReactFlowCanvasHandle } from './ReactFlowCanvas';
 
+import type { FunctionTrait } from '../../../types';
+
 /**
  * React Flow 节点编辑器实现
  */
@@ -47,6 +49,18 @@ export class ReactFlowNodeEditor implements INodeEditor {
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
   onDeleteRequest: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
+  
+  // 业务事件回调
+  onAttributeChange: ((nodeId: string, attributeName: string, value: string) => void) | null = null;
+  onVariadicAdd: ((nodeId: string, groupName: string) => void) | null = null;
+  onVariadicRemove: ((nodeId: string, groupName: string) => void) | null = null;
+  onParameterAdd: ((functionId: string) => void) | null = null;
+  onParameterRemove: ((functionId: string, parameterName: string) => void) | null = null;
+  onParameterRename: ((functionId: string, oldName: string, newName: string) => void) | null = null;
+  onReturnTypeAdd: ((functionId: string) => void) | null = null;
+  onReturnTypeRemove: ((functionId: string, returnName: string) => void) | null = null;
+  onReturnTypeRename: ((functionId: string, oldName: string, newName: string) => void) | null = null;
+  onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null = null;
   
   constructor() {
     // 初始化空回调

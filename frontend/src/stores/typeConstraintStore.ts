@@ -7,10 +7,11 @@
 import { create } from 'zustand';
 import type { ConstraintDef, ConstraintRule } from '../services/constraintResolver';
 import { 
-  getConstraintElements as resolveConcreteTypes,
+  getConstraintElements,
   isShapedConstraint as checkIsShapedConstraint,
   getAllowedContainers as getContainers,
 } from '../services/constraintResolver';
+import { setConstraintResolver } from './typeColorCache';
 
 export type { ConstraintDef, ConstraintRule };
 
@@ -35,7 +36,7 @@ interface TypeConstraintsResponse {
   constraintEquivalences: Record<string, string[]>;  // 类型集合 → 等价约束名
 }
 
-interface TypeConstraintState {
+export interface TypeConstraintState {
   // 数据
   buildableTypes: string[];
   constraintDefs: Map<string, ConstraintDef>;
@@ -52,7 +53,6 @@ interface TypeConstraintState {
 
   // 查询方法
   getConstraintElements: (constraint: string) => string[];
-  isConcreteType: (type: string) => boolean;
   isShapedConstraint: (constraint: string) => boolean;
   getAllowedContainers: (constraint: string) => string[];
   getConstraintDef: (name: string) => ConstraintDef | undefined;
@@ -106,6 +106,9 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
         isLoading: false,
         isLoaded: true,
       });
+
+      // 注入约束解析器到颜色缓存，并清空旧缓存
+      setConstraintResolver(get().getConstraintElements);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to load type constraints:', message);
@@ -120,23 +123,17 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     const normalized = normalizeType(constraint);
     
     // 使用 resolver 展开
-    const types = resolveConcreteTypes(normalized, constraintDefs, buildableTypes);
+    const types = getConstraintElements(normalized, constraintDefs, buildableTypes);
     if (types.length > 0) return types;
     
     // 尝试原始名称
     if (normalized !== constraint) {
-      const origTypes = resolveConcreteTypes(constraint, constraintDefs, buildableTypes);
+      const origTypes = getConstraintElements(constraint, constraintDefs, buildableTypes);
       if (origTypes.length > 0) return origTypes;
     }
     
     // 未知约束，返回自身
     return [constraint];
-  },
-
-  isConcreteType: (type: string) => {
-    const { buildableTypes } = get();
-    const normalized = normalizeType(type);
-    return buildableTypes.includes(type) || buildableTypes.includes(normalized);
   },
 
   isShapedConstraint: (constraint: string) => {

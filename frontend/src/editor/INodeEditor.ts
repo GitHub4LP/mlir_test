@@ -20,6 +20,7 @@ import type {
   NodeChange,
   EdgeChange,
 } from './types';
+import type { FunctionTrait } from '../types';
 
 /** 节点编辑器接口 */
 export interface INodeEditor {
@@ -94,6 +95,40 @@ export interface INodeEditor {
   onDeleteRequest: ((nodeIds: string[], edgeIds: string[]) => void) | null;
   
   // ============================================================
+  // 业务事件回调（节点交互）
+  // ============================================================
+  
+  /** 属性变更回调 */
+  onAttributeChange: ((nodeId: string, attributeName: string, value: string) => void) | null;
+  
+  /** Variadic 端口增加回调 */
+  onVariadicAdd: ((nodeId: string, groupName: string) => void) | null;
+  
+  /** Variadic 端口减少回调 */
+  onVariadicRemove: ((nodeId: string, groupName: string) => void) | null;
+  
+  /** 参数添加回调 */
+  onParameterAdd: ((functionId: string) => void) | null;
+  
+  /** 参数移除回调 */
+  onParameterRemove: ((functionId: string, parameterName: string) => void) | null;
+  
+  /** 参数重命名回调 */
+  onParameterRename: ((functionId: string, oldName: string, newName: string) => void) | null;
+  
+  /** 返回值添加回调 */
+  onReturnTypeAdd: ((functionId: string) => void) | null;
+  
+  /** 返回值移除回调 */
+  onReturnTypeRemove: ((functionId: string, returnName: string) => void) | null;
+  
+  /** 返回值重命名回调 */
+  onReturnTypeRename: ((functionId: string, oldName: string, newName: string) => void) | null;
+  
+  /** Traits 变更回调 */
+  onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null;
+  
+  // ============================================================
   // 元信息
   // ============================================================
   
@@ -116,6 +151,16 @@ export function createEmptyCallbacks(): Pick<
   | 'onEdgeDoubleClick'
   | 'onDrop'
   | 'onDeleteRequest'
+  | 'onAttributeChange'
+  | 'onVariadicAdd'
+  | 'onVariadicRemove'
+  | 'onParameterAdd'
+  | 'onParameterRemove'
+  | 'onParameterRename'
+  | 'onReturnTypeAdd'
+  | 'onReturnTypeRemove'
+  | 'onReturnTypeRename'
+  | 'onTraitsChange'
 > {
   return {
     onNodesChange: null,
@@ -127,5 +172,15 @@ export function createEmptyCallbacks(): Pick<
     onEdgeDoubleClick: null,
     onDrop: null,
     onDeleteRequest: null,
+    onAttributeChange: null,
+    onVariadicAdd: null,
+    onVariadicRemove: null,
+    onParameterAdd: null,
+    onParameterRemove: null,
+    onParameterRename: null,
+    onReturnTypeAdd: null,
+    onReturnTypeRemove: null,
+    onReturnTypeRename: null,
+    onTraitsChange: null,
   };
 }

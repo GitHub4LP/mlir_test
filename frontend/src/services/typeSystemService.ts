@@ -22,7 +22,7 @@
  * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  */
 
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { typeConstraintStore } from '../stores';
 import type { EditorNode, EditorEdge } from '../editor/types';
 import type { 
   Project, 
@@ -49,7 +49,7 @@ export interface PortTypeState {
 function getConstraintOptions(constraint: string): string[] | null {
   if (!constraint) return null;
   
-  const { buildableTypes, isLoaded, getConstraintElements } = useTypeConstraintStore.getState();
+  const { buildableTypes, isLoaded, getConstraintElements } = typeConstraintStore.getState();
   
   if (!isLoaded) return null;
   
@@ -145,7 +145,7 @@ export function computeSignaturePortOptions(
   internalConstraints: string[],
   externalConstraints: string[]
 ): string[] | null {
-  const { buildableTypes, constraintDefs, isLoaded, getConstraintElements: storeGetConstraintElements } = useTypeConstraintStore.getState();
+  const { buildableTypes, constraintDefs, isLoaded, getConstraintElements: storeGetConstraintElements } = typeConstraintStore.getState();
   
   if (!isLoaded) return null;
   
@@ -479,13 +479,13 @@ function getSourcePortType(node: EditorNode, portId: string): string | null {
       // 使用端口名称查找
       const portName = parsed?.name;
       const port = data.outputs.find(p => p.name === portName);
-      return port?.concreteType || port?.typeConstraint || null;
+      return port?.typeConstraint || null;
     }
     case 'function-call': {
       const data = node.data as FunctionCallData;
       const portName = parsed?.name;
       const port = data.outputs.find(p => p.name === portName);
-      return port?.concreteType || port?.typeConstraint || null;
+      return port?.typeConstraint || null;
     }
   }
   return null;

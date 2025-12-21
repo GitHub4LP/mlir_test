@@ -5,7 +5,7 @@
  * 直接订阅函数数据（而非函数引用），确保数据变化时组件重新渲染。
  */
 
-import { useProjectStore } from '../stores/projectStore';
+import { useReactStore, projectStore } from '../stores';
 
 /**
  * 订阅当前函数数据
@@ -15,7 +15,7 @@ import { useProjectStore } from '../stores/projectStore';
  * - useCurrentFunction() 直接订阅数据，数据变化触发重渲染
  */
 export function useCurrentFunction() {
-  return useProjectStore(state => {
+  return useReactStore(projectStore, state => {
     if (!state.project || !state.currentFunctionId) return null;
     if (state.project.mainFunction.id === state.currentFunctionId) {
       return state.project.mainFunction;

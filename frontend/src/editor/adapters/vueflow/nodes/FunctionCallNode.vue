@@ -1,19 +1,25 @@
 <!--
   FunctionCall 节点 - 对应 React Flow 的 FunctionCallNode.tsx
   
-  数据源：
-  - 输入端口：data.inputs
-  - 输出端口：data.outputs
-  - 执行引脚：data.execIn, data.execOuts
-  
-  样式：
-  - 使用 CSS 变量从 StyleSystem 获取，确保与其他渲染器一致
+  功能：
+  - 显示函数调用的输入/输出端口
+  - 支持类型选择器
+  - 被传播端口 disabled
 -->
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { Handle, Position, useVueFlow } from '@vue-flow/core';
 import { getTypeColor } from '../../../../services/typeSystem';
-import { getContainerStyle, getHeaderStyle, getHandleTop, getDialectColor, getCSSVariables, LAYOUT, EXEC_COLOR } from './nodeStyles';
+import { 
+  useVueStore, 
+  projectStore, 
+  typeConstraintStore,
+  getStoreSnapshot,
+} from '../../../../stores';
+import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
+import { getContainerStyle, getHeaderStyle, getHandleTop, getDialectColor, getCSSVariables, EXEC_COLOR } from './nodeStyles';
+import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
+import type { DataPin } from '../../../../types';
 
 const props = defineProps<{
   id: string;
@@ -24,6 +30,20 @@ const props = defineProps<{
 // CSS 变量
 const cssVars = getCSSVariables();
 
+// Vue Flow 实例
+const { getNodes, getEdges, setNodes } = useVueFlow();
+
+// 使用 Vue Store Adapter 订阅 projectStore
+const currentFunction = useVueStore(
+  projectStore,
+  (state) => {
+    if (!state.project || !state.currentFunctionId) return null;
+    return state.project.mainFunction.id === state.currentFunctionId
+      ? state.project.mainFunction
+      : state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+  }
+);
+
 const functionName = computed(() => (props.data.functionName as string) || 'Call');
 const execIn = computed(() => props.data.execIn as { id: string; label: string } | undefined);
 const execOuts = computed(() => (props.data.execOuts as Array<{ id: string; label: string }>) || []);
@@ -31,23 +51,26 @@ const inputs = computed(() => (props.data.inputs as Array<{ name: string; typeCo
 const outputs = computed(() => (props.data.outputs as Array<{ name: string; typeConstraint: string }>) || []);
 const inputTypes = computed(() => (props.data.inputTypes as Record<string, string>) || {});
 const outputTypes = computed(() => (props.data.outputTypes as Record<string, string>) || {});
+const pinnedTypes = computed(() => (props.data.pinnedTypes as Record<string, string>) || {});
 
 // 构建输入引脚
 const inputPins = computed(() => {
-  const pins: Array<{ id: string; name: string; label: string; isExec: boolean; color: string }> = [];
+  const pins: Array<{ id: string; name: string; label: string; isExec: boolean; color: string; typeConstraint: string }> = [];
   
   if (execIn.value) {
-    pins.push({ id: execIn.value.id, name: 'exec-in', label: '', isExec: true, color: EXEC_COLOR });
+    pins.push({ id: execIn.value.id, name: 'exec-in', label: '', isExec: true, color: EXEC_COLOR, typeConstraint: 'exec' });
   }
   
   for (const input of inputs.value) {
-    const actualType = inputTypes.value[input.name] || input.typeConstraint;
+    const portId = `data-in-${input.name}`;
+    const actualType = inputTypes.value[input.name] || pinnedTypes.value[portId] || input.typeConstraint;
     pins.push({
-      id: `data-in-${input.name}`,
+      id: portId,
       name: input.name,
       label: input.name,
       isExec: false,
       color: getTypeColor(actualType),
+      typeConstraint: input.typeConstraint,
     });
   }
   
@@ -56,7 +79,7 @@ const inputPins = computed(() => {
 
 // 构建输出引脚
 const outputPins = computed(() => {
-  const pins: Array<{ id: string; name: string; label: string; isExec: boolean; color: string }> = [];
+  const pins: Array<{ id: string; name: string; label: string; isExec: boolean; color: string; typeConstraint: string }> = [];
   
   for (const exec of execOuts.value) {
     pins.push({
@@ -65,22 +88,84 @@ const outputPins = computed(() => {
       label: exec.label === 'next' ? '' : exec.label,
       isExec: true,
       color: EXEC_COLOR,
+      typeConstraint: 'exec',
     });
   }
   
   for (const output of outputs.value) {
-    const actualType = outputTypes.value[output.name] || output.typeConstraint;
+    const portId = `data-out-${output.name}`;
+    const actualType = outputTypes.value[output.name] || pinnedTypes.value[portId] || output.typeConstraint;
     pins.push({
-      id: `data-out-${output.name}`,
+      id: portId,
       name: output.name,
       label: output.name,
       isExec: false,
       color: getTypeColor(actualType),
+      typeConstraint: output.typeConstraint,
     });
   }
   
   return pins;
 });
+
+// 数据引脚（用于类型选择器）
+const dataInputPins = computed<DataPin[]>(() => 
+  inputPins.value.filter(p => !p.isExec).map(p => ({
+    id: p.id,
+    label: p.label,
+    typeConstraint: p.typeConstraint,
+    displayName: p.typeConstraint,
+    color: p.color,
+  }))
+);
+
+const dataOutputPins = computed<DataPin[]>(() => 
+  outputPins.value.filter(p => !p.isExec).map(p => ({
+    id: p.id,
+    label: p.label,
+    typeConstraint: p.typeConstraint,
+    displayName: p.typeConstraint,
+    color: p.color,
+  }))
+);
+
+// 类型选择器参数
+function getTypeSelectorParams(): TypeSelectorRenderParams {
+  // 使用 getStoreSnapshot 获取静态数据
+  const constraintState = getStoreSnapshot(typeConstraintStore, (s) => ({
+    getConstraintElements: s.getConstraintElements,
+  }));
+  
+  return {
+    nodeId: props.id,
+    data: props.data as Record<string, unknown>,
+    nodes: getNodes.value.map(n => ({
+      id: n.id,
+      type: (n.type || 'operation') as 'operation' | 'function-entry' | 'function-return' | 'function-call',
+      data: n.data as Record<string, unknown>,
+      position: n.position || { x: 0, y: 0 },
+    })),
+    edges: getEdges.value.map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle || '',
+      targetHandle: e.targetHandle || '',
+    })),
+    currentFunction: currentFunction.value ?? undefined,
+    getConstraintElements: constraintState.getConstraintElements,
+    onTypeSelect: handleTypeSelect,
+  };
+}
+
+// 类型选择处理
+function handleTypeSelect(portId: string, type: string, _originalConstraint: string) {
+  const newPinnedTypes = { ...pinnedTypes.value, [portId]: type };
+  setNodes(ns => ns.map(n => 
+    n.id === props.id ? { ...n, data: { ...n.data, pinnedTypes: newPinnedTypes } } : n
+  ));
+  // TODO: 触发类型传播
+}
 
 // 样式
 const containerStyle = computed(() => getContainerStyle(props.selected || false));
@@ -97,19 +182,71 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
     
     <div class="node-body">
       <div v-for="rowIdx in maxRows" :key="rowIdx" class="pin-row">
-        <!-- 左侧 - 垂直布局：label 在上 -->
+        <!-- 左侧 -->
         <div class="pin-cell left">
-          <template v-if="inputPins[rowIdx - 1]">
-            <div v-if="inputPins[rowIdx - 1].label" class="pin-content left">
+          <template v-if="inputPins[rowIdx - 1] && !inputPins[rowIdx - 1].isExec">
+            <div class="pin-content left">
               <span class="pin-label">{{ inputPins[rowIdx - 1].label }}</span>
+              <UnifiedTypeSelector
+                v-if="dataInputPins[rowIdx - 1 - (execIn ? 1 : 0)]"
+                :selected-type="(() => {
+                  const pin = dataInputPins[rowIdx - 1 - (execIn ? 1 : 0)];
+                  if (!pin) return inputPins[rowIdx - 1].typeConstraint;
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(pin, params);
+                  return state.displayType;
+                })()"
+                :constraint="inputPins[rowIdx - 1].typeConstraint"
+                :allowed-types="(() => {
+                  const pin = dataInputPins[rowIdx - 1 - (execIn ? 1 : 0)];
+                  if (!pin) return undefined;
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(pin, params);
+                  return state.options.length > 0 ? state.options : undefined;
+                })()"
+                :disabled="(() => {
+                  const pin = dataInputPins[rowIdx - 1 - (execIn ? 1 : 0)];
+                  if (!pin) return true;
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(pin, params);
+                  return !state.canEdit;
+                })()"
+                @select="(type) => handleTypeSelect(inputPins[rowIdx - 1].id, type, inputPins[rowIdx - 1].typeConstraint)"
+              />
             </div>
           </template>
         </div>
-        <!-- 右侧 - 垂直布局：label 在上 -->
+        <!-- 右侧 -->
         <div class="pin-cell right">
-          <template v-if="outputPins[rowIdx - 1]">
-            <div v-if="outputPins[rowIdx - 1].label" class="pin-content right">
+          <template v-if="outputPins[rowIdx - 1] && !outputPins[rowIdx - 1].isExec">
+            <div class="pin-content right">
               <span class="pin-label">{{ outputPins[rowIdx - 1].label }}</span>
+              <UnifiedTypeSelector
+                v-if="dataOutputPins[rowIdx - 1 - execOuts.length]"
+                :selected-type="(() => {
+                  const pin = dataOutputPins[rowIdx - 1 - execOuts.length];
+                  if (!pin) return outputPins[rowIdx - 1].typeConstraint;
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(pin, params);
+                  return state.displayType;
+                })()"
+                :constraint="outputPins[rowIdx - 1].typeConstraint"
+                :allowed-types="(() => {
+                  const pin = dataOutputPins[rowIdx - 1 - execOuts.length];
+                  if (!pin) return undefined;
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(pin, params);
+                  return state.options.length > 0 ? state.options : undefined;
+                })()"
+                :disabled="(() => {
+                  const pin = dataOutputPins[rowIdx - 1 - execOuts.length];
+                  if (!pin) return true;
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(pin, params);
+                  return !state.canEdit;
+                })()"
+                @select="(type) => handleTypeSelect(outputPins[rowIdx - 1].id, type, outputPins[rowIdx - 1].typeConstraint)"
+              />
             </div>
           </template>
         </div>
@@ -168,7 +305,6 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
   padding: 4px;
 }
 
-/* 引脚行 - 与 React Flow py-1.5 min-h-7 一致 */
 .pin-row {
   display: flex;
   justify-content: space-between;
@@ -177,7 +313,6 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
   min-height: 28px;
 }
 
-/* 引脚单元格 */
 .pin-cell {
   position: relative;
   display: flex;
@@ -192,7 +327,6 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
   justify-content: flex-end;
 }
 
-/* 垂直布局容器：label 在上，TypeSelector 在下 - 与 React Flow flex-col 一致 */
 .pin-content {
   display: flex;
   flex-direction: column;
@@ -208,14 +342,13 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
   margin-right: 16px;
 }
 
-/* 引脚标签 - 与 React Flow text-xs text-gray-300 一致 */
 .pin-label {
-  font-size: 12px;
-  color: #d1d5db;
+  font-size: var(--text-label-size, 12px);
+  color: var(--text-label-color, #d1d5db);
   line-height: 1;
 }
 
-/* Handle 样式 - 执行引脚三角形（使用 CSS 变量） */
+/* Handle 样式 */
 :deep(.handle-exec) {
   width: 0 !important;
   height: 0 !important;
@@ -229,13 +362,11 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
   border-radius: 0 !important;
 }
 
-/* 右侧执行引脚 - 三角形朝右 */
 :deep(.vue-flow__handle-right.handle-exec) {
   border-width: 5px 8px 5px 0 !important;
   border-color: transparent var(--exec-color, #ffffff) transparent transparent !important;
 }
 
-/* Handle 样式 - 数据引脚圆形（使用 CSS 变量） */
 :deep(.handle-data) {
   width: var(--handle-size, 12px) !important;
   height: var(--handle-size, 12px) !important;

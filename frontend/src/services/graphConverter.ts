@@ -133,11 +133,11 @@ function convertOperationNode(node: GraphNode): BackendGraphNode {
   // 收集结果类型（按顺序）
   const resultTypes: string[] = [];
   for (const result of operation.results) {
-    const concreteType = data.outputTypes?.[result.name];
-    if (!concreteType) {
+    const resultType = data.outputTypes?.[result.name];
+    if (!resultType) {
       throw new Error(`Missing type for result '${result.name}' in node '${node.id}'`);
     }
-    resultTypes.push(concreteType);
+    resultTypes.push(resultType);
   }
   
   // 第一个结果类型（用于 TypedAttrInterface 属性）
@@ -174,9 +174,7 @@ function convertFunctionEntryNode(node: GraphNode): BackendGraphNode {
   const data = node.data as FunctionEntryData;
   
   // 函数参数类型（后端会自动处理 JSON 格式到 MLIR 格式的转换）
-  const resultTypes = data.outputs.map(output => 
-    output.concreteType || output.typeConstraint
-  );
+  const resultTypes = data.outputs.map(output => output.typeConstraint);
   
   return {
     id: node.id,
@@ -194,9 +192,7 @@ function convertFunctionReturnNode(node: GraphNode): BackendGraphNode {
   const data = node.data as FunctionReturnData;
   
   // 返回值类型（后端会自动处理 JSON 格式到 MLIR 格式的转换）
-  const resultTypes = data.inputs.map(input => 
-    input.concreteType || input.typeConstraint
-  );
+  const resultTypes = data.inputs.map(input => input.typeConstraint);
   
   return {
     id: node.id,

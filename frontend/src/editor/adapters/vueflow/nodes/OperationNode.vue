@@ -18,19 +18,27 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Handle, Position, useVueFlow } from '@vue-flow/core';
-import { getTypeColor } from '../../../../services/typeSystem';
-import TypeSelector from '../components/TypeSelector.vue';
+import { getTypeColor } from '../../../../stores/typeColorCache';
+import { 
+  useVueStore, 
+  projectStore, 
+  typeConstraintStore,
+  getStoreSnapshot,
+} from '../../../../stores';
+import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
+import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
 import AttributeEditor from '../components/AttributeEditor.vue';
 import VariadicControls from '../components/VariadicControls.vue';
+import type { DataPin } from '../../../../types';
 import {
   getContainerStyle,
   getHeaderStyle,
   getHandleTop,
   getDialectColor,
   getCSSVariables,
-  LAYOUT,
   EXEC_COLOR,
 } from './nodeStyles';
+import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
 
 interface OperandDef {
   name: string;
@@ -79,7 +87,18 @@ const props = defineProps<{
 }>();
 
 // Vue Flow 实例
-const { updateNodeData } = useVueFlow();
+const { updateNodeData, getNodes, getEdges } = useVueFlow();
+
+// 使用 Vue Store Adapter 订阅 projectStore
+const currentFunction = useVueStore(
+  projectStore,
+  (state) => {
+    if (!state.project || !state.currentFunctionId) return null;
+    return state.project.mainFunction.id === state.currentFunctionId
+      ? state.project.mainFunction
+      : state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+  }
+);
 
 // CSS 变量
 const cssVars = getCSSVariables();
@@ -236,35 +255,43 @@ const outputPins = computed(() => {
   return pins;
 });
 
-// 获取端口的显示类型
-function getDisplayType(pinId: string, typeConstraint: string): string {
-  // 优先使用 pinnedTypes
-  if (pinnedTypes.value[pinId]) {
-    return pinnedTypes.value[pinId];
-  }
-  // 然后使用传播结果
-  const match = pinId.match(/^data-(in|out)-(.+)$/);
-  if (match) {
-    const [, direction, portName] = match;
-    const baseName = portName.replace(/_\d+$/, '');
-    if (direction === 'in' && inputTypes.value[baseName]) {
-      return inputTypes.value[baseName];
-    }
-    if (direction === 'out' && outputTypes.value[baseName]) {
-      return outputTypes.value[baseName];
-    }
-  }
-  return typeConstraint;
+// 类型选择器参数
+function getTypeSelectorParams(): TypeSelectorRenderParams {
+  const constraintState = getStoreSnapshot(typeConstraintStore, (s) => ({
+    getConstraintElements: s.getConstraintElements,
+  }));
+  
+  return {
+    nodeId: props.id,
+    data: props.data as Record<string, unknown>,
+    nodes: getNodes.value.map(n => ({
+      id: n.id,
+      type: (n.type || 'operation') as 'operation' | 'function-entry' | 'function-return' | 'function-call',
+      data: n.data as Record<string, unknown>,
+      position: n.position || { x: 0, y: 0 },
+    })),
+    edges: getEdges.value.map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle || '',
+      targetHandle: e.targetHandle || '',
+    })),
+    currentFunction: currentFunction.value ?? undefined,
+    getConstraintElements: constraintState.getConstraintElements,
+    onTypeSelect: handleTypeSelect,
+  };
 }
 
-// 获取端口的可选类型列表
-function getTypeOptions(pin: typeof inputPins.value[0]): string[] {
-  // 如果有 allowedTypes，使用它
-  if (pin.allowedTypes && pin.allowedTypes.length > 0) {
-    return pin.allowedTypes;
-  }
-  // 否则返回约束本身（简化版本，完整版需要从 typeConstraintStore 获取）
-  return [pin.typeConstraint];
+// 构建 DataPin 用于 computeTypeSelectorState
+function toDataPin(pin: typeof inputPins.value[0]): DataPin {
+  return {
+    id: pin.id,
+    label: pin.label,
+    typeConstraint: pin.typeConstraint,
+    displayName: pin.typeConstraint,
+    color: pin.color,
+  };
 }
 
 // 类型选择处理
@@ -279,20 +306,16 @@ function handleAttributeChange(name: string, value: unknown) {
   updateNodeData(props.id, { attributes: newAttributes });
 }
 
-// Variadic 端口添加
+// Variadic 端口添加（使用公用服务）
 function handleVariadicAdd(groupName: string) {
-  const currentCount = variadicCounts.value[groupName] ?? 1;
-  const newCounts = { ...variadicCounts.value, [groupName]: currentCount + 1 };
+  const newCounts = incrementVariadicCount(variadicCounts.value, groupName);
   updateNodeData(props.id, { variadicCounts: newCounts });
 }
 
-// Variadic 端口删除
+// Variadic 端口删除（使用公用服务）
 function handleVariadicRemove(groupName: string) {
-  const currentCount = variadicCounts.value[groupName] ?? 1;
-  if (currentCount > 0) {
-    const newCounts = { ...variadicCounts.value, [groupName]: currentCount - 1 };
-    updateNodeData(props.id, { variadicCounts: newCounts });
-  }
+  const newCounts = decrementVariadicCount(variadicCounts.value, groupName, 0);
+  updateNodeData(props.id, { variadicCounts: newCounts });
 }
 
 // 收集 variadic 组信息
@@ -342,10 +365,29 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
           <template v-if="inputPins[rowIdx - 1] && !inputPins[rowIdx - 1].isExec">
             <div class="pin-content left">
               <span class="pin-label">{{ inputPins[rowIdx - 1].label }}</span>
-              <TypeSelector
-                :selected-type="getDisplayType(inputPins[rowIdx - 1].id, inputPins[rowIdx - 1].typeConstraint)"
-                :options="getTypeOptions(inputPins[rowIdx - 1])"
-                :constraint-name="inputPins[rowIdx - 1].typeConstraint"
+              <UnifiedTypeSelector
+                :selected-type="(() => {
+                  const pin = inputPins[rowIdx - 1];
+                  const dataPin = toDataPin(pin);
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(dataPin, params);
+                  return state.displayType;
+                })()"
+                :constraint="inputPins[rowIdx - 1].typeConstraint"
+                :allowed-types="(() => {
+                  const pin = inputPins[rowIdx - 1];
+                  const dataPin = toDataPin(pin);
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(dataPin, params);
+                  return state.options.length > 0 ? state.options : undefined;
+                })()"
+                :disabled="(() => {
+                  const pin = inputPins[rowIdx - 1];
+                  const dataPin = toDataPin(pin);
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(dataPin, params);
+                  return !state.canEdit;
+                })()"
                 @select="(type) => handleTypeSelect(inputPins[rowIdx - 1].id, type)"
               />
             </div>
@@ -356,10 +398,29 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
           <template v-if="outputPins[rowIdx - 1] && !outputPins[rowIdx - 1].isExec">
             <div class="pin-content right">
               <span class="pin-label">{{ outputPins[rowIdx - 1].label }}</span>
-              <TypeSelector
-                :selected-type="getDisplayType(outputPins[rowIdx - 1].id, outputPins[rowIdx - 1].typeConstraint)"
-                :options="getTypeOptions(outputPins[rowIdx - 1])"
-                :constraint-name="outputPins[rowIdx - 1].typeConstraint"
+              <UnifiedTypeSelector
+                :selected-type="(() => {
+                  const pin = outputPins[rowIdx - 1];
+                  const dataPin = toDataPin(pin);
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(dataPin, params);
+                  return state.displayType;
+                })()"
+                :constraint="outputPins[rowIdx - 1].typeConstraint"
+                :allowed-types="(() => {
+                  const pin = outputPins[rowIdx - 1];
+                  const dataPin = toDataPin(pin);
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(dataPin, params);
+                  return state.options.length > 0 ? state.options : undefined;
+                })()"
+                :disabled="(() => {
+                  const pin = outputPins[rowIdx - 1];
+                  const dataPin = toDataPin(pin);
+                  const params = getTypeSelectorParams();
+                  const state = computeTypeSelectorState(dataPin, params);
+                  return !state.canEdit;
+                })()"
                 @select="(type) => handleTypeSelect(outputPins[rowIdx - 1].id, type)"
               />
             </div>
@@ -503,21 +564,21 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
 
 /* 引脚标签 - 与 React Flow text-xs text-gray-300 一致 */
 .pin-label {
-  font-size: 12px;
-  color: #d1d5db;
+  font-size: var(--text-label-size, 12px);
+  color: var(--text-label-color, #d1d5db);
   line-height: 1;
 }
 
 .node-attributes {
   padding: 4px 8px;
-  border-top: 1px solid #3d3d4d;
+  border-top: 1px solid var(--node-border-color, #3d3d4d);
 }
 
 .node-summary {
   padding: 4px 12px 8px;
   font-size: 10px;
-  color: #6b7280;
-  border-top: 1px solid #3d3d4d;
+  color: var(--text-muted-color, #6b7280);
+  border-top: 1px solid var(--node-border-color, #3d3d4d);
 }
 
 /* Handle 样式 - 执行引脚三角形（使用 CSS 变量） */

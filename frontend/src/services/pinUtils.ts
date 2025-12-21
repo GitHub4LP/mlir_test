@@ -177,3 +177,224 @@ export function createDataPin(
 ): DataPin {
   return { id, label, typeConstraint, displayName: displayName || typeConstraint, description, color };
 }
+
+
+// ============ DataPin 构建函数 ============
+
+import { getTypeColor } from '../stores/typeColorCache';
+import { dataInHandle, dataOutHandle } from './port';
+
+/**
+ * 参数定义（来自 FunctionDef）
+ */
+export interface ParameterDef {
+  name: string;
+  constraint: string;
+}
+
+/**
+ * 返回值定义（来自 FunctionDef）
+ */
+export interface ReturnTypeDef {
+  name?: string;
+  constraint: string;
+}
+
+/**
+ * 类型状态数据
+ */
+export interface TypeStateData {
+  pinnedTypes?: Record<string, string>;
+  inputTypes?: Record<string, string>;
+  outputTypes?: Record<string, string>;
+}
+
+/**
+ * 从 FunctionDef.parameters 构建 Entry 节点的输出 DataPin 列表
+ * 
+ * @param parameters 参数列表
+ * @param typeState 类型状态（pinnedTypes, outputTypes）
+ * @param isMain 是否是 main 函数（main 函数没有参数）
+ */
+export function buildEntryDataPins(
+  parameters: ParameterDef[],
+  typeState: TypeStateData,
+  isMain: boolean = false
+): DataPin[] {
+  if (isMain) return [];
+
+  const { pinnedTypes = {}, outputTypes = {} } = typeState;
+
+  return parameters.map((param) => {
+    const portId = dataOutHandle(param.name);
+    const constraint = param.constraint;
+    // 优先级：outputTypes > pinnedTypes > constraint
+    const displayType = outputTypes[param.name] || pinnedTypes[portId] || constraint;
+    
+    return {
+      id: portId,
+      label: param.name,
+      typeConstraint: constraint,
+      displayName: constraint,
+      color: getTypeColor(displayType),
+    };
+  });
+}
+
+/**
+ * 从 FunctionDef.returnTypes 构建 Return 节点的输入 DataPin 列表
+ * 
+ * @param returnTypes 返回值列表
+ * @param typeState 类型状态（pinnedTypes, inputTypes）
+ * @param isMain 是否是 main 函数
+ */
+export function buildReturnDataPins(
+  returnTypes: ReturnTypeDef[],
+  typeState: TypeStateData,
+  isMain: boolean = false
+): DataPin[] {
+  // main 函数固定返回 I32
+  const returns = isMain 
+    ? [{ name: 'result', constraint: 'I32' }] 
+    : returnTypes;
+
+  const { pinnedTypes = {}, inputTypes = {} } = typeState;
+
+  return returns.map((ret, idx) => {
+    const name = ret.name || `result_${idx}`;
+    const portId = dataInHandle(name);
+    const constraint = ret.constraint;
+    // 优先级：inputTypes > pinnedTypes > constraint
+    const displayType = inputTypes[name] || pinnedTypes[portId] || constraint;
+
+    return {
+      id: portId,
+      label: name,
+      typeConstraint: constraint,
+      displayName: constraint,
+      color: getTypeColor(displayType),
+    };
+  });
+}
+
+/**
+ * 操作数定义（来自方言 JSON）
+ */
+export interface OperandDef {
+  name: string;
+  typeConstraint: string;
+  displayName?: string;
+  description?: string;
+  isOptional?: boolean;
+  isVariadic?: boolean;
+  allowedTypes?: string[];
+}
+
+/**
+ * 结果定义（来自方言 JSON）
+ */
+export interface ResultDef {
+  name?: string;
+  typeConstraint: string;
+  displayName?: string;
+  description?: string;
+  isVariadic?: boolean;
+  allowedTypes?: string[];
+}
+
+/**
+ * 从操作定义构建 Operation 节点的 DataPin 列表
+ * 
+ * @param operands 操作数列表
+ * @param results 结果列表
+ * @param typeState 类型状态
+ */
+export function buildOperationDataPins(
+  operands: OperandDef[],
+  results: ResultDef[],
+  typeState: TypeStateData
+): { inputs: DataPin[]; outputs: DataPin[] } {
+  const { inputTypes = {}, outputTypes = {} } = typeState;
+
+  const getQuantity = (isOptional?: boolean, isVariadic?: boolean): 'required' | 'optional' | 'variadic' => {
+    if (isVariadic) return 'variadic';
+    if (isOptional) return 'optional';
+    return 'required';
+  };
+
+  const inputs: DataPin[] = operands.map((operand) => {
+    const portId = dataInHandle(operand.name);
+    const displayType = inputTypes[operand.name] || operand.typeConstraint;
+    
+    return {
+      id: portId,
+      label: operand.name,
+      typeConstraint: operand.typeConstraint,
+      displayName: operand.displayName || operand.typeConstraint,
+      description: operand.description,
+      color: getTypeColor(displayType),
+      allowedTypes: operand.allowedTypes,
+      quantity: getQuantity(operand.isOptional, operand.isVariadic),
+    };
+  });
+
+  const outputs: DataPin[] = results.map((result, idx) => {
+    const name = result.name || `result_${idx}`;
+    const portId = dataOutHandle(name);
+    const displayType = outputTypes[name] || result.typeConstraint;
+    
+    return {
+      id: portId,
+      label: name,
+      typeConstraint: result.typeConstraint,
+      displayName: result.displayName || result.typeConstraint,
+      description: result.description,
+      color: getTypeColor(displayType),
+      allowedTypes: result.allowedTypes,
+      quantity: getQuantity(false, result.isVariadic),
+    };
+  });
+
+  return { inputs, outputs };
+}
+
+/**
+ * 端口定义（来自 FunctionCallData）
+ */
+export interface PortDef {
+  name: string;
+  typeConstraint: string;
+}
+
+/**
+ * 从函数调用数据构建 Call 节点的 DataPin 列表
+ * 
+ * @param inputs 输入端口列表
+ * @param outputs 输出端口列表
+ * @param typeState 类型状态
+ */
+export function buildCallDataPins(
+  inputs: PortDef[],
+  outputs: PortDef[],
+  typeState: TypeStateData
+): { inputs: DataPin[]; outputs: DataPin[] } {
+  const { inputTypes = {}, outputTypes = {} } = typeState;
+
+  const dataInputs: DataPin[] = inputs.map((port) => ({
+    id: dataInHandle(port.name),
+    label: port.name,
+    typeConstraint: port.typeConstraint,
+    displayName: port.typeConstraint,
+    color: getTypeColor(inputTypes[port.name] || port.typeConstraint),
+  }));
+
+  const dataOutputs: DataPin[] = outputs.map((port) => ({
+    id: dataOutHandle(port.name),
+    label: port.name,
+    typeConstraint: port.typeConstraint,
+    displayName: port.typeConstraint,
+    color: getTypeColor(outputTypes[port.name] || port.typeConstraint),
+  }));
+
+  return { inputs: dataInputs, outputs: dataOutputs };
+}

@@ -13,7 +13,7 @@
  */
 
 import type { OperationDef } from '../types';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { typeConstraintStore } from '../stores';
 import { PortRef, PortKind } from './port';
 
 // ============================================================================
@@ -73,15 +73,7 @@ export function normalizeType(type: string): string {
  * 委托给 typeConstraintStore
  */
 export function getConstraintElements(constraint: string): string[] {
-  return useTypeConstraintStore.getState().getConstraintElements(constraint);
-}
-
-/**
- * 检查类型约束是否是抽象的（映射到多个元素）
- */
-export function isAbstractConstraint(constraint: string): boolean {
-  const types = useTypeConstraintStore.getState().getConstraintElements(constraint);
-  return types.length > 1;
+  return typeConstraintStore.getState().getConstraintElements(constraint);
 }
 
 /**
@@ -121,7 +113,7 @@ export function analyzeConstraint(constraint: string): ConstraintAnalysis {
     return { kind: 'multi', resolvedType: null };
   }
   
-  const { buildableTypes, isLoaded, getConstraintElements: storeGetConstraintElements } = useTypeConstraintStore.getState();
+  const { buildableTypes, isLoaded, getConstraintElements: storeGetConstraintElements } = typeConstraintStore.getState();
   
   // 如果数据还没加载，默认允许选择
   if (!isLoaded) {
@@ -370,22 +362,9 @@ export function hasAllTypesMatchTrait(operation: OperationDef): boolean {
 }
 
 // ============================================================================
-// 类型颜色
+// 类型颜色（重新导出，保持向后兼容）
 // ============================================================================
 
-import { getTypeColor as getTypeColorFromMapping } from './typeColorMapping';
-
-/**
- * Gets the color for a type (used for port visualization).
- * 
- * 使用程序化的颜色映射系统：
- * - 基本类型（BuildableType）使用配置的颜色
- * - 复合类型（约束）通过展开到基本类型集合，然后对颜色进行平均
- * 
- * @param displayType - 显示类型（可能是 BuildableType 或约束）
- * @returns hex 颜色字符串
- */
-export function getTypeColor(displayType: string): string {
-  const getConstraintElements = useTypeConstraintStore.getState().getConstraintElements;
-  return getTypeColorFromMapping(displayType, getConstraintElements);
-}
+// 注意：getTypeColor 已移至 stores/typeColorCache.ts
+// 这里重新导出以保持向后兼容，但建议直接从 typeColorCache 导入
+export { getTypeColor } from '../stores/typeColorCache';

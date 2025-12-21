@@ -8,8 +8,7 @@
 import { useCallback, useMemo } from 'react';
 import { useReactFlow, useEdges } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
-import { useProjectStore } from '../stores/projectStore';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { useReactStore, projectStore, typeConstraintStore } from '../stores';
 import { handlePinnedTypeChange, type TypeChangeHandlerDeps } from '../services/typeChangeHandler';
 import type { EditorNode, EditorEdge } from '../editor/types';
 
@@ -63,9 +62,9 @@ export function useTypeChangeHandler(options: UseTypeChangeHandlerOptions): UseT
   
   const { setNodes } = useReactFlow();
   const edges = useEdges();
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
-  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
+  const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
+  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
+  const pickConstraintName = useReactStore(typeConstraintStore, state => state.pickConstraintName);
 
   // 将 React Flow edges 转换为 EditorEdge
   const editorEdges = useMemo(() => edges.map(toEditorEdge), [edges]);

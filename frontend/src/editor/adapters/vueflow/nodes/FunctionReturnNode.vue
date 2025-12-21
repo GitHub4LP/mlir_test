@@ -1,18 +1,30 @@
 <!--
   FunctionReturn 节点 - 对应 React Flow 的 FunctionReturnNode.tsx
   
-  数据源：
-  - 输入端口：data.inputs（从 FunctionDef.returnTypes 派生）
-  - 执行引脚：data.execIn（单个）
-  
-  样式：
-  - 使用 CSS 变量从 StyleSystem 获取，确保与其他渲染器一致
+  功能：
+  - 显示函数返回值作为输入端口
+  - 支持添加/删除/重命名返回值
+  - 支持类型选择器
+  - main 函数隐藏编辑功能
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { computed, watch } from 'vue';
+import { Handle, Position, useVueFlow } from '@vue-flow/core';
 import { getTypeColor } from '../../../../services/typeSystem';
-import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, LAYOUT, EXEC_COLOR } from './nodeStyles';
+import { 
+  useVueStore, 
+  projectStore, 
+  typeConstraintStore,
+  getStoreSnapshot,
+} from '../../../../stores';
+import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
+import { dataInHandle } from '../../../../services/port';
+import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, EXEC_COLOR } from './nodeStyles';
+import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
+import EditableName from '../components/EditableName.vue';
+import type { DataPin } from '../../../../types';
+import { generateReturnTypeName } from '../../../../services/parameterService';
+import { buildReturnDataPins } from '../../../../services/pinUtils';
 
 const props = defineProps<{
   id: string;
@@ -23,14 +35,40 @@ const props = defineProps<{
 // CSS 变量
 const cssVars = getCSSVariables();
 
+// Vue Flow 实例
+const { getNodes, getEdges, setNodes } = useVueFlow();
+
+// 使用 Vue Store Adapter 订阅 projectStore
+const currentFunction = useVueStore(
+  projectStore,
+  (state) => {
+    if (!state.project || !state.currentFunctionId) return null;
+    return state.project.mainFunction.id === state.currentFunctionId
+      ? state.project.mainFunction
+      : state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+  }
+);
+
+// 基础数据
 const branchName = computed(() => (props.data.branchName as string) || '');
 const isMain = computed(() => (props.data.isMain as boolean) || false);
 const execIn = computed(() => props.data.execIn as { id: string; label: string } | undefined);
-const inputs = computed(() => (props.data.inputs as Array<{ name: string; typeConstraint: string }>) || []);
-const inputTypes = computed(() => (props.data.inputTypes as Record<string, string>) || {});
 const pinnedTypes = computed(() => (props.data.pinnedTypes as Record<string, string>) || {});
+const inputTypes = computed(() => (props.data.inputTypes as Record<string, string>) || {});
 
-// 构建输入引脚
+const functionId = computed(() => currentFunction.value?.id || '');
+const returnTypes = computed(() => currentFunction.value?.returnTypes || []);
+
+// 构建 DataPin 列表（使用公用服务）
+const dataPins = computed<DataPin[]>(() => {
+  return buildReturnDataPins(
+    returnTypes.value,
+    { pinnedTypes: pinnedTypes.value, inputTypes: inputTypes.value },
+    isMain.value
+  );
+});
+
+// 构建输入引脚（包含执行引脚）
 const inputPins = computed(() => {
   const pins: Array<{ id: string; name: string; label: string; isExec: boolean; color: string }> = [];
   
@@ -38,20 +76,105 @@ const inputPins = computed(() => {
     pins.push({ id: execIn.value.id, name: 'exec-in', label: '', isExec: true, color: EXEC_COLOR });
   }
   
-  for (const input of inputs.value) {
-    const portId = `data-in-${input.name}`;
-    const actualType = inputTypes.value[input.name] || pinnedTypes.value[portId] || input.typeConstraint;
+  for (const pin of dataPins.value) {
     pins.push({
-      id: portId,
-      name: input.name,
-      label: input.name,
+      id: pin.id,
+      name: pin.label,
+      label: pin.label,
       isExec: false,
-      color: getTypeColor(actualType),
+      color: pin.color || getTypeColor(pin.typeConstraint),
     });
   }
   
   return pins;
 });
+
+// 同步 FunctionDef.returnTypes 到 React Flow node data.inputs
+watch(returnTypes, (newReturns) => {
+  if (isMain.value) return;
+  
+  const newInputs = newReturns.map((ret, idx) => ({
+    id: dataInHandle(ret.name || `result_${idx}`),
+    name: ret.name || `result_${idx}`,
+    kind: 'input' as const,
+    typeConstraint: ret.constraint,
+    color: getTypeColor(ret.constraint),
+  }));
+  
+  const currentInputs = (props.data.inputs as Array<{ name: string }>) || [];
+  const currentNames = currentInputs.map(i => i.name).join(',');
+  const newNames = newInputs.map(i => i.name).join(',');
+  
+  if (currentNames !== newNames) {
+    setNodes(ns => ns.map(n => 
+      n.id === props.id ? { ...n, data: { ...n.data, inputs: newInputs } } : n
+    ));
+  }
+}, { immediate: true });
+
+// 类型选择器参数
+function getTypeSelectorParams(_pin: DataPin): TypeSelectorRenderParams {
+  const constraintState = getStoreSnapshot(typeConstraintStore, (s) => ({
+    getConstraintElements: s.getConstraintElements,
+  }));
+  
+  return {
+    nodeId: props.id,
+    data: props.data as Record<string, unknown>,
+    nodes: getNodes.value.map(n => ({
+      id: n.id,
+      type: (n.type || 'operation') as 'operation' | 'function-entry' | 'function-return' | 'function-call',
+      data: n.data as Record<string, unknown>,
+      position: n.position || { x: 0, y: 0 },
+    })),
+    edges: getEdges.value.map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle || '',
+      targetHandle: e.targetHandle || '',
+    })),
+    currentFunction: currentFunction.value ?? undefined,
+    getConstraintElements: constraintState.getConstraintElements,
+    onTypeSelect: handleTypeSelect,
+  };
+}
+
+// 类型选择处理
+function handleTypeSelect(portId: string, type: string, _originalConstraint: string) {
+  const newPinnedTypes = { ...pinnedTypes.value, [portId]: type };
+  setNodes(ns => ns.map(n => 
+    n.id === props.id ? { ...n, data: { ...n.data, pinnedTypes: newPinnedTypes } } : n
+  ));
+  // TODO: 触发类型传播
+}
+
+// 返回值操作（使用公用服务）
+function handleAddReturnType() {
+  const state = projectStore.getState();
+  const func = state.getFunctionById(functionId.value);
+  const existingNames = func?.returnTypes.map(r => r.name || '') || [];
+  const newName = generateReturnTypeName(existingNames);
+  if (functionId.value) {
+    state.addReturnType(functionId.value, { name: newName, constraint: 'AnyType' });
+  }
+}
+
+function handleRemoveReturnType(returnName: string) {
+  const state = projectStore.getState();
+  if (functionId.value) {
+    state.removeReturnType(functionId.value, returnName);
+  }
+}
+
+function handleRenameReturnType(oldName: string, newName: string) {
+  const state = projectStore.getState();
+  const func = state.getFunctionById(functionId.value);
+  const ret = func?.returnTypes.find(r => r.name === oldName);
+  if (ret && functionId.value) {
+    state.updateReturnType(functionId.value, oldName, { ...ret, name: newName });
+  }
+}
 
 // 样式
 const containerStyle = computed(() => getContainerStyle(props.selected || false));
@@ -68,15 +191,74 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
     </div>
     
     <div class="node-body">
-      <div v-for="pin in inputPins" :key="pin.id" class="pin-row">
+      <!-- 执行引脚行 -->
+      <div v-if="execIn" class="pin-row">
         <div class="pin-cell left">
-          <div v-if="pin.label" class="pin-content left">
-            <span class="pin-label">{{ pin.label }}</span>
+          <div class="ml-4" />
+        </div>
+      </div>
+      
+      <!-- 数据引脚行 -->
+      <div v-for="pin in dataPins" :key="pin.id" class="pin-row group">
+        <div class="pin-cell left flex-1">
+          <div class="pin-content left">
+            <!-- 可编辑名称 -->
+            <EditableName
+              v-if="!isMain"
+              :value="pin.label"
+              @change="(n) => handleRenameReturnType(pin.label, n)"
+            />
+            <span v-else class="pin-label">{{ pin.label }}</span>
+            
+            <!-- 类型选择器 -->
+            <UnifiedTypeSelector
+              :selected-type="(() => {
+                const params = getTypeSelectorParams(pin);
+                const state = computeTypeSelectorState(pin, params);
+                return state.displayType;
+              })()"
+              :constraint="pin.typeConstraint"
+              :allowed-types="(() => {
+                const params = getTypeSelectorParams(pin);
+                const state = computeTypeSelectorState(pin, params);
+                return state.options.length > 0 ? state.options : undefined;
+              })()"
+              :disabled="(() => {
+                const params = getTypeSelectorParams(pin);
+                const state = computeTypeSelectorState(pin, params);
+                return !state.canEdit;
+              })()"
+              @select="(type) => handleTypeSelect(pin.id, type, pin.typeConstraint)"
+            />
           </div>
+        </div>
+        
+        <!-- 删除按钮 -->
+        <button
+          v-if="!isMain"
+          class="delete-btn"
+          title="Remove"
+          @click="handleRemoveReturnType(pin.label)"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <!-- 添加返回值按钮 -->
+      <div v-if="!isMain" class="pin-row">
+        <div class="pin-cell left">
+          <button class="add-btn" title="Add return value" @click="handleAddReturnType">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
     
+    <!-- Handles -->
     <Handle
       v-for="(pin, idx) in inputPins"
       :key="pin.id"
@@ -117,16 +299,15 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
   padding: 4px;
 }
 
-/* 引脚行 - 与 React Flow py-1.5 min-h-7 一致 */
 .pin-row {
   display: flex;
   justify-content: flex-start;
   align-items: center;
   padding: 6px 0;
   min-height: 28px;
+  position: relative;
 }
 
-/* 引脚单元格 */
 .pin-cell {
   position: relative;
   display: flex;
@@ -137,7 +318,6 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
   justify-content: flex-start;
 }
 
-/* 垂直布局容器：label 在上，TypeSelector 在下 - 与 React Flow flex-col 一致 */
 .pin-content {
   display: flex;
   flex-direction: column;
@@ -148,14 +328,40 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
   margin-left: 16px;
 }
 
-/* 引脚标签 - 与 React Flow text-xs text-gray-300 一致 */
 .pin-label {
-  font-size: 12px;
-  color: #d1d5db;
+  font-size: var(--text-label-size, 12px);
+  color: var(--text-label-color, #d1d5db);
   line-height: 1;
 }
 
-/* Handle 样式 - 执行引脚三角形（使用 CSS 变量） */
+/* 删除按钮 */
+.delete-btn {
+  opacity: 0;
+  padding: 2px;
+  color: var(--text-muted-color, #6b7280);
+  margin-left: 4px;
+  transition: opacity 0.15s;
+}
+
+.delete-btn:hover {
+  color: var(--btn-danger-hover-color, #f87171);
+}
+
+.group:hover .delete-btn {
+  opacity: 1;
+}
+
+/* 添加按钮 */
+.add-btn {
+  margin-left: 16px;
+  color: var(--text-muted-color, #6b7280);
+}
+
+.add-btn:hover {
+  color: var(--text-title-color, #ffffff);
+}
+
+/* Handle 样式 */
 :deep(.handle-exec) {
   width: 0 !important;
   height: 0 !important;
@@ -169,7 +375,6 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
   border-radius: 0 !important;
 }
 
-/* Handle 样式 - 数据引脚圆形（使用 CSS 变量） */
 :deep(.handle-data) {
   width: var(--handle-size, 12px) !important;
   height: var(--handle-size, 12px) !important;

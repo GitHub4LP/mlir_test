@@ -23,21 +23,12 @@ import type {
   PortConfig,
   ExecPin,
 } from '../types';
-import { getTypeColor } from './typeSystem';
+import { getTypeColor } from '../stores/typeColorCache';
 import { dataInHandle, dataOutHandle } from './port';
-import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import {
   createInputPortsFromParams,
   createOutputPortsFromReturns,
 } from './functionNodeGenerator';
-
-/**
- * 判断类型是否是具体类型（而非约束）
- */
-function getConcreteTypeOrUndefined(type: string): string | undefined {
-  const { isConcreteType } = useTypeConstraintStore.getState();
-  return isConcreteType(type) ? type : undefined;
-}
 
 /**
  * Creates output port configurations from function parameters
@@ -51,7 +42,6 @@ function createEntryOutputPorts(func: FunctionDef): PortConfig[] {
     name: param.name,
     kind: 'output' as const,
     typeConstraint: param.constraint,
-    concreteType: getConcreteTypeOrUndefined(param.constraint),
     color: getTypeColor(param.constraint),
   }));
 }
@@ -68,7 +58,6 @@ function createReturnInputPorts(func: FunctionDef): PortConfig[] {
     name: ret.name || `result_${idx}`,
     kind: 'input' as const,
     typeConstraint: ret.constraint,
-    concreteType: getConcreteTypeOrUndefined(ret.constraint),
     color: getTypeColor(ret.constraint),
   }));
 }

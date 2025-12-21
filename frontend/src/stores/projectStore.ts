@@ -7,7 +7,7 @@
 import { create } from 'zustand';
 import type { Project, FunctionDef, ParameterDef, TypeDef, GraphState, FunctionTrait } from '../types';
 import * as projectPersistence from '../services/projectPersistence';
-import { getTypeColor } from '../services/typeSystem';
+import { getTypeColor } from './typeColorCache';
 import { syncFunctionSignatureChange, syncFunctionRemoval, syncFunctionRename } from '../services/functionSyncService';
 import { dataInHandle, dataOutHandle } from '../services/port';
 
@@ -24,7 +24,6 @@ function createParameterPorts(parameters: ParameterDef[]): PortConfig[] {
       name: param.name,
       kind: 'output' as const,
       typeConstraint: param.constraint,
-      concreteType: param.constraint,
       color: getTypeColor(param.constraint),
     };
   });
@@ -41,7 +40,6 @@ function createReturnPorts(returnTypes: TypeDef[]): PortConfig[] {
       name: ret.name || `result_${idx}`,
       kind: 'input' as const,
       typeConstraint: ret.constraint,
-      concreteType: ret.constraint,
       color: getTypeColor(ret.constraint),
     };
   });

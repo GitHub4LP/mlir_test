@@ -10,7 +10,7 @@
 
 import type { EditorNode, EditorEdge } from '../editor/types';
 import type { BlueprintNodeData, FunctionEntryData, FunctionCallData, DataPin } from '../types';
-import { getTypeColor } from '../services/typeSystem';
+import { getTypeColor } from '../stores/typeColorCache';
 import { getDisplayType } from '../services/typeSelectorRenderer';
 import { PortRef, PortKind } from '../services/port';
 

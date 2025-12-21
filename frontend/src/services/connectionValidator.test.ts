@@ -126,7 +126,7 @@ function createOperationNode(
 // Helper to create a function entry node
 function createFunctionEntryNode(
   id: string,
-  outputs: { id: string; name: string; typeConstraint: string; concreteType?: string }[]
+  outputs: { id: string; name: string; typeConstraint: string }[]
 ): Node {
   const data: FunctionEntryData = {
     functionId: 'test-func',
@@ -136,7 +136,6 @@ function createFunctionEntryNode(
       name: o.name,
       kind: 'output' as const,
       typeConstraint: o.typeConstraint,
-      concreteType: o.concreteType,
       color: '#fff',
     })),
     execOut: { id: 'exec-out', label: '' },
@@ -154,7 +153,7 @@ function createFunctionEntryNode(
 // Helper to create a function return node
 function createFunctionReturnNode(
   id: string,
-  inputs: { id: string; name: string; typeConstraint: string; concreteType?: string }[]
+  inputs: { id: string; name: string; typeConstraint: string }[]
 ): Node {
   const data: FunctionReturnData = {
     functionId: 'test-func',
@@ -164,7 +163,6 @@ function createFunctionReturnNode(
       name: i.name,
       kind: 'input' as const,
       typeConstraint: i.typeConstraint,
-      concreteType: i.concreteType,
       color: '#fff',
     })),
     branchName: '',
@@ -335,7 +333,7 @@ describe('connectionValidator', () => {
 
     it('should allow connection from function entry to operation', () => {
       const entryNode = createFunctionEntryNode('entry', [
-        { id: 'data-out-x', name: 'x', typeConstraint: 'I32', concreteType: 'I32' },
+        { id: 'data-out-x', name: 'x', typeConstraint: 'I32' },
       ]);
       const opNode = createOperationNode('op', { lhs: 'SignlessIntegerLike' }, {});
 

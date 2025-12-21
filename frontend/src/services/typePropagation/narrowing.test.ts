@@ -192,7 +192,7 @@ describe('Constraint Narrowing', () => {
   });
 });
 
-describe('Debug getConcreteTypes', () => {
+describe('Debug getConstraintElements', () => {
   it('should expand AnyType to all buildable types', () => {
     const types = realGetConstraintElements('AnyType');
     console.log('AnyType expanded to:', types.length, 'types');

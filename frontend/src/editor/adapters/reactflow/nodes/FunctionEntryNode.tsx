@@ -6,10 +6,9 @@
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
-import type { FunctionEntryData, DataPin, FunctionTrait } from '../../../../types';
+import type { FunctionEntryData, FunctionTrait } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
-import { useProjectStore } from '../../../../stores/projectStore';
-import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
+import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { FunctionTraitsEditor } from '../../../../components/FunctionTraitsEditor';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
@@ -18,6 +17,8 @@ import { dataOutHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
 import { StyleSystem } from '../../../core/StyleSystem';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
+import { generateParameterName } from '../../../../services/parameterService';
+import { buildEntryDataPins } from '../../../../services/pinUtils';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
@@ -27,12 +28,12 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const edges = useEdges();
   const nodes = useNodes();
   const { setNodes } = useReactFlow();
-  const addParameter = useProjectStore(state => state.addParameter);
-  const removeParameter = useProjectStore(state => state.removeParameter);
-  const updateParameter = useProjectStore(state => state.updateParameter);
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
-  const setFunctionTraits = useProjectStore(state => state.setFunctionTraits);
-  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
+  const addParameter = useReactStore(projectStore, state => state.addParameter);
+  const removeParameter = useReactStore(projectStore, state => state.removeParameter);
+  const updateParameter = useReactStore(projectStore, state => state.updateParameter);
+  const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
+  const setFunctionTraits = useReactStore(projectStore, state => state.setFunctionTraits);
+  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
 
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -48,8 +49,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const handleAddParameter = useCallback(() => {
     const func = getCurrentFunction();
     const existingNames = func?.parameters.map(p => p.name) || [];
-    let index = 0, newName = `arg${index}`;
-    while (existingNames.includes(newName)) { index++; newName = `arg${index}`; }
+    const newName = generateParameterName(existingNames);
     addParameter(functionId, { name: newName, constraint: 'AnyType' });
   }, [functionId, addParameter, getCurrentFunction]);
 
@@ -85,20 +85,9 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     }
   }, [id, isMain, parameters, data.outputs, setNodes]);
 
-  // Build DataPin list from FunctionDef.parameters
-  const dataPins: DataPin[] = useMemo(() => {
-    const params = isMain ? [] : parameters;
-    return params.map((param) => {
-      const portId = dataOutHandle(param.name);
-      const constraint = param.constraint;
-      return {
-        id: portId,
-        label: param.name,
-        typeConstraint: constraint,
-        displayName: constraint,
-        color: getTypeColor(outputTypes[param.name] || pinnedTypes[portId] || constraint),
-      };
-    });
+  // Build DataPin list from FunctionDef.parameters (使用公用服务)
+  const dataPins = useMemo(() => {
+    return buildEntryDataPins(parameters, { pinnedTypes, outputTypes }, isMain);
   }, [isMain, parameters, outputTypes, pinnedTypes]);
 
   const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({

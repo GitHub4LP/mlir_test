@@ -178,7 +178,7 @@ const labelStyle = computed(() => ({
 
 .dropdown-indicator {
   font-size: 10px;
-  color: #6b7280;
+  color: var(--text-muted-color, #6b7280);
 }
 
 .selection-panel {
@@ -223,15 +223,15 @@ const labelStyle = computed(() => ({
 .no-results {
   padding: 12px;
   text-align: center;
-  color: #6b7280;
+  color: var(--text-muted-color, #6b7280);
   font-size: 12px;
 }
 
 .result-count {
   padding: 4px 8px;
   font-size: 12px;
-  color: #6b7280;
-  border-top: 1px solid #374151;
+  color: var(--text-muted-color, #6b7280);
+  border-top: 1px solid var(--node-border-color, #374151);
   flex-shrink: 0;
 }
 </style>

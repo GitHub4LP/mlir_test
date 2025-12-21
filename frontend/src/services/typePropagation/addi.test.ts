@@ -41,7 +41,6 @@ describe('Return I32 → addi propagation', () => {
           name: 'result',
           kind: 'input',
           typeConstraint: 'I32',
-          concreteType: 'I32',
           color: '#fff',
         }],
         execIn: { id: 'exec-in', label: '' },

@@ -6,10 +6,9 @@
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
-import type { FunctionReturnData, DataPin } from '../../../../types';
+import type { FunctionReturnData } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
-import { useProjectStore } from '../../../../stores/projectStore';
-import { useTypeConstraintStore } from '../../../../stores/typeConstraintStore';
+import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
 import { EditableName, execPinStyle, dataPinStyle, getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
@@ -17,6 +16,8 @@ import { dataInHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
 import { StyleSystem } from '../../../core/StyleSystem';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
+import { generateReturnTypeName } from '../../../../services/parameterService';
+import { buildReturnDataPins } from '../../../../services/pinUtils';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
@@ -26,11 +27,11 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const edges = useEdges();
   const nodes = useNodes();
   const { setNodes } = useReactFlow();
-  const addReturnType = useProjectStore(state => state.addReturnType);
-  const removeReturnType = useProjectStore(state => state.removeReturnType);
-  const updateReturnType = useProjectStore(state => state.updateReturnType);
-  const getFunctionById = useProjectStore(state => state.getFunctionById);
-  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
+  const addReturnType = useReactStore(projectStore, state => state.addReturnType);
+  const removeReturnType = useReactStore(projectStore, state => state.removeReturnType);
+  const updateReturnType = useReactStore(projectStore, state => state.updateReturnType);
+  const getFunctionById = useReactStore(projectStore, state => state.getFunctionById);
+  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
 
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -40,8 +41,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const handleAddReturnType = useCallback(() => {
     const func = getFunctionById(functionId);
     const existingNames = func?.returnTypes.map(r => r.name || '') || [];
-    let index = 0, newName = `ret${index}`;
-    while (existingNames.includes(newName)) { index++; newName = `ret${index}`; }
+    const newName = generateReturnTypeName(existingNames);
     if (functionId) addReturnType(functionId, { name: newName, constraint: 'AnyType' });
   }, [functionId, addReturnType, getFunctionById]);
 
@@ -79,23 +79,10 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     }
   }, [id, isMain, currentFunction?.returnTypes, data.inputs, setNodes]);
 
-  // Build DataPin list from FunctionDef.returnTypes
-  const dataPins: DataPin[] = useMemo(() => {
-    const returns = isMain 
-      ? [{ name: 'result', constraint: 'I32' }] 
-      : (currentFunction?.returnTypes || []);
-    return returns.map((ret, idx) => {
-      const name = ret.name || `result_${idx}`;
-      const portId = dataInHandle(name);
-      const constraint = ret.constraint;
-      return {
-        id: portId,
-        label: name,
-        typeConstraint: constraint,
-        displayName: constraint,
-        color: getTypeColor(inputTypes[name] || pinnedTypes[portId] || constraint),
-      };
-    });
+  // Build DataPin list from FunctionDef.returnTypes (使用公用服务)
+  const dataPins = useMemo(() => {
+    const returnTypes = currentFunction?.returnTypes || [];
+    return buildReturnDataPins(returnTypes, { pinnedTypes, inputTypes }, isMain);
   }, [isMain, currentFunction?.returnTypes, inputTypes, pinnedTypes]);
 
   const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({

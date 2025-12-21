@@ -68,10 +68,70 @@ export interface TextStyleConfig {
   subtitleColor: string;
   /** 标签颜色 */
   labelColor: string;
+  /** 次要文字颜色 (text-gray-500) */
+  mutedColor: string;
   /** 标题字重 (font-semibold = 600) */
   titleFontWeight: number;
   /** 副标题字重 (font-medium = 500) */
   subtitleFontWeight: number;
+}
+
+/** 按钮样式配置 */
+export interface ButtonStyleConfig {
+  /** 按钮尺寸 */
+  size: number;
+  /** 圆角半径 */
+  borderRadius: number;
+  /** 背景色 */
+  backgroundColor: string;
+  /** hover 背景色 */
+  hoverBackgroundColor: string;
+  /** 边框色 */
+  borderColor: string;
+  /** 边框宽度 */
+  borderWidth: number;
+  /** 文字颜色 */
+  textColor: string;
+  /** 文字字号 */
+  fontSize: number;
+  /** 危险操作颜色 */
+  dangerColor: string;
+  /** 危险操作 hover 颜色 */
+  dangerHoverColor: string;
+}
+
+/** 类型标签样式配置 */
+export interface TypeLabelStyleConfig {
+  /** 宽度 */
+  width: number;
+  /** 高度 */
+  height: number;
+  /** 圆角半径 */
+  borderRadius: number;
+  /** 背景透明度 */
+  backgroundAlpha: number;
+  /** 文字颜色 */
+  textColor: string;
+  /** 文字字号 */
+  fontSize: number;
+  /** 距离端口的偏移 */
+  offsetFromHandle: number;
+}
+
+/** 覆盖层样式配置 */
+export interface OverlayStyleConfig {
+  /** 背景色 */
+  backgroundColor: string;
+  /** 边框色 */
+  borderColor: string;
+  /** 边框宽度 */
+  borderWidth: number;
+  /** 圆角半径 */
+  borderRadius: number;
+  /** 阴影 */
+  boxShadow: string;
+  /** 内边距 */
+  padding: number;
 }
 
 /** 完整主题配置 */
@@ -79,6 +139,9 @@ export interface ThemeConfig {
   node: NodeStyleConfig;
   edge: EdgeStyleConfig;
   text: TextStyleConfig;
+  button: ButtonStyleConfig;
+  typeLabel: TypeLabelStyleConfig;
+  overlay: OverlayStyleConfig;
   /** 方言颜色映射 */
   dialectColors: Record<string, string>;
   /** 类型颜色映射 */
@@ -118,9 +181,39 @@ export const DEFAULT_THEME: ThemeConfig = {
     labelFontSize: 12,
     titleColor: '#ffffff',
     subtitleColor: 'rgba(255,255,255,0.7)',  // text-white/70
-    labelColor: '#cccccc',
+    labelColor: '#d1d5db',   // text-gray-300
+    mutedColor: '#6b7280',   // text-gray-500
     titleFontWeight: 600,    // font-semibold
     subtitleFontWeight: 500, // font-medium
+  },
+  button: {
+    size: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    hoverBackgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 1,
+    textColor: '#ffffff',
+    fontSize: 12,
+    dangerColor: '#ef4444',       // red-500
+    dangerHoverColor: '#f87171',  // red-400
+  },
+  typeLabel: {
+    width: 60,
+    height: 16,
+    borderRadius: 3,
+    backgroundAlpha: 0.3,
+    textColor: '#ffffff',
+    fontSize: 10,
+    offsetFromHandle: 12,
+  },
+  overlay: {
+    backgroundColor: '#1e1e2e',
+    borderColor: '#3d3d4d',
+    borderWidth: 1,
+    borderRadius: 8,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+    padding: 8,
   },
   dialectColors: {
     arith: '#4A90D9',
@@ -173,6 +266,21 @@ class StyleSystemImpl {
   /** 获取文字样式 */
   getTextStyle(): TextStyleConfig {
     return this.theme.text;
+  }
+
+  /** 获取按钮样式 */
+  getButtonStyle(): ButtonStyleConfig {
+    return this.theme.button;
+  }
+
+  /** 获取类型标签样式 */
+  getTypeLabelStyle(): TypeLabelStyleConfig {
+    return this.theme.typeLabel;
+  }
+
+  /** 获取覆盖层样式 */
+  getOverlayStyle(): OverlayStyleConfig {
+    return this.theme.overlay;
   }
 
   /** 获取方言颜色 */
@@ -249,6 +357,9 @@ class StyleSystemImpl {
       node: { ...this.theme.node, ...theme.node },
       edge: { ...this.theme.edge, ...theme.edge },
       text: { ...this.theme.text, ...theme.text },
+      button: { ...this.theme.button, ...theme.button },
+      typeLabel: { ...this.theme.typeLabel, ...theme.typeLabel },
+      overlay: { ...this.theme.overlay, ...theme.overlay },
       dialectColors: { ...this.theme.dialectColors, ...theme.dialectColors },
       typeColors: { ...this.theme.typeColors, ...theme.typeColors },
     };
@@ -268,3 +379,78 @@ class StyleSystemImpl {
 
 /** 样式系统单例 */
 export const StyleSystem = new StyleSystemImpl();
+
+// ============================================================
+// CSS Variables 导出（供 React/Vue 组件使用）
+// ============================================================
+
+/**
+ * 获取完整的 CSS Variables 对象
+ * 
+ * 用于注入到根元素，使所有组件可以通过 var(--xxx) 访问样式
+ */
+export function getStyleCSSVariables(): Record<string, string> {
+  const theme = StyleSystem.getTheme();
+  
+  return {
+    // 节点样式
+    '--node-min-width': `${theme.node.minWidth}px`,
+    '--node-header-height': `${theme.node.headerHeight}px`,
+    '--node-pin-row-height': `${theme.node.pinRowHeight}px`,
+    '--node-handle-radius': `${theme.node.handleRadius}px`,
+    '--node-handle-offset': `${theme.node.handleOffset}px`,
+    '--node-padding': `${theme.node.padding}px`,
+    '--node-border-radius': `${theme.node.borderRadius}px`,
+    '--node-border-width': `${theme.node.borderWidth}px`,
+    '--node-bg-color': theme.node.backgroundColor,
+    '--node-border-color': theme.node.borderColor,
+    '--node-selected-border-color': theme.node.selectedBorderColor,
+    '--node-selected-border-width': `${theme.node.selectedBorderWidth}px`,
+    
+    // 边样式
+    '--edge-width': `${theme.edge.width}px`,
+    '--edge-selected-width': `${theme.edge.selectedWidth}px`,
+    '--edge-exec-color': theme.edge.execColor,
+    '--edge-default-data-color': theme.edge.defaultDataColor,
+    
+    // 文字样式
+    '--text-font-family': theme.text.fontFamily,
+    '--text-title-size': `${theme.text.titleFontSize}px`,
+    '--text-subtitle-size': `${theme.text.subtitleFontSize}px`,
+    '--text-label-size': `${theme.text.labelFontSize}px`,
+    '--text-title-color': theme.text.titleColor,
+    '--text-subtitle-color': theme.text.subtitleColor,
+    '--text-label-color': theme.text.labelColor,
+    '--text-muted-color': theme.text.mutedColor,
+    '--text-title-weight': `${theme.text.titleFontWeight}`,
+    '--text-subtitle-weight': `${theme.text.subtitleFontWeight}`,
+    
+    // 按钮样式
+    '--btn-size': `${theme.button.size}px`,
+    '--btn-border-radius': `${theme.button.borderRadius}px`,
+    '--btn-bg-color': theme.button.backgroundColor,
+    '--btn-hover-bg-color': theme.button.hoverBackgroundColor,
+    '--btn-border-color': theme.button.borderColor,
+    '--btn-border-width': `${theme.button.borderWidth}px`,
+    '--btn-text-color': theme.button.textColor,
+    '--btn-font-size': `${theme.button.fontSize}px`,
+    '--btn-danger-color': theme.button.dangerColor,
+    '--btn-danger-hover-color': theme.button.dangerHoverColor,
+    
+    // 类型标签样式
+    '--type-label-width': `${theme.typeLabel.width}px`,
+    '--type-label-height': `${theme.typeLabel.height}px`,
+    '--type-label-border-radius': `${theme.typeLabel.borderRadius}px`,
+    '--type-label-bg-alpha': `${theme.typeLabel.backgroundAlpha}`,
+    '--type-label-text-color': theme.typeLabel.textColor,
+    '--type-label-font-size': `${theme.typeLabel.fontSize}px`,
+    
+    // 覆盖层样式
+    '--overlay-bg-color': theme.overlay.backgroundColor,
+    '--overlay-border-color': theme.overlay.borderColor,
+    '--overlay-border-width': `${theme.overlay.borderWidth}px`,
+    '--overlay-border-radius': `${theme.overlay.borderRadius}px`,
+    '--overlay-box-shadow': theme.overlay.boxShadow,
+    '--overlay-padding': `${theme.overlay.padding}px`,
+  };
+}

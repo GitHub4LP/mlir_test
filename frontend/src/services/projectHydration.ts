@@ -28,7 +28,7 @@ import type {
   StoredFunctionCallData,
 } from '../types';
 import { dataOutHandle, dataInHandle } from './port';
-import { getTypeColor } from './typeSystem';
+import { getTypeColor } from '../stores/typeColorCache';
 import { createInputPortsFromParams, createOutputPortsFromReturns, getExecOutputsFromFunction } from './functionNodeGenerator';
 
 /**
@@ -411,15 +411,15 @@ export function extractOperationFullNames(project: StoredProject): string[] {
  * 注意：dialects 字段由后端自动计算，保证与节点一致
  */
 export async function loadAndHydrateProject(storedProject: StoredProject): Promise<Project> {
-  const dialectStore = useDialectStore.getState();
+  const store = useDialectStore.getState();
 
   // 使用后端计算的方言列表加载所需方言
   const dialects = storedProject.dialects || [];
 
   if (dialects.length > 0) {
-    await dialectStore.loadDialects(dialects);
+    await store.loadDialects(dialects);
   }
 
   // Hydrate the project
-  return hydrateProject(storedProject, dialectStore.getOperation);
+  return hydrateProject(storedProject, store.getOperation);
 }

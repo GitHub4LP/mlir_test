@@ -14,6 +14,7 @@ import type {
   NodeChange,
   EdgeChange,
 } from '../types';
+import type { FunctionTrait } from '../../types';
 import { GPUNodeEditor as GPUNodeEditorCore } from './gpu/GPUNodeEditor';
 
 /**
@@ -41,6 +42,18 @@ export class GPUNodeEditor implements INodeEditor {
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
   onDeleteRequest: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
+  
+  // 业务事件回调
+  onAttributeChange: ((nodeId: string, attributeName: string, value: string) => void) | null = null;
+  onVariadicAdd: ((nodeId: string, groupName: string) => void) | null = null;
+  onVariadicRemove: ((nodeId: string, groupName: string) => void) | null = null;
+  onParameterAdd: ((functionId: string) => void) | null = null;
+  onParameterRemove: ((functionId: string, parameterName: string) => void) | null = null;
+  onParameterRename: ((functionId: string, oldName: string, newName: string) => void) | null = null;
+  onReturnTypeAdd: ((functionId: string) => void) | null = null;
+  onReturnTypeRemove: ((functionId: string, returnName: string) => void) | null = null;
+  onReturnTypeRename: ((functionId: string, oldName: string, newName: string) => void) | null = null;
+  onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null = null;
 
   constructor(preferWebGPU: boolean = true) {
     this.preferWebGPU = preferWebGPU;
@@ -63,6 +76,18 @@ export class GPUNodeEditor implements INodeEditor {
     this.editor.onEdgeDoubleClick = this.onEdgeDoubleClick;
     this.editor.onDrop = this.onDrop;
     this.editor.onDeleteRequest = this.onDeleteRequest;
+    
+    // 绑定业务回调
+    this.editor.onAttributeChange = this.onAttributeChange;
+    this.editor.onVariadicAdd = this.onVariadicAdd;
+    this.editor.onVariadicRemove = this.onVariadicRemove;
+    this.editor.onParameterAdd = this.onParameterAdd;
+    this.editor.onParameterRemove = this.onParameterRemove;
+    this.editor.onParameterRename = this.onParameterRename;
+    this.editor.onReturnTypeAdd = this.onReturnTypeAdd;
+    this.editor.onReturnTypeRemove = this.onReturnTypeRemove;
+    this.editor.onReturnTypeRename = this.onReturnTypeRename;
+    this.editor.onTraitsChange = this.onTraitsChange;
     
     // 挂载
     this.editor.mount(container);
