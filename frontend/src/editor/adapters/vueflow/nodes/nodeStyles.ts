@@ -67,7 +67,7 @@ export function getHeaderStyle(headerColor: string) {
 /** 节点 body 样式 - 与 React Flow NodePins 的 px-1 py-1 一致 */
 export function getBodyStyle() {
   return {
-    padding: '4px',  // px-1 py-1 = 4px
+    padding: `${nodeStyle.padding}px`,
   };
 }
 
@@ -84,13 +84,10 @@ export function getPinRowStyle() {
 // Handle 位置计算
 // ============================================================
 
-// React Flow 使用 py-1.5 min-h-7，实际行高约 28px
-const ACTUAL_PIN_ROW_HEIGHT = 28;
-
 /** 计算 Handle 的 top 位置 - 与 React Flow py-1.5 min-h-7 一致 */
 export function getHandleTop(idx: number): string {
-  // header (32px) + body padding (4px) + row * 28px + row center (14px)
-  const y = nodeStyle.headerHeight + 4 + idx * ACTUAL_PIN_ROW_HEIGHT + ACTUAL_PIN_ROW_HEIGHT / 2;
+  // header + body padding + row * pinRowHeight + row center
+  const y = nodeStyle.headerHeight + nodeStyle.padding + idx * nodeStyle.pinRowHeight + nodeStyle.pinRowHeight / 2;
   return `${y}px`;
 }
 

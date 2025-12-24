@@ -22,11 +22,11 @@ import type {
 import type { FunctionTrait } from '../../types';
 import { CanvasRenderer } from './canvas/CanvasRenderer';
 import { GraphController } from './canvas/GraphController';
-import { OverlayManager, type OverlayConfig, type ActiveOverlay } from './canvas/OverlayManager';
+import { UIManager, type TypeSelectorState } from './canvas/UIManager';
+import type { TypeOption } from './canvas/ui/TypeSelector';
 import { 
   hitTestTypeLabel, 
   hitTestVariadicButton, 
-  getTypeLabelPosition,
   hitTestNodeExtended,
   computeHoveredIndex,
   type HitResult,
@@ -66,7 +66,7 @@ function toGraphState(nodes: EditorNode[], edges: EditorEdge[]): GraphState {
 export class CanvasNodeEditor implements INodeEditor {
   private renderer: CanvasRenderer | null = null;
   private controller: GraphController | null = null;
-  private overlayManager: OverlayManager | null = null;
+  private uiManager: UIManager | null = null;
   private container: HTMLElement | null = null;
   
   // 当前数据
@@ -98,11 +98,14 @@ export class CanvasNodeEditor implements INodeEditor {
   onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null = null;
   
   // 覆盖层回调
-  onOverlayChange: ((overlays: ActiveOverlay[]) => void) | null = null;
+  onTypeSelectorChange: ((state: TypeSelectorState | null) => void) | null = null;
   onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null = null;
   onParamNameClick: ((nodeId: string, paramIndex: number, currentName: string, canvasX: number, canvasY: number) => void) | null = null;
   onReturnNameClick: ((nodeId: string, returnIndex: number, currentName: string, canvasX: number, canvasY: number) => void) | null = null;
   onTraitsToggleClick: ((nodeId: string, canvasX: number, canvasY: number) => void) | null = null;
+  
+  // onNodeDataChange 已废弃：节点组件现在直接更新 editorStore
+  onNodeDataChange: ((nodeId: string, data: Record<string, unknown>) => void) | null = null;
   
   // Hover 状态（用于显示删除按钮）
   private hoveredParamIndex: number | null = null;
@@ -120,11 +123,23 @@ export class CanvasNodeEditor implements INodeEditor {
     this.container = container;
     this.renderer = new CanvasRenderer();
     this.controller = new GraphController();
-    this.overlayManager = new OverlayManager();
+    this.uiManager = new UIManager();
     
     this.renderer.mount(container);
-    this.overlayManager.mount(container);
+    this.uiManager.mount(container);
     this.controller.setRenderer(this.renderer);
+    
+    // 设置 UIManager 回调
+    this.uiManager.setCallbacks({
+      onTypeSelect: () => {
+        // 类型选择由外部通过 setTypeSelectCallback 处理
+        // 这里只是占位，实际回调在 setTypeSelectCallback 中设置
+      },
+      onTypeSelectorClose: () => {
+        this.onTypeSelectorChange?.(null);
+        this.controller?.requestRender();
+      },
+    });
     
     // 设置图数据提供者
     this.controller.setGraphDataProvider(() => toGraphState(this.nodes, this.edges));
@@ -143,6 +158,7 @@ export class CanvasNodeEditor implements INodeEditor {
       
       const config: RenderExtensionConfig = {
         nodes: nodesMap,
+        nodeList: this.nodes,
         hoveredNodeId: this.hoveredNodeId,
         hoveredParamIndex: this.hoveredParamIndex,
         hoveredReturnIndex: this.hoveredReturnIndex,
@@ -151,6 +167,11 @@ export class CanvasNodeEditor implements INodeEditor {
       
       extendRenderData(data, nodeLayouts, config);
     };
+    
+    // 设置 UI 渲染回调
+    this.renderer.setUIRenderCallback((ctx) => {
+      this.uiManager?.render(ctx);
+    });
     
     // 设置拖放回调
     this.renderer.setDropCallback((x, y, dataTransfer) => {
@@ -194,9 +215,32 @@ export class CanvasNodeEditor implements INodeEditor {
     
     this.controller.onViewportChange = (viewport) => {
       this.onViewportChange?.(viewport);
-      // 更新覆盖层位置
-      this.overlayManager?.updateViewport(viewport);
-      this.onOverlayChange?.(this.overlayManager?.getActiveOverlays() ?? []);
+    };
+    
+    // 扩展命中测试回调（类型标签、按钮等）
+    this.controller.onExtendedHitTest = (screenX, screenY) => {
+      return this.handleExtendedHitTest(screenX, screenY);
+    };
+    
+    // UI 事件路由（UI 组件优先）
+    this.controller.onPreMouseDown = (screenX, screenY) => {
+      return this.uiManager?.handleMouseDown({ x: screenX, y: screenY, button: 0 }) ?? false;
+    };
+    
+    this.controller.onPreMouseMove = (screenX, screenY) => {
+      return this.uiManager?.handleMouseMove({ x: screenX, y: screenY, button: 0 }) ?? false;
+    };
+    
+    this.controller.onPreMouseUp = (screenX, screenY) => {
+      return this.uiManager?.handleMouseUp({ x: screenX, y: screenY, button: 0 }) ?? false;
+    };
+    
+    this.controller.onPreWheel = (screenX, screenY, deltaX, deltaY) => {
+      return this.uiManager?.handleWheel({ x: screenX, y: screenY, deltaX, deltaY }) ?? false;
+    };
+    
+    this.controller.onPreKeyDown = (key, code, ctrlKey, shiftKey, altKey) => {
+      return this.uiManager?.handleKeyDown({ key, code, ctrlKey, shiftKey, altKey }) ?? false;
     };
     
     // 初始渲染
@@ -209,9 +253,10 @@ export class CanvasNodeEditor implements INodeEditor {
   unmount(): void {
     window.removeEventListener('resize', this.handleResize);
     
-    if (this.overlayManager) {
-      this.overlayManager.unmount();
-      this.overlayManager = null;
+    if (this.uiManager) {
+      this.uiManager.unmount();
+      this.uiManager.dispose();
+      this.uiManager = null;
     }
     if (this.renderer) {
       this.renderer.unmount();
@@ -315,75 +360,51 @@ export class CanvasNodeEditor implements INodeEditor {
   }
 
   // ============================================================
-  // 覆盖层管理
+  // 类型选择器管理（原生 Canvas UI）
   // ============================================================
 
   /**
-   * 显示类型选择器覆盖层
+   * 显示类型选择器
    */
-  showTypeSelector(nodeId: string, handleId: string): string | null {
-    if (!this.overlayManager) return null;
+  showTypeSelector(
+    nodeId: string,
+    handleId: string,
+    screenX: number,
+    screenY: number,
+    options: TypeOption[],
+    currentType?: string
+  ): void {
+    if (!this.uiManager) return;
     
-    // 查找节点
-    const node = this.nodes.find(n => n.id === nodeId);
-    if (!node) return null;
-    
-    // 计算节点布局
-    const graphNode: GraphNode = {
-      id: node.id,
-      type: node.type as GraphNode['type'],
-      position: node.position,
-      data: node.data as GraphNode['data'],
-    };
-    const layout = computeNodeLayout(graphNode, false);
-    
-    // 获取类型标签位置
-    const pos = getTypeLabelPosition(layout, handleId);
-    if (!pos) return null;
-    
-    // 显示覆盖层
-    const config: OverlayConfig = {
-      type: 'type-selector',
-      nodeId,
-      portId: handleId,
-      canvasX: pos.canvasX,
-      canvasY: pos.canvasY,
-      data: { node: node.data },
-    };
-    
-    const id = this.overlayManager.show(config);
-    this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
-    return id;
+    this.uiManager.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType);
+    this.onTypeSelectorChange?.(this.uiManager.getTypeSelectorState());
+    this.controller?.requestRender();
   }
 
   /**
-   * 隐藏覆盖层
+   * 隐藏类型选择器
    */
-  hideOverlay(id: string): void {
-    this.overlayManager?.hide(id);
-    this.onOverlayChange?.(this.overlayManager?.getActiveOverlays() ?? []);
+  hideTypeSelector(): void {
+    this.uiManager?.hideTypeSelector();
+    this.onTypeSelectorChange?.(null);
+    this.controller?.requestRender();
   }
 
   /**
-   * 隐藏所有覆盖层
+   * 类型选择器是否可见
    */
-  hideAllOverlays(): void {
-    this.overlayManager?.hideAll();
-    this.onOverlayChange?.([]);
+  isTypeSelectorVisible(): boolean {
+    return this.uiManager?.isTypeSelectorVisible() ?? false;
   }
 
   /**
-   * 获取覆盖层容器
+   * 设置类型选择回调
    */
-  getOverlayContainer(): HTMLDivElement | null {
-    return this.overlayManager?.getContainer() ?? null;
-  }
-
-  /**
-   * 获取活动覆盖层列表
-   */
-  getActiveOverlays(): ActiveOverlay[] {
-    return this.overlayManager?.getActiveOverlays() ?? [];
+  setTypeSelectCallback(callback: (nodeId: string, handleId: string, type: string) => void): void {
+    this.uiManager?.setCallbacks({
+      ...this.uiManager?.['callbacks'],
+      onTypeSelect: callback,
+    });
   }
 
   /**

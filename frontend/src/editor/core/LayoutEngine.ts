@@ -147,7 +147,8 @@ function getNodeSubtitle(node: GraphNode): string | undefined {
 }
 
 /**
- * 获取节点头部颜色（使用 StyleSystem）
+ * 获取节点头部颜色
+ * 与 ReactFlow 节点组件保持完全一致
  */
 function getNodeHeaderColor(node: GraphNode): string {
   switch (node.type) {
@@ -155,12 +156,19 @@ function getNodeHeaderColor(node: GraphNode): string {
       const data = node.data as import('../../types').BlueprintNodeData;
       return StyleSystem.getDialectColor(data.operation.dialect);
     }
-    case 'function-entry':
-      return StyleSystem.getDialectColor('func');  // 绿色
-    case 'function-return':
-      return StyleSystem.getDialectColor('memref');  // 红色
+    case 'function-entry': {
+      const data = node.data as import('../../types').FunctionEntryData;
+      // 与 FunctionEntryNode.tsx 一致
+      return data.isMain ? '#f59e0b' : '#22c55e';
+    }
+    case 'function-return': {
+      const data = node.data as import('../../types').FunctionReturnData;
+      // 与 FunctionReturnNode.tsx 一致
+      return data.isMain ? '#dc2626' : '#ef4444';
+    }
     case 'function-call':
-      return StyleSystem.getDialectColor('scf');  // 紫色
+      // 与 FunctionCallNode.tsx 一致
+      return '#a855f7';
     default:
       return StyleSystem.getDialectColor('builtin');
   }
@@ -175,7 +183,7 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
   let inputIndex = 0;
   let outputIndex = 0;
 
-  // 计算端口 Y 坐标的辅助函数
+  // 计算端口 Y 坐标的辅助函数（使用 StyleSystem 统一值）
   const getHandleY = (index: number): number => {
     return style.headerHeight + style.padding + index * style.pinRowHeight + style.pinRowHeight / 2;
   };
@@ -397,7 +405,7 @@ export function computeNodeLayout(node: GraphNode, selected: boolean = false): N
   const outputCount = handles.filter(h => h.isOutput).length;
   const pinRows = Math.max(inputCount, outputCount);
   
-  // 计算节点高度
+  // 计算节点高度（使用 StyleSystem 统一值）
   const height = style.headerHeight + pinRows * style.pinRowHeight + style.padding * 2;
   
   return {
@@ -432,8 +440,30 @@ export function computeEdgePath(
   targetY: number
 ): Array<{ x: number; y: number }> {
   const style = StyleSystem.getEdgeStyle();
+  const pathType = style.pathType;
   
-  // 计算贝塞尔曲线控制点
+  if (pathType === 'straight') {
+    // 直线：返回 4 个点但控制点在直线上
+    return [
+      { x: sourceX, y: sourceY },
+      { x: sourceX + (targetX - sourceX) / 3, y: sourceY + (targetY - sourceY) / 3 },
+      { x: sourceX + (targetX - sourceX) * 2 / 3, y: sourceY + (targetY - sourceY) * 2 / 3 },
+      { x: targetX, y: targetY },
+    ];
+  }
+  
+  if (pathType === 'smoothstep') {
+    // SmoothStep：水平-垂直-水平的阶梯路径
+    const midX = (sourceX + targetX) / 2;
+    return [
+      { x: sourceX, y: sourceY },
+      { x: midX, y: sourceY },
+      { x: midX, y: targetY },
+      { x: targetX, y: targetY },
+    ];
+  }
+  
+  // 默认 bezier：贝塞尔曲线
   const dx = Math.abs(targetX - sourceX);
   const offset = Math.min(style.bezierOffset, dx * 0.5);
   

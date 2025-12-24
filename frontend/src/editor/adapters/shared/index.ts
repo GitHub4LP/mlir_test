@@ -81,3 +81,24 @@ export {
   isExecPort,
   isDataPort,
 } from './ConnectionValidator';
+
+// 编辑器覆盖层
+export {
+  EditorOverlay,
+} from './EditorOverlay';
+
+// 覆盖层类型和 reducer
+export {
+  type TypeSelectorState,
+  type NameEditorState,
+  type TraitsEditorState,
+  type OverlayState,
+  type OverlayAction,
+  overlayReducer,
+} from './overlayTypes';
+
+// 端口类型信息
+export {
+  type PortTypeInfo,
+  getPortTypeInfo,
+} from './PortTypeInfo';

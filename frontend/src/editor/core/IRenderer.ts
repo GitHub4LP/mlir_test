@@ -36,10 +36,11 @@ export interface IRenderer {
 
   /**
    * 容器尺寸变化
-   * @param width - 新宽度（像素）
-   * @param height - 新高度（像素）
+   * 渲染器应从容器获取实际尺寸，参数为可选提示
+   * @param width - 新宽度（像素，可选）
+   * @param height - 新高度（像素，可选）
    */
-  resize(width: number, height: number): void;
+  resize(width?: number, height?: number): void;
 
   // ============================================================
   // 渲染
@@ -103,10 +104,10 @@ export abstract class BaseRenderer implements IRenderer {
     this.inputCallback = null;
   }
 
-  resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
-    this.onResize(width, height);
+  resize(width?: number, height?: number): void {
+    if (width !== undefined) this.width = width;
+    if (height !== undefined) this.height = height;
+    this.onResize(this.width, this.height);
   }
 
   onInput(callback: RawInputCallback): void {

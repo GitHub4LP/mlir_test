@@ -225,7 +225,10 @@ export class WebGLBackend implements IGPUBackend {
   }
 
   beginFrame(): void {
-    if (!this.gl) return;
+    if (!this.gl) {
+      console.warn('WebGLBackend.beginFrame: gl is null');
+      return;
+    }
     
     // 清除画布 - 深灰色背景，与 Canvas 方案一致
     this.gl.clearColor(0.03, 0.03, 0.05, 1.0); // #080810 近似
@@ -242,8 +245,11 @@ export class WebGLBackend implements IGPUBackend {
 
   renderNodes(batch: NodeBatch): void {
     if (!this.gl || !this.nodeProgram || !this.nodeVAO || batch.count === 0) {
+      console.log('WebGLBackend.renderNodes: skipping, count:', batch.count, 'gl:', !!this.gl, 'program:', !!this.nodeProgram, 'vao:', !!this.nodeVAO);
       return;
     }
+    
+    console.log('WebGLBackend.renderNodes: rendering', batch.count, 'nodes');
     
     const gl = this.gl;
     

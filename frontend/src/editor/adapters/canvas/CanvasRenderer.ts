@@ -8,6 +8,7 @@
  * - 完全自定义渲染，不依赖 DOM 节点
  * - 支持高 DPI 显示
  * - 需要 OverlayManager 来处理属性编辑器
+ * - 样式从 StyleSystem 统一获取
  */
 
 import type { IRenderer } from './IRenderer';
@@ -23,6 +24,7 @@ import type {
 } from './types';
 import type { RawInputCallback, MouseButton } from './input';
 import { createPointerInput, createWheelInput, createKeyInput, extractModifiers } from './input';
+import { StyleSystem } from '../../core/StyleSystem';
 
 /**
  * Canvas 2D 渲染后端
@@ -49,6 +51,9 @@ export class CanvasRenderer implements IRenderer {
 
   // 拖放回调
   private dropCallback: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
+
+  // UI 渲染回调（用于在图内容之上渲染 Canvas UI 组件）
+  private uiRenderCallback: ((ctx: CanvasRenderingContext2D) => void) | null = null;
 
   // IRenderer 接口实现
 
@@ -129,6 +134,15 @@ export class CanvasRenderer implements IRenderer {
     this.renderHint(ctx, data.hint);
     
     ctx.restore();
+    
+    // 渲染 UI 层（在视口变换之外，使用屏幕坐标）
+    if (this.uiRenderCallback) {
+      ctx.save();
+      ctx.scale(this.dpr, this.dpr);
+      this.uiRenderCallback(ctx);
+      ctx.restore();
+    }
+    
     this.viewport = { ...data.viewport };
   }
 
@@ -226,6 +240,13 @@ export class CanvasRenderer implements IRenderer {
    */
   setDropCallback(callback: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null): void {
     this.dropCallback = callback;
+  }
+
+  /**
+   * 设置 UI 渲染回调（用于在图内容之上渲染 Canvas UI 组件）
+   */
+  setUIRenderCallback(callback: ((ctx: CanvasRenderingContext2D) => void) | null): void {
+    this.uiRenderCallback = callback;
   }
 
   private handleDragOver(e: DragEvent): void {
@@ -337,23 +358,24 @@ export class CanvasRenderer implements IRenderer {
 
   private renderRect(ctx: CanvasRenderingContext2D, rect: RenderRect): void {
     ctx.save();
+    const nodeStyle = StyleSystem.getNodeStyle();
     
     if (rect.fillColor && rect.fillColor !== 'transparent') {
       ctx.fillStyle = rect.fillColor;
-      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? 0);
+      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
       ctx.fill();
     }
     
     if (rect.borderWidth && rect.borderWidth > 0 && rect.borderColor && rect.borderColor !== 'transparent') {
       ctx.strokeStyle = rect.borderColor;
       ctx.lineWidth = rect.borderWidth;
-      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? 0);
+      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
       ctx.stroke();
     }
     
     if (rect.selected) {
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = nodeStyle.selectedBorderColor;
+      ctx.lineWidth = nodeStyle.selectedBorderWidth;
       const selectionRadius = typeof rect.borderRadius === 'number' 
         ? (rect.borderRadius ?? 0) + 2 
         : {
@@ -371,11 +393,12 @@ export class CanvasRenderer implements IRenderer {
 
   private renderText(ctx: CanvasRenderingContext2D, text: RenderText): void {
     ctx.save();
+    const textStyle = StyleSystem.getTextStyle();
     // 启用高质量文字渲染
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? 'system-ui, sans-serif'}`;
-    ctx.fillStyle = text.color ?? '#ffffff';
+    ctx.font = `${text.fontSize ?? textStyle.labelFontSize}px ${text.fontFamily ?? textStyle.fontFamily}`;
+    ctx.fillStyle = text.color ?? textStyle.labelColor;
     ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
     ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
     ctx.fillText(text.text, text.x, text.y);

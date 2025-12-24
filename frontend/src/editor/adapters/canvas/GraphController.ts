@@ -32,6 +32,7 @@ import {
   EDGE_LAYOUT,
   type NodeLayout,
 } from './layout';
+import { StyleSystem } from '../../core/StyleSystem';
 
 // ============================================================
 // 控制器状态类型
@@ -178,6 +179,12 @@ export class GraphController {
   /** 删除选中元素回调 */
   onDeleteSelected: (() => void) | null = null;
 
+  /** 拖拽状态变化回调（用于渲染优化） */
+  onDragStateChange: ((isDragging: boolean) => void) | null = null;
+
+  /** 缩放状态变化回调（用于渲染优化） */
+  onZoomStateChange: ((isZooming: boolean) => void) | null = null;
+
   /** 选择变化回调 */
   onSelectionChange: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
 
@@ -189,6 +196,20 @@ export class GraphController {
 
   /** 拖放回调 */
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
+
+  /** 扩展命中测试回调（用于类型标签、按钮等交互区域）
+   * 返回 true 表示已处理，不再进行默认处理
+   */
+  onExtendedHitTest: ((screenX: number, screenY: number) => boolean) | null = null;
+
+  /** UI 事件预处理回调（用于 Canvas UI 组件优先处理事件）
+   * 返回 true 表示事件已被 UI 组件处理，不再进行默认处理
+   */
+  onPreMouseDown: ((screenX: number, screenY: number, button: number) => boolean) | null = null;
+  onPreMouseMove: ((screenX: number, screenY: number) => boolean) | null = null;
+  onPreMouseUp: ((screenX: number, screenY: number) => boolean) | null = null;
+  onPreWheel: ((screenX: number, screenY: number, deltaX: number, deltaY: number) => boolean) | null = null;
+  onPreKeyDown: ((key: string, code: string, ctrlKey: boolean, shiftKey: boolean, altKey: boolean) => boolean) | null = null;
 
   // 双击检测
   private lastClickTime: number = 0;
@@ -202,8 +223,8 @@ export class GraphController {
    * 设置渲染后端
    */
   setRenderer(renderer: IRenderer): void {
-    // 如果有旧后端，先卸载
-    if (this.renderer) {
+    // 如果有旧后端且不是同一个，先卸载
+    if (this.renderer && this.renderer !== renderer) {
       this.renderer.unmount();
     }
     
@@ -382,6 +403,17 @@ export class GraphController {
    * 注意：input.data.x/y 是屏幕坐标（相对于 canvas 左上角）
    */
   private handlePointerInput(data: import('./input').PointerInput): void {
+    // UI 事件预处理（Canvas UI 组件优先）
+    if (data.type === 'down' && this.onPreMouseDown?.(data.x, data.y, data.button)) {
+      return; // UI 组件已处理
+    }
+    if (data.type === 'move' && this.onPreMouseMove?.(data.x, data.y)) {
+      return; // UI 组件已处理
+    }
+    if (data.type === 'up' && this.onPreMouseUp?.(data.x, data.y)) {
+      return; // UI 组件已处理
+    }
+
     switch (this.state.kind) {
       case 'idle':
         this.handlePointerInIdle(data);
@@ -407,6 +439,12 @@ export class GraphController {
    */
   private handlePointerInIdle(data: import('./input').PointerInput): void {
     if (data.type !== 'down') return;
+
+    // 先尝试扩展命中测试（类型标签、按钮等）
+    // 只在左键点击时触发
+    if (data.button === 0 && this.onExtendedHitTest?.(data.x, data.y)) {
+      return; // 已处理，不再进行默认处理
+    }
 
     // 转换为世界坐标用于命中测试
     const worldPos = this.screenToCanvas(data.x, data.y);
@@ -474,6 +512,8 @@ export class GraphController {
               startY: worldPos.y,
               nodeStartPositions,
             };
+            // 通知拖拽开始
+            this.onDragStateChange?.(true);
           }
         }
         break;
@@ -510,6 +550,8 @@ export class GraphController {
             viewportStartX: this.viewport.x,
             viewportStartY: this.viewport.y,
           };
+          // 通知拖拽开始
+          this.onDragStateChange?.(true);
         }
         break;
     }
@@ -545,6 +587,8 @@ export class GraphController {
     } else if (data.type === 'up') {
       // 拖拽结束
       this.state = { kind: 'idle' };
+      // 通知拖拽结束
+      this.onDragStateChange?.(false);
     }
   }
 
@@ -567,6 +611,8 @@ export class GraphController {
       // 拖拽结束，通知视口变化
       this.onViewportChange?.(this.viewport);
       this.state = { kind: 'idle' };
+      // 通知拖拽结束
+      this.onDragStateChange?.(false);
     }
   }
 
@@ -659,15 +705,44 @@ export class GraphController {
    * data.x/y 是屏幕坐标
    */
   private handleWheelInput(data: import('./input').WheelInput): void {
+    // UI 事件预处理
+    if (this.onPreWheel?.(data.x, data.y, data.deltaX, data.deltaY)) {
+      return; // UI 组件已处理
+    }
+
+    // 通知缩放开始
+    this.onZoomStateChange?.(true);
+    
     // 滚轮缩放，以鼠标位置为中心（屏幕坐标）
     const factor = data.deltaY > 0 ? 0.9 : 1.1;
     this.zoomViewportAtScreen(factor, data.x, data.y);
+    
+    // 延迟通知缩放结束（避免频繁触发）
+    this.scheduleZoomEnd();
+  }
+
+  // 缩放结束定时器
+  private zoomEndTimer: number | null = null;
+
+  private scheduleZoomEnd(): void {
+    if (this.zoomEndTimer !== null) {
+      clearTimeout(this.zoomEndTimer);
+    }
+    this.zoomEndTimer = window.setTimeout(() => {
+      this.onZoomStateChange?.(false);
+      this.zoomEndTimer = null;
+    }, 150);
   }
 
   /**
    * 处理键盘输入
    */
   private handleKeyInput(data: import('./input').KeyInput): void {
+    // UI 事件预处理
+    if (data.type === 'down' && this.onPreKeyDown?.(data.key, data.code, data.modifiers.ctrl, data.modifiers.shift, data.modifiers.alt)) {
+      return; // UI 组件已处理
+    }
+
     if (data.type !== 'down') return;
 
     switch (data.key) {
@@ -932,6 +1007,9 @@ export class GraphController {
       return createEmptyRenderData();
     }
 
+    // 从 StyleSystem 获取样式，确保与 ReactFlow/VueFlow 一致
+    const textStyle = StyleSystem.getTextStyle();
+
     const rects: RenderRect[] = [];
     const texts: RenderText[] = [];
     const paths: RenderPath[] = [];
@@ -993,9 +1071,9 @@ export class GraphController {
             text: layout.title,
             x: layout.x + NODE_LAYOUT.PADDING,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: 14,
-            fontFamily: 'system-ui, sans-serif',
-            color: '#ffffff',
+            fontSize: textStyle.titleFontSize,
+            fontFamily: textStyle.fontFamily,
+            color: textStyle.titleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1006,9 +1084,9 @@ export class GraphController {
             text: layout.subtitle, // 不 uppercase
             x: layout.x + NODE_LAYOUT.PADDING + titleWidth + 4,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: 12,
-            fontFamily: 'system-ui, sans-serif',
-            color: 'rgba(255,255,255,0.7)',
+            fontSize: textStyle.subtitleFontSize,
+            fontFamily: textStyle.fontFamily,
+            color: textStyle.subtitleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1019,9 +1097,9 @@ export class GraphController {
             text: layout.subtitle.toUpperCase(),
             x: layout.x + NODE_LAYOUT.PADDING,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: 12,
-            fontFamily: 'system-ui, sans-serif',
-            color: 'rgba(255,255,255,0.7)',
+            fontSize: textStyle.subtitleFontSize,
+            fontFamily: textStyle.fontFamily,
+            color: textStyle.subtitleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1032,9 +1110,9 @@ export class GraphController {
             text: layout.title,
             x: layout.x + NODE_LAYOUT.PADDING + subtitleWidth + 4,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: 14,
-            fontFamily: 'system-ui, sans-serif',
-            color: '#ffffff',
+            fontSize: textStyle.titleFontSize,
+            fontFamily: textStyle.fontFamily,
+            color: textStyle.titleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1046,57 +1124,96 @@ export class GraphController {
           text: layout.title,
           x: layout.x + NODE_LAYOUT.PADDING,
           y: layout.y + layout.headerHeight / 2,
-          fontSize: 14,
-          fontFamily: 'system-ui, sans-serif',
-          color: '#ffffff',
+          fontSize: textStyle.titleFontSize,
+          fontFamily: textStyle.fontFamily,
+          color: textStyle.titleColor,
           align: 'left',
           baseline: 'middle',
         });
       }
 
       // 生成端口圆形/三角形和标签
+      // 与 ReactFlow NodePins 布局一致：
+      // - 数据端口：label 和 TypeSelector 垂直堆叠（flex-col），整体居中于端口
+      // - 执行端口：只有 label，居中于端口
+      const typeLabelStyle = StyleSystem.getTypeLabelStyle();
+      const labelOffsetX = typeLabelStyle.offsetFromHandle;
+      
+      // ReactFlow 布局参数
+      const labelFontSize = textStyle.labelFontSize; // 12px
+      const typeSelectorHeight = typeLabelStyle.height; // 16px
+      const verticalGap = 2; // label 和 TypeSelector 之间的间距
+      const totalHeight = labelFontSize + verticalGap + typeSelectorHeight; // 约 30px
+      
       for (const handle of layout.handles) {
+        const handleX = layout.x + handle.x;
+        const handleY = layout.y + handle.y;
+        
         if (handle.kind === 'exec') {
           // 执行引脚使用三角形，统一向右
           triangles.push({
             id: `handle-${node.id}-${handle.handleId}`,
-            x: layout.x + handle.x,
-            y: layout.y + handle.y,
+            x: handleX,
+            y: handleY,
             size: NODE_LAYOUT.HANDLE_RADIUS * 1.5,
             fillColor: '#ffffff',
             borderColor: '#ffffff',
             borderWidth: 0,
             direction: 'right',
           });
+          
+          // 执行端口标签：居中于端口
+          if (handle.label) {
+            const labelX = handle.isOutput 
+              ? handleX - labelOffsetX
+              : handleX + labelOffsetX;
+            texts.push({
+              id: `handle-label-${node.id}-${handle.handleId}`,
+              text: handle.label,
+              x: labelX,
+              y: handleY,
+              fontSize: textStyle.labelFontSize,
+              fontFamily: textStyle.fontFamily,
+              color: textStyle.labelColor,
+              align: handle.isOutput ? 'right' : 'left',
+              baseline: 'middle',
+            });
+          }
         } else {
           // 数据引脚使用圆形
           circles.push({
             id: `handle-${node.id}-${handle.handleId}`,
-            x: layout.x + handle.x,
-            y: layout.y + handle.y,
+            x: handleX,
+            y: handleY,
             radius: NODE_LAYOUT.HANDLE_RADIUS,
             fillColor: handle.color,
             borderColor: handle.color,
             borderWidth: 1,
           });
-        }
-        
-        // 端口标签
-        if (handle.label) {
-          const labelX = handle.isOutput 
-            ? layout.x + handle.x - NODE_LAYOUT.HANDLE_RADIUS - 4
-            : layout.x + handle.x + NODE_LAYOUT.HANDLE_RADIUS + 4;
-          texts.push({
-            id: `handle-label-${node.id}-${handle.handleId}`,
-            text: handle.label,
-            x: labelX,
-            y: layout.y + handle.y,
-            fontSize: 10,
-            fontFamily: 'system-ui, sans-serif',
-            color: '#cccccc',
-            align: handle.isOutput ? 'right' : 'left',
-            baseline: 'middle',
-          });
+          
+          // 数据端口标签：label 在上，TypeSelector 在下，整体垂直居中于端口
+          if (handle.label) {
+            // 计算垂直居中的起始 Y（label 顶部）
+            const startY = handleY - totalHeight / 2;
+            // label Y 坐标（label 中心）
+            const labelY = startY + labelFontSize / 2;
+            
+            const labelX = handle.isOutput 
+              ? handleX - labelOffsetX
+              : handleX + labelOffsetX;
+            
+            texts.push({
+              id: `handle-label-${node.id}-${handle.handleId}`,
+              text: handle.label,
+              x: labelX,
+              y: labelY,
+              fontSize: textStyle.labelFontSize,
+              fontFamily: textStyle.fontFamily,
+              color: textStyle.labelColor,
+              align: handle.isOutput ? 'right' : 'left',
+              baseline: 'middle',
+            });
+          }
         }
       }
 

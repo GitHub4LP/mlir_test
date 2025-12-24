@@ -128,6 +128,20 @@ export interface INodeEditor {
   /** Traits 变更回调 */
   onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null;
   
+  /** 类型标签点击回调（用于显示类型选择器） */
+  onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null;
+  
+  /** 
+   * 节点数据变更回调（通用）
+   * 
+   * 当节点的 data 发生变化时触发（类型选择、属性编辑、variadic 等）。
+   * 这是一个通用回调，用于同步 ReactFlow/VueFlow 内部状态到 editorStore。
+   * 
+   * @param nodeId - 节点 ID
+   * @param data - 变更后的完整节点数据
+   */
+  onNodeDataChange: ((nodeId: string, data: Record<string, unknown>) => void) | null;
+  
   // ============================================================
   // 元信息
   // ============================================================
@@ -161,6 +175,8 @@ export function createEmptyCallbacks(): Pick<
   | 'onReturnTypeRemove'
   | 'onReturnTypeRename'
   | 'onTraitsChange'
+  | 'onTypeLabelClick'
+  | 'onNodeDataChange'
 > {
   return {
     onNodesChange: null,
@@ -182,5 +198,7 @@ export function createEmptyCallbacks(): Pick<
     onReturnTypeRemove: null,
     onReturnTypeRename: null,
     onTraitsChange: null,
+    onTypeLabelClick: null,
+    onNodeDataChange: null,
   };
 }

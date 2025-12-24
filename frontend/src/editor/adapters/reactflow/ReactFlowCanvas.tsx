@@ -255,44 +255,44 @@ function ReactFlowCanvasInner({
 
   return (
     <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={handleNodesChange}
-      onEdgesChange={handleEdgesChange}
-      onConnect={handleConnect}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onEdgeDoubleClick={handleEdgeDoubleClick}
-      onNodeDoubleClick={handleNodeDoubleClick}
-      onMoveEnd={handleMoveEnd}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      defaultEdgeOptions={{
-        type: 'data',
-      }}
-      selectionOnDrag
-      panOnDrag={[2]}
-      selectionMode={SelectionMode.Partial}
-      selectNodesOnDrag={false}
-      edgesReconnectable
-      minZoom={0.1}
-      maxZoom={2}
-      defaultViewport={initialViewport ?? { x: 0, y: 0, zoom: 0.8 }}
-      colorMode="dark"
-    >
-      <Background color="#444" gap={16} />
-      <Controls />
-      <MiniMap
-        nodeColor={(node) => {
-          switch (node.type) {
-            case 'function-entry': return '#22c55e';
-            case 'function-return': return '#ef4444';
-            case 'function-call': return '#a855f7';
-            default: return '#3b82f6';
-          }
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={handleEdgesChange}
+        onConnect={handleConnect}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onEdgeDoubleClick={handleEdgeDoubleClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
+        onMoveEnd={handleMoveEnd}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={{
+          type: 'data',
         }}
-      />
-    </ReactFlow>
+        selectionOnDrag
+        panOnDrag={[2]}
+        selectionMode={SelectionMode.Partial}
+        selectNodesOnDrag={false}
+        edgesReconnectable
+        minZoom={0.1}
+        maxZoom={2}
+        defaultViewport={initialViewport ?? { x: 0, y: 0, zoom: 0.8 }}
+        colorMode="dark"
+      >
+        <Background color="#444" gap={16} />
+        <Controls />
+        <MiniMap
+          nodeColor={(node) => {
+            switch (node.type) {
+              case 'function-entry': return '#22c55e';
+              case 'function-return': return '#ef4444';
+              case 'function-call': return '#a855f7';
+              default: return '#3b82f6';
+            }
+          }}
+        />
+      </ReactFlow>
   );
 }
 
@@ -315,7 +315,11 @@ export function ReactFlowCanvas({ onReady, ...restProps }: ReactFlowCanvasProps)
   
   return (
     <ReactFlowProvider>
-      <ReactFlowCanvasInner {...restProps} onReady={onReady} onHandle={handleHandle} />
+      <ReactFlowCanvasInner 
+        {...restProps} 
+        onReady={onReady} 
+        onHandle={handleHandle}
+      />
     </ReactFlowProvider>
   );
 }

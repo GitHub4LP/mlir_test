@@ -61,6 +61,9 @@ export class ReactFlowNodeEditor implements INodeEditor {
   onReturnTypeRemove: ((functionId: string, returnName: string) => void) | null = null;
   onReturnTypeRename: ((functionId: string, oldName: string, newName: string) => void) | null = null;
   onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null = null;
+  onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null = null;
+  // onNodeDataChange 已废弃：节点组件现在直接更新 editorStore
+  onNodeDataChange: ((nodeId: string, data: Record<string, unknown>) => void) | null = null;
   
   constructor() {
     // 初始化空回调

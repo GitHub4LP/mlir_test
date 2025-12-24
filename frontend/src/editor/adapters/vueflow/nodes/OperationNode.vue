@@ -39,6 +39,7 @@ import {
   EXEC_COLOR,
 } from './nodeStyles';
 import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
+import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
 
 interface OperandDef {
   name: string;
@@ -86,8 +87,11 @@ const props = defineProps<{
   selected?: boolean;
 }>();
 
-// Vue Flow 实例
-const { updateNodeData, getNodes, getEdges } = useVueFlow();
+// Vue Flow 实例（仅用于获取节点/边信息，不用于更新数据）
+const { getNodes, getEdges } = useVueFlow();
+
+// 直接更新 editorStore（数据一份，订阅更新）
+const { updateNodeData } = useEditorStoreUpdate(props.id);
 
 // 使用 Vue Store Adapter 订阅 projectStore
 const currentFunction = useVueStore(
@@ -294,28 +298,36 @@ function toDataPin(pin: typeof inputPins.value[0]): DataPin {
   };
 }
 
-// 类型选择处理
+// 类型选择处理 - 直接更新 editorStore
 function handleTypeSelect(pinId: string, type: string) {
-  const newPinnedTypes = { ...pinnedTypes.value, [pinId]: type };
-  updateNodeData(props.id, { pinnedTypes: newPinnedTypes });
+  updateNodeData(data => ({
+    ...data,
+    pinnedTypes: { ...(data.pinnedTypes as Record<string, string> || {}), [pinId]: type },
+  }));
 }
 
-// 属性变更处理
+// 属性变更处理 - 直接更新 editorStore
 function handleAttributeChange(name: string, value: unknown) {
-  const newAttributes = { ...attributeValues.value, [name]: value };
-  updateNodeData(props.id, { attributes: newAttributes });
+  updateNodeData(data => ({
+    ...data,
+    attributes: { ...(data.attributes as Record<string, unknown> || {}), [name]: value },
+  }));
 }
 
-// Variadic 端口添加（使用公用服务）
+// Variadic 端口添加 - 直接更新 editorStore
 function handleVariadicAdd(groupName: string) {
-  const newCounts = incrementVariadicCount(variadicCounts.value, groupName);
-  updateNodeData(props.id, { variadicCounts: newCounts });
+  updateNodeData(data => ({
+    ...data,
+    variadicCounts: incrementVariadicCount((data.variadicCounts as Record<string, number>) || {}, groupName),
+  }));
 }
 
-// Variadic 端口删除（使用公用服务）
+// Variadic 端口删除 - 直接更新 editorStore
 function handleVariadicRemove(groupName: string) {
-  const newCounts = decrementVariadicCount(variadicCounts.value, groupName, 0);
-  updateNodeData(props.id, { variadicCounts: newCounts });
+  updateNodeData(data => ({
+    ...data,
+    variadicCounts: decrementVariadicCount((data.variadicCounts as Record<string, number>) || {}, groupName, 0),
+  }));
 }
 
 // 收集 variadic 组信息

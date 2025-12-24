@@ -3,6 +3,8 @@
  * 
  * 类似 ReactFlowEditorWrapper，提供 React 组件接口。
  * 内部使用 CanvasNodeEditor 实现 INodeEditor 接口。
+ * 
+ * 使用原生 Canvas UI 组件（TypeSelector 等），不使用 DOM overlay。
  */
 
 import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
@@ -18,33 +20,26 @@ import type {
 } from '../types';
 import { PerformanceOverlay } from '../../components/PerformanceOverlay';
 import { useRendererStore } from '../../stores/rendererStore';
+import { getPortTypeInfo } from './shared/PortTypeInfo';
+import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
+import { computeTypeSelectorData, computeTypeGroups } from '../../services/typeSelectorService';
+import type { TypeOption } from './canvas/ui/TypeSelector';
 
 /** Canvas 编辑器包装组件 Props */
 export interface CanvasEditorWrapperProps {
-  /** 初始节点 */
   nodes: EditorNode[];
-  /** 初始边 */
   edges: EditorEdge[];
-  /** 默认视口 */
   defaultViewport?: EditorViewport;
-  /** 节点变更回调 */
   onNodesChange?: (changes: NodeChange[]) => void;
-  /** 边变更回调 */
   onEdgesChange?: (changes: EdgeChange[]) => void;
-  /** 选择变更回调 */
   onSelectionChange?: (selection: EditorSelection) => void;
-  /** 视口变更回调 */
   onViewportChange?: (viewport: EditorViewport) => void;
-  /** 连接请求回调 */
   onConnect?: (request: ConnectionRequest) => void;
-  /** 节点双击回调 */
   onNodeDoubleClick?: (nodeId: string) => void;
-  /** 边双击回调 */
   onEdgeDoubleClick?: (edgeId: string) => void;
-  /** 拖放回调 */
   onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void;
-  /** 删除请求回调 */
   onDeleteRequest?: (nodeIds: string[], edgeIds: string[]) => void;
+  onTypeSelect?: (nodeId: string, handleId: string, type: string) => void;
 }
 
 /** Canvas 编辑器命令式 API */
@@ -76,6 +71,7 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
       onEdgeDoubleClick,
       onDrop,
       onDeleteRequest,
+      onTypeSelect,
     } = props;
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -93,7 +89,14 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
       onEdgeDoubleClick,
       onDrop,
       onDeleteRequest,
+      onTypeSelect,
     });
+    
+    // 用 ref 存储 nodes，供类型选择器回调使用
+    const nodesRef = useRef(nodes);
+    useEffect(() => {
+      nodesRef.current = nodes;
+    }, [nodes]);
     
     // 更新回调 ref
     useEffect(() => {
@@ -107,8 +110,9 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
         onEdgeDoubleClick,
         onDrop,
         onDeleteRequest,
+        onTypeSelect,
       };
-    }, [onNodesChange, onEdgesChange, onSelectionChange, onViewportChange, onConnect, onNodeDoubleClick, onEdgeDoubleClick, onDrop, onDeleteRequest]);
+    }, [onNodesChange, onEdgesChange, onSelectionChange, onViewportChange, onConnect, onNodeDoubleClick, onEdgeDoubleClick, onDrop, onDeleteRequest, onTypeSelect]);
 
     const showPerformanceOverlay = useRendererStore(state => state.showPerformanceOverlay);
     const togglePerformanceOverlay = useRendererStore(state => state.togglePerformanceOverlay);
@@ -121,16 +125,74 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
       editorRef.current = editor;
       initializedRef.current = true;
       
-      // 设置回调（使用 ref 包装）
+      // 设置回调
       editor.onNodesChange = (changes) => callbacksRef.current.onNodesChange?.(changes);
       editor.onEdgesChange = (changes) => callbacksRef.current.onEdgesChange?.(changes);
       editor.onSelectionChange = (selection) => callbacksRef.current.onSelectionChange?.(selection);
-      editor.onViewportChange = (viewport) => callbacksRef.current.onViewportChange?.(viewport);
+      editor.onViewportChange = (viewport) => {
+        callbacksRef.current.onViewportChange?.(viewport);
+      };
       editor.onConnect = (request) => callbacksRef.current.onConnect?.(request);
       editor.onNodeDoubleClick = (nodeId) => callbacksRef.current.onNodeDoubleClick?.(nodeId);
       editor.onEdgeDoubleClick = (edgeId) => callbacksRef.current.onEdgeDoubleClick?.(edgeId);
       editor.onDrop = (x, y, dataTransfer) => callbacksRef.current.onDrop?.(x, y, dataTransfer);
       editor.onDeleteRequest = (nodeIds, edgeIds) => callbacksRef.current.onDeleteRequest?.(nodeIds, edgeIds);
+      
+      // 类型标签点击回调 - 使用原生 Canvas TypeSelector
+      editor.onTypeLabelClick = (nodeId, handleId, canvasX, canvasY) => {
+        const typeInfo = getPortTypeInfo(nodesRef.current, nodeId, handleId);
+        if (!typeInfo) return;
+        
+        // 获取类型约束 store 数据
+        const state = useTypeConstraintStore.getState();
+        const { buildableTypes, constraintDefs, getConstraintElements, isShapedConstraint, getAllowedContainers } = state;
+        
+        // 计算类型选项
+        const selectorData = computeTypeSelectorData({
+          constraint: typeInfo.constraint,
+          allowedTypes: typeInfo.allowedTypes,
+          buildableTypes,
+          constraintDefs,
+          getConstraintElements,
+          isShapedConstraint,
+          getAllowedContainers,
+        });
+        
+        // 计算类型分组
+        const typeGroups = computeTypeGroups(
+          selectorData,
+          { searchText: '', showConstraints: true, showTypes: true, useRegex: false },
+          typeInfo.constraint,
+          buildableTypes,
+          constraintDefs,
+          getConstraintElements
+        );
+        
+        // 转换为 TypeOption 格式
+        const options: TypeOption[] = [];
+        for (const group of typeGroups) {
+          for (const item of group.items) {
+            options.push({
+              name: item,
+              label: item,
+              group: group.label,
+            });
+          }
+        }
+        
+        // 转换画布坐标到屏幕坐标
+        const viewport = editor.getViewport();
+        const screenX = canvasX * viewport.zoom + viewport.x;
+        const screenY = canvasY * viewport.zoom + viewport.y;
+        
+        // 显示原生 Canvas TypeSelector
+        editor.showTypeSelector(nodeId, handleId, screenX, screenY, options, typeInfo.currentType);
+      };
+      
+      // 设置类型选择回调
+      editor.setTypeSelectCallback((nodeId, handleId, type) => {
+        callbacksRef.current.onTypeSelect?.(nodeId, handleId, type);
+      });
       
       editor.mount(containerRef.current);
       
@@ -145,7 +207,7 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
         initializedRef.current = false;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 注意：不依赖 defaultViewport，只在初始化时使用
+    }, []);
 
     // 同步 nodes
     useEffect(() => {
@@ -157,11 +219,10 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
       editorRef.current?.setEdges(edges);
     }, [edges]);
 
-    // 同步外部视口变化（从 store 来的）
+    // 同步外部视口变化
     useEffect(() => {
       if (defaultViewport && editorRef.current) {
         const current = editorRef.current.getViewport();
-        // 只有当视口确实不同时才更新，避免循环
         if (Math.abs(current.x - defaultViewport.x) > 0.1 ||
             Math.abs(current.y - defaultViewport.y) > 0.1 ||
             Math.abs(current.zoom - defaultViewport.zoom) > 0.001) {
@@ -191,8 +252,7 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
         <div ref={containerRef} className="w-full h-full" />
         
         {/* 工具栏 */}
-        <div className="absolute top-2 right-2 flex items-center gap-2">
-          {/* 性能监控开关 */}
+        <div className="absolute top-2 right-2 flex items-center gap-2 pointer-events-auto">
           <button
             onClick={togglePerformanceOverlay}
             className={`text-xs px-2 py-1 rounded border transition-colors ${
@@ -204,7 +264,6 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
           >
             📊
           </button>
-          {/* 适应视口 */}
           <button
             onClick={handleFitView}
             className="text-xs px-2 py-1 rounded border bg-gray-800/80 border-gray-600 text-gray-400 hover:text-white transition-colors"
@@ -218,8 +277,8 @@ export const CanvasEditorWrapper = forwardRef<CanvasEditorHandle, CanvasEditorWr
         {showPerformanceOverlay && <PerformanceOverlay />}
         
         {/* 提示信息 */}
-        <div className="absolute bottom-2 left-2 text-xs text-gray-500 bg-gray-900/50 px-2 py-1 rounded">
-          Canvas 2D • Scroll to zoom • Middle-drag to pan • Drag nodes to move
+        <div className="absolute bottom-2 left-2 text-xs text-gray-500 bg-gray-900/50 px-2 py-1 rounded pointer-events-none">
+          Canvas 2D • Scroll to zoom • Middle-drag to pan • Click type labels to select
         </div>
       </div>
     );

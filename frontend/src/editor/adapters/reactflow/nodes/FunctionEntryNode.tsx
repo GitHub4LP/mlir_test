@@ -5,7 +5,7 @@
  */
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
-import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionEntryData, FunctionTrait } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
 import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
@@ -19,6 +19,7 @@ import { StyleSystem } from '../../../core/StyleSystem';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { generateParameterName } from '../../../../services/parameterService';
 import { buildEntryDataPins } from '../../../../services/pinUtils';
+import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
@@ -27,7 +28,10 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const { functionId, functionName, execOut, isMain, pinnedTypes = {}, outputTypes = {} } = data;
   const edges = useEdges();
   const nodes = useNodes();
-  const { setNodes } = useReactFlow();
+  
+  // 直接更新 editorStore（数据一份，订阅更新）
+  const { updateNodeData } = useEditorStoreUpdate<FunctionEntryData>(id);
+  
   const addParameter = useReactStore(projectStore, state => state.addParameter);
   const removeParameter = useReactStore(projectStore, state => state.removeParameter);
   const updateParameter = useReactStore(projectStore, state => state.updateParameter);
@@ -63,7 +67,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     if (param) updateParameter(functionId, oldName, { ...param, name: newName });
   }, [functionId, updateParameter, getCurrentFunction]);
 
-  // Sync FunctionDef.parameters to React Flow node data.outputs
+  // Sync FunctionDef.parameters to editorStore node data.outputs
   useEffect(() => {
     if (isMain) return;
     
@@ -79,11 +83,9 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     const newNames = newOutputs.map(o => o.name).join(',');
     
     if (currentNames !== newNames) {
-      setNodes(ns => ns.map(n => 
-        n.id === id ? { ...n, data: { ...n.data, outputs: newOutputs } } : n
-      ));
+      updateNodeData(nodeData => ({ ...nodeData, outputs: newOutputs }));
     }
-  }, [id, isMain, parameters, data.outputs, setNodes]);
+  }, [id, isMain, parameters, data.outputs, updateNodeData]);
 
   // Build DataPin list from FunctionDef.parameters (使用公用服务)
   const dataPins = useMemo(() => {

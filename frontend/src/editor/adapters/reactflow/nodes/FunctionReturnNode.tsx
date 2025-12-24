@@ -5,7 +5,7 @@
  */
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
-import { Handle, Position, type NodeProps, type Node, useEdges, useNodes, useReactFlow } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { FunctionReturnData } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
 import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
@@ -18,6 +18,7 @@ import { StyleSystem } from '../../../core/StyleSystem';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { generateReturnTypeName } from '../../../../services/parameterService';
 import { buildReturnDataPins } from '../../../../services/pinUtils';
+import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
@@ -26,7 +27,10 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const { branchName, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
   const edges = useEdges();
   const nodes = useNodes();
-  const { setNodes } = useReactFlow();
+  
+  // 直接更新 editorStore（数据一份，订阅更新）
+  const { updateNodeData } = useEditorStoreUpdate<FunctionReturnData>(id);
+  
   const addReturnType = useReactStore(projectStore, state => state.addReturnType);
   const removeReturnType = useReactStore(projectStore, state => state.removeReturnType);
   const updateReturnType = useReactStore(projectStore, state => state.updateReturnType);
@@ -55,7 +59,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     if (ret && functionId) updateReturnType(functionId, oldName, { ...ret, name: newName });
   }, [functionId, updateReturnType, getFunctionById]);
 
-  // Sync FunctionDef.returnTypes to React Flow node data.inputs
+  // Sync FunctionDef.returnTypes to editorStore node data.inputs
   useEffect(() => {
     if (isMain) return;
     
@@ -73,11 +77,9 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     const newNames = newInputs.map(i => i.name).join(',');
     
     if (currentNames !== newNames) {
-      setNodes(ns => ns.map(n => 
-        n.id === id ? { ...n, data: { ...n.data, inputs: newInputs } } : n
-      ));
+      updateNodeData(nodeData => ({ ...nodeData, inputs: newInputs }));
     }
-  }, [id, isMain, currentFunction?.returnTypes, data.inputs, setNodes]);
+  }, [id, isMain, currentFunction?.returnTypes, data.inputs, updateNodeData]);
 
   // Build DataPin list from FunctionDef.returnTypes (使用公用服务)
   const dataPins = useMemo(() => {

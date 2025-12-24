@@ -3,6 +3,10 @@
  * 
  * 实现 IRenderer 接口，内部管理 WebGL/WebGPU 后端。
  * 自动选择最佳后端：WebGPU 优先，WebGL 2.0 降级。
+ * 
+ * 支持两种文字渲染模式：
+ * - GPU 模式：文字通过纹理图集在 GPU 渲染
+ * - Canvas 模式：文字通过 Canvas 2D 渲染（混合模式）
  */
 
 import type { IRenderer } from '../canvas/IRenderer';
@@ -19,6 +23,15 @@ import { CircleBatchManager } from './geometry/CircleBatch';
 import { TriangleBatchManager } from './geometry/TriangleBatch';
 import { TextBatchManager } from './geometry/TextBatch';
 
+/** 渲染模式（GPU 或 Canvas 2D） */
+export type RenderMode = 'gpu' | 'canvas';
+
+/** 文字渲染模式 */
+export type TextRenderMode = RenderMode;
+
+/** 边渲染模式 */
+export type EdgeRenderMode = RenderMode;
+
 /**
  * GPU 渲染器 - 直接实现 IRenderer，不继承 BaseRenderer
  */
@@ -26,6 +39,10 @@ export class GPURenderer implements IRenderer {
   private container: HTMLElement | null = null;
   private backend: IGPUBackend | null = null;
   private canvas: HTMLCanvasElement | null = null;
+  private uiCanvas: HTMLCanvasElement | null = null;  // UI 层 Canvas
+  private uiCtx: CanvasRenderingContext2D | null = null;
+  private textCanvas: HTMLCanvasElement | null = null;  // 文字层 Canvas（混合模式）
+  private textCtx: CanvasRenderingContext2D | null = null;
   private canvasId: string = '';  // Canvas 唯一标识，用于 unmount 时识别
   private preferWebGPU: boolean = true;
   private _viewport: Viewport = { x: 0, y: 0, zoom: 1 };
@@ -34,12 +51,21 @@ export class GPURenderer implements IRenderer {
   private dpr: number = 1;
   private inputCallback: RawInputCallback | null = null;
   
+  // 文字渲染模式
+  private textRenderMode: TextRenderMode = 'gpu';
+  
+  // 边渲染模式
+  private edgeRenderMode: EdgeRenderMode = 'gpu';
+  
   // 批次管理器
   private nodeBatch: NodeBatchManager = new NodeBatchManager();
   private edgeBatch: EdgeBatchManager = new EdgeBatchManager();
   private circleBatch: CircleBatchManager = new CircleBatchManager();
   private triangleBatch: TriangleBatchManager = new TriangleBatchManager();
   private textBatch: TextBatchManager = new TextBatchManager();
+  
+  // 缓存的渲染数据（用于模式切换后重新渲染）
+  private lastRenderData: RenderData | null = null;
   
   // 事件处理器引用
   private boundHandlePointerDown: ((e: PointerEvent) => void) | null = null;
@@ -48,6 +74,14 @@ export class GPURenderer implements IRenderer {
   private boundHandleWheel: ((e: WheelEvent) => void) | null = null;
   private boundHandleKeyDown: ((e: KeyboardEvent) => void) | null = null;
   private boundHandleKeyUp: ((e: KeyboardEvent) => void) | null = null;
+  private boundHandleDragOver: ((e: DragEvent) => void) | null = null;
+  private boundHandleDrop: ((e: DragEvent) => void) | null = null;
+
+  // 拖放回调
+  private dropCallback: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
+  
+  // UI 渲染回调
+  private uiRenderCallback: ((ctx: CanvasRenderingContext2D) => void) | null = null;
 
   // 就绪状态
   private ready: boolean = false;
@@ -63,7 +97,58 @@ export class GPURenderer implements IRenderer {
 
   getName(): string {
     const backendName = this.backend?.name ?? 'GPU';
-    return backendName === 'webgpu' ? 'WebGPU' : 'WebGL';
+    const textMode = this.textRenderMode === 'canvas' ? '+Canvas文字' : '';
+    return (backendName === 'webgpu' ? 'WebGPU' : 'WebGL') + textMode;
+  }
+
+  /**
+   * 获取当前文字渲染模式
+   */
+  getTextRenderMode(): TextRenderMode {
+    return this.textRenderMode;
+  }
+
+  /**
+   * 设置文字渲染模式
+   */
+  setTextRenderMode(mode: TextRenderMode): void {
+    if (this.textRenderMode === mode) return;
+    this.textRenderMode = mode;
+    
+    // 更新文字层 Canvas 可见性
+    if (this.textCanvas) {
+      this.textCanvas.style.display = (mode === 'canvas' || this.edgeRenderMode === 'canvas') ? 'block' : 'none';
+    }
+    
+    // 重新渲染
+    if (this.lastRenderData) {
+      this.render(this.lastRenderData);
+    }
+  }
+
+  /**
+   * 获取当前边渲染模式
+   */
+  getEdgeRenderMode(): EdgeRenderMode {
+    return this.edgeRenderMode;
+  }
+
+  /**
+   * 设置边渲染模式
+   */
+  setEdgeRenderMode(mode: EdgeRenderMode): void {
+    if (this.edgeRenderMode === mode) return;
+    this.edgeRenderMode = mode;
+    
+    // 更新 Canvas 可见性（边和文字共用 textCanvas）
+    if (this.textCanvas) {
+      this.textCanvas.style.display = (mode === 'canvas' || this.textRenderMode === 'canvas') ? 'block' : 'none';
+    }
+    
+    // 重新渲染
+    if (this.lastRenderData) {
+      this.render(this.lastRenderData);
+    }
   }
 
   isAvailable(): boolean {
@@ -95,15 +180,50 @@ export class GPURenderer implements IRenderer {
     // 生成唯一 ID
     this.canvasId = `gpu-canvas-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     
-    // 同步创建 canvas
+    // 同步创建 GPU canvas
     this.canvas = document.createElement('canvas');
     this.canvas.id = this.canvasId;
     this.canvas.style.width = '100%';
     this.canvas.style.height = '100%';
     this.canvas.style.display = 'block';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.zIndex = '1';  // 底层
+    container.appendChild(this.canvas);
+    
+    // 创建文字层 Canvas（混合模式时使用）
+    this.textCanvas = document.createElement('canvas');
+    this.textCanvas.id = `${this.canvasId}-text`;
+    this.textCanvas.style.width = '100%';
+    this.textCanvas.style.height = '100%';
+    this.textCanvas.style.display = this.textRenderMode === 'canvas' ? 'block' : 'none';
+    this.textCanvas.style.position = 'absolute';
+    this.textCanvas.style.top = '0';
+    this.textCanvas.style.left = '0';
+    this.textCanvas.style.pointerEvents = 'none';
+    this.textCanvas.style.zIndex = '2';  // 在 GPU canvas 之上
+    container.appendChild(this.textCanvas);
+    this.textCtx = this.textCanvas.getContext('2d');
+    
+    // 创建 UI Canvas 层（叠加在 GPU canvas 上）
+    this.uiCanvas = document.createElement('canvas');
+    this.uiCanvas.id = `${this.canvasId}-ui`;
+    this.uiCanvas.style.width = '100%';
+    this.uiCanvas.style.height = '100%';
+    this.uiCanvas.style.display = 'block';
+    this.uiCanvas.style.position = 'absolute';
+    this.uiCanvas.style.top = '0';
+    this.uiCanvas.style.left = '0';
+    this.uiCanvas.style.pointerEvents = 'none';  // 事件穿透到 GPU canvas
+    this.uiCanvas.style.zIndex = '3';  // 在文字层之上
+    this.uiCanvas.tabIndex = -1;
+    container.appendChild(this.uiCanvas);
+    this.uiCtx = this.uiCanvas.getContext('2d');
+    
+    // GPU canvas 接收事件
     this.canvas.tabIndex = 0;
     this.canvas.style.outline = 'none';
-    container.appendChild(this.canvas);
     
     // 同步更新尺寸
     this.updateSize();
@@ -116,8 +236,10 @@ export class GPURenderer implements IRenderer {
       // 确保 backend 尺寸与 canvas 同步
       if (this.backend && this.canvas) {
         this.backend.resize(this.canvas.width, this.canvas.height);
+        console.log('GPURenderer: backend initialized, size:', this.canvas.width, 'x', this.canvas.height);
       }
       this.ready = true;
+      console.log('GPURenderer: ready, calling', this.readyCallbacks.length, 'callbacks');
       for (const cb of this.readyCallbacks) {
         cb();
       }
@@ -135,6 +257,20 @@ export class GPURenderer implements IRenderer {
       this.backend = null;
     }
     
+    // 删除 UI canvas
+    if (this.uiCanvas && this.uiCanvas.parentNode) {
+      this.uiCanvas.parentNode.removeChild(this.uiCanvas);
+    }
+    this.uiCanvas = null;
+    this.uiCtx = null;
+    
+    // 删除文字层 canvas
+    if (this.textCanvas && this.textCanvas.parentNode) {
+      this.textCanvas.parentNode.removeChild(this.textCanvas);
+    }
+    this.textCanvas = null;
+    this.textCtx = null;
+    
     // 只删除自己创建的 canvas（通过 ID 匹配）
     if (this.canvas && this.canvas.id === this.canvasId && this.canvas.parentNode) {
       this.canvas.parentNode.removeChild(this.canvas);
@@ -143,6 +279,7 @@ export class GPURenderer implements IRenderer {
     this.container = null;
     this.ready = false;
     this.readyCallbacks = [];
+    this.lastRenderData = null;
   }
 
   resize(width: number, height: number): void {
@@ -155,8 +292,28 @@ export class GPURenderer implements IRenderer {
     this.inputCallback = callback;
   }
 
+  /**
+   * 设置拖放回调
+   */
+  setDropCallback(callback: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null): void {
+    this.dropCallback = callback;
+  }
+
+  /**
+   * 设置 UI 渲染回调（用于在 GPU 渲染后绘制 UI 层）
+   */
+  setUIRenderCallback(callback: ((ctx: CanvasRenderingContext2D) => void) | null): void {
+    this.uiRenderCallback = callback;
+  }
+
   render(data: RenderData): void {
-    if (!this.backend) return;
+    if (!this.backend) {
+      console.warn('GPURenderer.render: backend is null, skipping render');
+      return;
+    }
+    
+    // 缓存渲染数据（用于模式切换后重新渲染）
+    this.lastRenderData = data;
     
     this.backend.beginFrame();
     
@@ -164,24 +321,27 @@ export class GPURenderer implements IRenderer {
     const matrix = this.createViewMatrix(data.viewport);
     this.backend.setViewTransform(matrix);
     
-    // 更新并渲染边（先渲染边，节点在上层）
-    this.edgeBatch.updateFromPaths(data.paths);
-    this.backend.renderEdges(this.edgeBatch.getBatch());
+    // 根据模式渲染边（先渲染边，节点在上层）
+    if (this.edgeRenderMode === 'gpu') {
+      this.edgeBatch.updateFromPaths(data.paths);
+      this.backend.renderEdges(this.edgeBatch.getBatch());
+    }
     
     // 更新并渲染节点
     this.nodeBatch.updateFromRects(data.rects);
     this.backend.renderNodes(this.nodeBatch.getBatch());
     
-    // 更新并渲染文字
-    this.textBatch.updateFromTexts(data.texts);
-    if (this.textBatch.needsTextureUpdate()) {
-      this.backend.updateTextTexture(this.textBatch.getAtlasCanvas());
-      this.textBatch.clearTextureUpdateFlag();
+    // 根据模式渲染文字
+    if (this.textRenderMode === 'gpu') {
+      // GPU 模式：通过纹理图集渲染
+      this.textBatch.updateFromTexts(data.texts);
+      if (this.textBatch.needsTextureUpdate()) {
+        this.backend.updateTextTexture(this.textBatch.getAtlasCanvas());
+        this.textBatch.clearTextureUpdateFlag();
+      }
+      this.backend.renderText(this.textBatch.getBatch());
     }
-    this.backend.renderText(this.textBatch.getBatch());
     
-    // 更新并渲染圆形（数据端口）
-    // 同时将三角形（执行引脚）临时转换为小圆形渲染
     // 更新并渲染圆形（数据端口）
     this.circleBatch.updateFromCircles(data.circles);
     this.backend.renderCircles(this.circleBatch.getBatch());
@@ -194,6 +354,104 @@ export class GPURenderer implements IRenderer {
     
     this.backend.endFrame();
     this._viewport = { ...data.viewport };
+    
+    // Canvas 模式渲染（边和文字共用 textCanvas）
+    const needCanvasRender = this.edgeRenderMode === 'canvas' || this.textRenderMode === 'canvas';
+    if (needCanvasRender && this.textCtx && this.textCanvas) {
+      this.renderToCanvas(data);
+    }
+    
+    // 渲染 UI 层
+    if (this.uiCtx && this.uiRenderCallback) {
+      this.uiCtx.clearRect(0, 0, this.uiCanvas!.width, this.uiCanvas!.height);
+      this.uiCtx.save();
+      this.uiCtx.scale(this.dpr, this.dpr);
+      this.uiRenderCallback(this.uiCtx);
+      this.uiCtx.restore();
+    }
+  }
+
+  /**
+   * 使用 Canvas 2D 渲染边和/或文字（混合模式）
+   */
+  private renderToCanvas(data: RenderData): void {
+    if (!this.textCtx || !this.textCanvas) return;
+    
+    const ctx = this.textCtx;
+    const viewport = data.viewport;
+    
+    ctx.clearRect(0, 0, this.textCanvas.width, this.textCanvas.height);
+    ctx.save();
+    
+    // 应用 DPR 和视口变换
+    ctx.scale(this.dpr, this.dpr);
+    ctx.translate(viewport.x, viewport.y);
+    ctx.scale(viewport.zoom, viewport.zoom);
+    
+    // Canvas 模式渲染边
+    if (this.edgeRenderMode === 'canvas') {
+      this.renderEdgesToCanvas(ctx, data);
+    }
+    
+    // Canvas 模式渲染文字
+    if (this.textRenderMode === 'canvas') {
+      this.renderTextToCanvas(ctx, data);
+    }
+    
+    ctx.restore();
+  }
+
+  /**
+   * 使用 Canvas 2D 渲染边
+   */
+  private renderEdgesToCanvas(ctx: CanvasRenderingContext2D, data: RenderData): void {
+    for (const path of data.paths) {
+      if (path.points.length < 2) continue;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = path.color ?? '#888888';
+      ctx.lineWidth = path.width ?? 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      if (path.points.length === 4) {
+        // 贝塞尔曲线
+        ctx.moveTo(path.points[0].x, path.points[0].y);
+        ctx.bezierCurveTo(
+          path.points[1].x, path.points[1].y,
+          path.points[2].x, path.points[2].y,
+          path.points[3].x, path.points[3].y
+        );
+      } else {
+        // 折线
+        ctx.moveTo(path.points[0].x, path.points[0].y);
+        for (let i = 1; i < path.points.length; i++) {
+          ctx.lineTo(path.points[i].x, path.points[i].y);
+        }
+      }
+      
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * 使用 Canvas 2D 渲染文字
+   */
+  private renderTextToCanvas(ctx: CanvasRenderingContext2D, data: RenderData): void {
+    // 启用高质量文字渲染
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // 渲染所有文字（与 CanvasRenderer.renderText 保持一致）
+    for (const text of data.texts) {
+      ctx.save();
+      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? 'system-ui, sans-serif'}`;
+      ctx.fillStyle = text.color ?? '#ffffff';
+      ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
+      ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
+      ctx.fillText(text.text, text.x, text.y);
+      ctx.restore();
+    }
   }
 
   // ============================================================
@@ -248,6 +506,22 @@ export class GPURenderer implements IRenderer {
     this.canvas.style.width = `${this.width}px`;
     this.canvas.style.height = `${this.height}px`;
     
+    // 同步更新文字层 Canvas 尺寸
+    if (this.textCanvas) {
+      this.textCanvas.width = this.width * this.dpr;
+      this.textCanvas.height = this.height * this.dpr;
+      this.textCanvas.style.width = `${this.width}px`;
+      this.textCanvas.style.height = `${this.height}px`;
+    }
+    
+    // 同步更新 UI Canvas 尺寸
+    if (this.uiCanvas) {
+      this.uiCanvas.width = this.width * this.dpr;
+      this.uiCanvas.height = this.height * this.dpr;
+      this.uiCanvas.style.width = `${this.width}px`;
+      this.uiCanvas.style.height = `${this.height}px`;
+    }
+    
     this.backend?.resize(this.canvas.width, this.canvas.height);
   }
 
@@ -274,6 +548,8 @@ export class GPURenderer implements IRenderer {
     this.boundHandleWheel = this.handleWheel.bind(this);
     this.boundHandleKeyDown = this.handleKeyDown.bind(this);
     this.boundHandleKeyUp = this.handleKeyUp.bind(this);
+    this.boundHandleDragOver = this.handleDragOver.bind(this);
+    this.boundHandleDrop = this.handleDrop.bind(this);
     
     this.canvas.addEventListener('pointerdown', this.boundHandlePointerDown);
     this.canvas.addEventListener('pointermove', this.boundHandlePointerMove);
@@ -281,6 +557,8 @@ export class GPURenderer implements IRenderer {
     this.canvas.addEventListener('wheel', this.boundHandleWheel, { passive: false });
     this.canvas.addEventListener('keydown', this.boundHandleKeyDown);
     this.canvas.addEventListener('keyup', this.boundHandleKeyUp);
+    this.canvas.addEventListener('dragover', this.boundHandleDragOver);
+    this.canvas.addEventListener('drop', this.boundHandleDrop);
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -304,6 +582,12 @@ export class GPURenderer implements IRenderer {
     }
     if (this.boundHandleKeyUp) {
       this.canvas.removeEventListener('keyup', this.boundHandleKeyUp);
+    }
+    if (this.boundHandleDragOver) {
+      this.canvas.removeEventListener('dragover', this.boundHandleDragOver);
+    }
+    if (this.boundHandleDrop) {
+      this.canvas.removeEventListener('drop', this.boundHandleDrop);
     }
   }
 
@@ -390,6 +674,29 @@ export class GPURenderer implements IRenderer {
     const input = createKeyInput('up', e.key, e.code, extractModifiers(e));
     this.emitInput(input);
   }
+
+  private handleDragOver(e: DragEvent): void {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  private handleDrop(e: DragEvent): void {
+    e.preventDefault();
+    if (!this.canvas || !e.dataTransfer) return;
+    
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    // 转换为画布坐标
+    const canvasX = (screenX - this._viewport.x) / this._viewport.zoom;
+    const canvasY = (screenY - this._viewport.y) / this._viewport.zoom;
+    
+    this.dropCallback?.(canvasX, canvasY, e.dataTransfer);
+  }
 }
+
 
 export default GPURenderer;

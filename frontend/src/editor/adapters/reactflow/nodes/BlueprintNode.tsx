@@ -11,7 +11,7 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node, useReactFlow, useEdges, useNodes } from '@xyflow/react';
+import { type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
 import type { BlueprintNodeData, DataPin } from '../../../../types';
 import { getOperands, getAttributes } from '../../../../services/dialectParser';
 import { getDisplayType } from '../../../../services/typeSelectorRenderer';
@@ -27,6 +27,7 @@ import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../component
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { getPortType } from '../../../../services/portTypeService';
 import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
+import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
@@ -35,7 +36,9 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   const { operation, attributes, inputTypes = {}, outputTypes = {}, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
   const dialectColor = StyleSystem.getDialectColor(operation.dialect);
 
-  const { setNodes } = useReactFlow();
+  // 直接更新 editorStore（数据一份，订阅更新）
+  const { updateNodeData } = useEditorStoreUpdate<BlueprintNodeData>(id);
+  
   const edges = useEdges();
   const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
   const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
@@ -48,26 +51,17 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   const results = operation.results;
 
   /**
-   * Updates node attribute and persists to node data
+   * Updates node attribute - 直接更新 editorStore
    */
   const handleAttributeChange = useCallback((name: string, value: unknown) => {
-    setNodes(nodes => nodes.map(node => {
-      if (node.id === id) {
-        const nodeData = node.data as BlueprintNodeData;
-        return {
-          ...node,
-          data: {
-            ...nodeData,
-            attributes: {
-              ...nodeData.attributes,
-              [name]: value,
-            },
-          },
-        };
-      }
-      return node;
+    updateNodeData(nodeData => ({
+      ...nodeData,
+      attributes: {
+        ...(nodeData.attributes as Record<string, string>),
+        [name]: String(value),
+      },
     }));
-  }, [id, setNodes]);
+  }, [updateNodeData]);
 
   // Variadic 端口实例数量
   const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);
@@ -118,35 +112,21 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
   }, [pinnedTypes, inputTypes, outputTypes]);
 
-  // Variadic port add (使用公用服务)
+  // Variadic port add - 直接更新 editorStore
   const handleVariadicAdd = useCallback((groupName: string) => {
-    setNodes(nodes => nodes.map(node => {
-      if (node.id === id) {
-        const nodeData = node.data as BlueprintNodeData;
-        const newCounts = incrementVariadicCount(nodeData.variadicCounts || {}, groupName);
-        return {
-          ...node,
-          data: { ...nodeData, variadicCounts: newCounts },
-        };
-      }
-      return node;
+    updateNodeData(nodeData => ({
+      ...nodeData,
+      variadicCounts: incrementVariadicCount(nodeData.variadicCounts || {}, groupName),
     }));
-  }, [id, setNodes]);
+  }, [updateNodeData]);
 
-  // Variadic port remove (使用公用服务)
+  // Variadic port remove - 直接更新 editorStore
   const handleVariadicRemove = useCallback((groupName: string) => {
-    setNodes(nodes => nodes.map(node => {
-      if (node.id === id) {
-        const nodeData = node.data as BlueprintNodeData;
-        const newCounts = decrementVariadicCount(nodeData.variadicCounts || {}, groupName, 0);
-        return {
-          ...node,
-          data: { ...nodeData, variadicCounts: newCounts },
-        };
-      }
-      return node;
+    updateNodeData(nodeData => ({
+      ...nodeData,
+      variadicCounts: decrementVariadicCount(nodeData.variadicCounts || {}, groupName, 0),
     }));
-  }, [id, setNodes]);
+  }, [updateNodeData]);
 
   const nodeStyle = StyleSystem.getNodeStyle();
 

@@ -7,6 +7,10 @@
   - 使用 KeyBindings 统一配置
   - 框架内置快捷键通过 props 传递
   - 自定义快捷键通过 onKeyDown 处理
+  
+  节点数据同步：
+  - 节点组件直接更新 editorStore（数据一份，订阅更新）
+  - EditorContainer 监听 editorStore 变化并同步到 VueFlow
 -->
 <script setup lang="ts">
 import { computed, markRaw, onMounted } from 'vue';
@@ -57,7 +61,6 @@ const emit = defineEmits<{
   (e: 'drop', x: number, y: number, dataTransfer: DataTransfer): void;
   (e: 'deleteRequest', nodeIds: string[], edgeIds: string[]): void;
   (e: 'ready', handle: { setViewport: (vp: EditorViewport) => void; fitView: () => void }): void;
-  (e: 'nodeDataChange', nodeId: string, data: Record<string, unknown>): void;
 }>();
 
 // 暴露方法

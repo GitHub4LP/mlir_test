@@ -177,11 +177,16 @@ const style = StyleSystem.getNodeStyle();
 const TYPE_LABEL_WIDTH = 60;
 /** 类型标签区域高度 */
 const TYPE_LABEL_HEIGHT = 16;
-/** 类型标签距离端口的偏移 */
-const TYPE_LABEL_OFFSET = 12;
 
 /**
  * 检测点是否命中类型标签区域
+ * 位置与 RenderExtensions 中的渲染位置一致
+ * 
+ * RenderExtensions 中的布局：
+ * - label 和 TypeSelector 垂直堆叠
+ * - totalHeight = labelFontSize(12) + gap(2) + typeSelectorHeight(16) = 30px
+ * - 整体垂直居中于端口
+ * - TypeSelector 在 label 下方
  * 
  * @param x - 画布坐标 X
  * @param y - 画布坐标 Y
@@ -193,31 +198,43 @@ export function hitTestTypeLabel(
   y: number,
   layout: NodeLayout
 ): HitTypeLabel | null {
+  const typeLabelStyle = StyleSystem.getTypeLabelStyle();
+  const textStyle = StyleSystem.getTextStyle();
+  const labelOffsetX = typeLabelStyle.offsetFromHandle;
+  
+  // 与 RenderExtensions 保持一致的布局参数
+  const labelFontSize = textStyle.labelFontSize; // 12px
+  const typeSelectorHeight = typeLabelStyle.height; // 16px
+  const verticalGap = 2;
+  const totalHeight = labelFontSize + verticalGap + typeSelectorHeight;
+  
   for (const handle of layout.handles) {
     // 只检测数据端口（不检测执行端口）
     if (handle.kind !== 'data') continue;
     
-    // 计算类型标签区域
     const handleX = layout.x + handle.x;
     const handleY = layout.y + handle.y;
     
-    let labelX: number;
-    if (handle.isOutput) {
-      // 输出端口：标签在端口左侧
-      labelX = handleX - TYPE_LABEL_OFFSET - TYPE_LABEL_WIDTH;
-    } else {
-      // 输入端口：标签在端口右侧
-      labelX = handleX + TYPE_LABEL_OFFSET;
-    }
-    const labelY = handleY - TYPE_LABEL_HEIGHT / 2;
+    // 计算垂直居中的起始 Y
+    const startY = handleY - totalHeight / 2;
+    // TypeSelector Y 坐标（在 label 下方）
+    const typeSelectorY = startY + labelFontSize + verticalGap;
     
-    if (isPointInRect(x, y, labelX, labelY, TYPE_LABEL_WIDTH, TYPE_LABEL_HEIGHT)) {
+    // TypeSelector 背景矩形 X 坐标
+    let typeBgX: number;
+    if (handle.isOutput) {
+      typeBgX = handleX - labelOffsetX - TYPE_LABEL_WIDTH;
+    } else {
+      typeBgX = handleX + labelOffsetX;
+    }
+    
+    if (isPointInRect(x, y, typeBgX, typeSelectorY, TYPE_LABEL_WIDTH, typeSelectorHeight)) {
       return {
         kind: 'type-label',
         nodeId: layout.nodeId,
         handleId: handle.handleId,
-        canvasX: labelX,
-        canvasY: labelY + TYPE_LABEL_HEIGHT,
+        canvasX: typeBgX,
+        canvasY: typeSelectorY + typeSelectorHeight + 4, // 类型选择器显示在下方
       };
     }
   }
@@ -390,6 +407,7 @@ export function hitTestVariadicButton(
 
 /**
  * 获取端口的类型标签位置（用于显示类型选择器）
+ * 位置与渲染位置一致
  * 
  * @param layout - 节点布局
  * @param handleId - 端口 ID
@@ -404,17 +422,19 @@ export function getTypeLabelPosition(
   
   const handleX = layout.x + handle.x;
   const handleY = layout.y + handle.y;
+  const typeLabelStyle = StyleSystem.getTypeLabelStyle();
+  const labelOffsetX = typeLabelStyle.offsetFromHandle;
   
   let labelX: number;
   if (handle.isOutput) {
-    labelX = handleX - TYPE_LABEL_OFFSET - TYPE_LABEL_WIDTH;
+    labelX = handleX - labelOffsetX - TYPE_LABEL_WIDTH;
   } else {
-    labelX = handleX + TYPE_LABEL_OFFSET;
+    labelX = handleX + labelOffsetX;
   }
   
   return {
     canvasX: labelX,
-    canvasY: handleY + TYPE_LABEL_HEIGHT / 2 + 4, // 稍微往下偏移，让选择器显示在标签下方
+    canvasY: handleY + 6 + TYPE_LABEL_HEIGHT / 2 + 4, // 类型标签下方
   };
 }
 
@@ -979,6 +999,7 @@ export function getVariadicButtonsArea(
 
 /**
  * 获取类型标签区域位置
+ * 位置与渲染位置一致：在 label 下方
  */
 export function getTypeLabelArea(layout: NodeLayout, handleId: string): InteractiveArea | null {
   const handle = layout.handles.find(h => h.handleId === handleId);
@@ -986,17 +1007,19 @@ export function getTypeLabelArea(layout: NodeLayout, handleId: string): Interact
   
   const handleX = layout.x + handle.x;
   const handleY = layout.y + handle.y;
+  const typeLabelStyle = StyleSystem.getTypeLabelStyle();
+  const labelOffsetX = typeLabelStyle.offsetFromHandle;
   
   let labelX: number;
   if (handle.isOutput) {
-    labelX = handleX - TYPE_LABEL_OFFSET - TYPE_LABEL_WIDTH;
+    labelX = handleX - labelOffsetX - TYPE_LABEL_WIDTH;
   } else {
-    labelX = handleX + TYPE_LABEL_OFFSET;
+    labelX = handleX + labelOffsetX;
   }
   
   return {
     x: labelX,
-    y: handleY - TYPE_LABEL_HEIGHT / 2,
+    y: handleY + 6 - TYPE_LABEL_HEIGHT / 2,
     width: TYPE_LABEL_WIDTH,
     height: TYPE_LABEL_HEIGHT,
   };

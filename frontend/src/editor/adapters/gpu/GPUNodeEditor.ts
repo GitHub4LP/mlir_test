@@ -4,9 +4,7 @@
  * 实现 INodeEditor 接口，使用 GPURenderer 进行渲染。
  * 集成 GraphController 处理业务逻辑。
  * 
- * 覆盖层支持：
- * - 使用 OverlayManager 管理 HTML 覆盖层
- * - 支持类型选择器、属性编辑器等 UI 组件
+ * 使用 UIManager 管理原生 Canvas UI 组件（TypeSelector 等）。
  */
 
 import type { INodeEditor } from '../../INodeEditor';
@@ -20,13 +18,14 @@ import type {
   EdgeChange,
 } from '../../types';
 import type { FunctionTrait } from '../../../types';
+import type { TextRenderMode, EdgeRenderMode } from './GPURenderer';
 import { GPURenderer } from './GPURenderer';
 import { GraphController } from '../canvas/GraphController';
-import { OverlayManager, type OverlayConfig, type ActiveOverlay } from '../canvas/OverlayManager';
+import { UIManager, type TypeSelectorState } from '../canvas/UIManager';
+import type { TypeOption } from '../canvas/ui/TypeSelector';
 import { 
   hitTestTypeLabel, 
   hitTestVariadicButton, 
-  getTypeLabelPosition,
   hitTestNodeExtended,
   computeHoveredIndex,
   type HitResult,
@@ -68,7 +67,7 @@ function toGraphEdge(edge: EditorEdge): GraphEdge {
 export class GPUNodeEditor implements INodeEditor {
   private renderer: GPURenderer;
   private controller: GraphController;
-  private overlayManager: OverlayManager;
+  private uiManager: UIManager;
   private container: HTMLElement | null = null;
   
   // 当前数据
@@ -100,11 +99,14 @@ export class GPUNodeEditor implements INodeEditor {
   onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null = null;
   
   // 覆盖层回调
-  onOverlayChange: ((overlays: ActiveOverlay[]) => void) | null = null;
+  onTypeSelectorChange: ((state: TypeSelectorState | null) => void) | null = null;
   onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null = null;
   onParamNameClick: ((nodeId: string, paramIndex: number, currentName: string, canvasX: number, canvasY: number) => void) | null = null;
   onReturnNameClick: ((nodeId: string, returnIndex: number, currentName: string, canvasX: number, canvasY: number) => void) | null = null;
   onTraitsToggleClick: ((nodeId: string, canvasX: number, canvasY: number) => void) | null = null;
+
+  // onNodeDataChange 已废弃：节点组件现在直接更新 editorStore
+  onNodeDataChange: ((nodeId: string, data: Record<string, unknown>) => void) | null = null;
 
   // Hover 状态（用于显示删除按钮）
   private hoveredParamIndex: number | null = null;
@@ -118,7 +120,18 @@ export class GPUNodeEditor implements INodeEditor {
   constructor(preferWebGPU: boolean = true) {
     this.renderer = new GPURenderer(preferWebGPU);
     this.controller = new GraphController();
-    this.overlayManager = new OverlayManager();
+    this.uiManager = new UIManager();
+    
+    // 设置 UIManager 回调
+    this.uiManager.setCallbacks({
+      onTypeSelect: () => {
+        // 类型选择由外部通过 setTypeSelectCallback 处理
+      },
+      onTypeSelectorClose: () => {
+        this.onTypeSelectorChange?.(null);
+        this.requestRender();
+      },
+    });
     
     // 设置控制器回调
     this.setupControllerCallbacks();
@@ -140,6 +153,7 @@ export class GPUNodeEditor implements INodeEditor {
       
       const config: RenderExtensionConfig = {
         nodes: nodesMap,
+        nodeList: this.nodes,
         hoveredNodeId: this.hoveredNodeId,
         hoveredParamIndex: this.hoveredParamIndex,
         hoveredReturnIndex: this.hoveredReturnIndex,
@@ -195,9 +209,32 @@ export class GPUNodeEditor implements INodeEditor {
     // 视口变化
     this.controller.onViewportChange = (viewport) => {
       this.onViewportChange?.(viewport);
-      // 更新覆盖层位置
-      this.overlayManager.updateViewport(viewport);
-      this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
+    };
+    
+    // 扩展命中测试回调（类型标签、按钮等）
+    this.controller.onExtendedHitTest = (screenX, screenY) => {
+      return this.handleExtendedHitTest(screenX, screenY);
+    };
+    
+    // UI 事件路由（UI 组件优先）
+    this.controller.onPreMouseDown = (screenX, screenY) => {
+      return this.uiManager.handleMouseDown({ x: screenX, y: screenY, button: 0 });
+    };
+    
+    this.controller.onPreMouseMove = (screenX, screenY) => {
+      return this.uiManager.handleMouseMove({ x: screenX, y: screenY, button: 0 });
+    };
+    
+    this.controller.onPreMouseUp = (screenX, screenY) => {
+      return this.uiManager.handleMouseUp({ x: screenX, y: screenY, button: 0 });
+    };
+    
+    this.controller.onPreWheel = (screenX, screenY, deltaX, deltaY) => {
+      return this.uiManager.handleWheel({ x: screenX, y: screenY, deltaX, deltaY });
+    };
+    
+    this.controller.onPreKeyDown = (key, code, ctrlKey, shiftKey, altKey) => {
+      return this.uiManager.handleKeyDown({ key, code, ctrlKey, shiftKey, altKey });
     };
     
     // 拖放
@@ -220,7 +257,21 @@ export class GPUNodeEditor implements INodeEditor {
   mount(container: HTMLElement): void {
     this.container = container;
     this.renderer.mount(container);
-    this.overlayManager.mount(container);
+    this.uiManager.mount(container);
+    
+    // 重新连接渲染器和控制器（确保事件回调正确绑定）
+    this.controller.setRenderer(this.renderer);
+    
+    // 设置 UI 渲染回调
+    this.renderer.setUIRenderCallback((ctx) => {
+      this.uiManager.render(ctx);
+    });
+    
+    // 设置拖放回调
+    this.renderer.setDropCallback((x, y, dataTransfer) => {
+      this.onDrop?.(x, y, dataTransfer);
+    });
+    
     // 等待渲染器就绪后再渲染
     this.renderer.waitForReady().then(() => {
       this.requestRender();
@@ -228,7 +279,8 @@ export class GPUNodeEditor implements INodeEditor {
   }
   
   unmount(): void {
-    this.overlayManager.unmount();
+    this.uiManager.unmount();
+    this.uiManager.dispose();
     this.renderer.unmount();
     this.container = null;
   }
@@ -314,81 +366,79 @@ export class GPUNodeEditor implements INodeEditor {
   isAvailable(): boolean {
     return this.renderer.isAvailable();
   }
+
+  /**
+   * 等待渲染器就绪
+   */
+  waitForReady(): Promise<void> {
+    return this.renderer.waitForReady();
+  }
   
   private requestRender(): void {
-    if (!this.renderer.isReady()) return;
+    if (!this.renderer.isReady()) {
+      // 渲染器还没准备好，等待就绪后再渲染
+      console.log('GPUNodeEditor.requestRender: renderer not ready, waiting...');
+      this.renderer.waitForReady().then(() => {
+        console.log('GPUNodeEditor.requestRender: renderer ready, rendering with', this.nodes.length, 'nodes');
+        const renderData = this.controller.computeRenderData();
+        console.log('GPUNodeEditor.requestRender: renderData has', renderData.rects.length, 'rects');
+        this.renderer.render(renderData);
+      });
+      return;
+    }
+    console.log('GPUNodeEditor.requestRender: rendering with', this.nodes.length, 'nodes');
     const renderData = this.controller.computeRenderData();
+    console.log('GPUNodeEditor.requestRender: renderData has', renderData.rects.length, 'rects');
     this.renderer.render(renderData);
   }
 
   // ============================================================
-  // 覆盖层管理
+  // 类型选择器管理（原生 Canvas UI）
   // ============================================================
 
   /**
-   * 显示类型选择器覆盖层
+   * 显示类型选择器
    */
-  showTypeSelector(nodeId: string, handleId: string): string | null {
-    // 查找节点
-    const node = this.nodes.find(n => n.id === nodeId);
-    if (!node) return null;
-    
-    // 计算节点布局
-    const graphNode: GraphNode = {
-      id: node.id,
-      type: node.type as GraphNode['type'],
-      position: node.position,
-      data: node.data as GraphNode['data'],
-    };
-    const layout = computeNodeLayout(graphNode, false);
-    
-    // 获取类型标签位置
-    const pos = getTypeLabelPosition(layout, handleId);
-    if (!pos) return null;
-    
-    // 显示覆盖层
-    const config: OverlayConfig = {
-      type: 'type-selector',
-      nodeId,
-      portId: handleId,
-      canvasX: pos.canvasX,
-      canvasY: pos.canvasY,
-      data: { node: node.data },
-    };
-    
-    const id = this.overlayManager.show(config);
-    this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
-    return id;
+  showTypeSelector(
+    nodeId: string,
+    handleId: string,
+    screenX: number,
+    screenY: number,
+    options: TypeOption[],
+    currentType?: string
+  ): void {
+    this.uiManager.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType);
+    this.onTypeSelectorChange?.(this.uiManager.getTypeSelectorState());
+    this.requestRender();
   }
 
   /**
-   * 隐藏覆盖层
+   * 隐藏类型选择器
    */
-  hideOverlay(id: string): void {
-    this.overlayManager.hide(id);
-    this.onOverlayChange?.(this.overlayManager.getActiveOverlays());
+  hideTypeSelector(): void {
+    this.uiManager.hideTypeSelector();
+    this.onTypeSelectorChange?.(null);
+    this.requestRender();
   }
 
   /**
-   * 隐藏所有覆盖层
+   * 类型选择器是否可见
    */
-  hideAllOverlays(): void {
-    this.overlayManager.hideAll();
-    this.onOverlayChange?.([]);
+  isTypeSelectorVisible(): boolean {
+    return this.uiManager.isTypeSelectorVisible();
   }
 
   /**
-   * 获取覆盖层容器
+   * 设置类型选择回调
    */
-  getOverlayContainer(): HTMLDivElement | null {
-    return this.overlayManager.getContainer();
-  }
-
-  /**
-   * 获取活动覆盖层列表
-   */
-  getActiveOverlays(): ActiveOverlay[] {
-    return this.overlayManager.getActiveOverlays();
+  setTypeSelectCallback(callback: (nodeId: string, handleId: string, type: string) => void): void {
+    this.uiManager.setCallbacks({
+      onTypeSelect: callback,
+      onTypeSelectorClose: () => {
+        this.onTypeSelectorChange?.(null);
+        this.requestRender();
+      },
+    });
   }
 
   /**
@@ -684,5 +734,35 @@ export class GPUNodeEditor implements INodeEditor {
   setTraitsExpanded(nodeId: string, expanded: boolean): void {
     this.traitsExpandedMap.set(nodeId, expanded);
     this.requestRender();
+  }
+
+  /**
+   * 获取当前文字渲染模式
+   */
+  getTextRenderMode(): TextRenderMode {
+    return this.renderer.getTextRenderMode();
+  }
+
+  /**
+   * 设置文字渲染模式
+   * @param mode 'gpu' - GPU 纹理渲染, 'canvas' - Canvas 2D 渲染
+   */
+  setTextRenderMode(mode: TextRenderMode): void {
+    this.renderer.setTextRenderMode(mode);
+  }
+
+  /**
+   * 获取当前边渲染模式
+   */
+  getEdgeRenderMode(): EdgeRenderMode {
+    return this.renderer.getEdgeRenderMode();
+  }
+
+  /**
+   * 设置边渲染模式
+   * @param mode 'gpu' - GPU 渲染, 'canvas' - Canvas 2D 渲染
+   */
+  setEdgeRenderMode(mode: EdgeRenderMode): void {
+    this.renderer.setEdgeRenderMode(mode);
   }
 }

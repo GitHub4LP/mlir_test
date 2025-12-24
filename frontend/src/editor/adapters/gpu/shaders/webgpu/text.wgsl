@@ -5,8 +5,8 @@
  */
 
 struct Uniforms {
-  viewMatrix: mat3x4<f32>,
-  resolution: vec2<f32>,
+  viewMatrix: mat3x4<f32>,  // 48 bytes
+  resolution: vec2<f32>,     // 8 bytes
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

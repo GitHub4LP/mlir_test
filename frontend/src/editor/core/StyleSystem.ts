@@ -38,6 +38,9 @@ export interface NodeStyleConfig {
   selectedBorderWidth: number;
 }
 
+/** 边路径类型 */
+export type EdgePathType = 'bezier' | 'straight' | 'smoothstep';
+
 /** 边样式配置 */
 export interface EdgeStyleConfig {
   /** 边宽度 */
@@ -50,6 +53,8 @@ export interface EdgeStyleConfig {
   execColor: string;
   /** 默认数据边颜色 */
   defaultDataColor: string;
+  /** 边路径类型 */
+  pathType: EdgePathType;
 }
 
 /** 文字样式配置 */
@@ -134,6 +139,96 @@ export interface OverlayStyleConfig {
   padding: number;
 }
 
+/** 节点类型颜色配置 */
+export interface NodeTypeColorsConfig {
+  /** Entry 节点（自定义函数） */
+  entry: string;
+  /** Entry 节点（main 函数） */
+  entryMain: string;
+  /** Return 节点（自定义函数） */
+  return: string;
+  /** Return 节点（main 函数） */
+  returnMain: string;
+  /** Call 节点 */
+  call: string;
+  /** Operation 节点默认 */
+  operation: string;
+}
+
+/** MiniMap 样式配置 */
+export interface MiniMapStyleConfig {
+  /** 节点颜色 */
+  nodeColor: string;
+  /** 选中节点颜色 */
+  selectedNodeColor: string;
+  /** 视口填充色 */
+  viewportColor: string;
+  /** 视口边框色 */
+  viewportBorderColor: string;
+  /** 背景色 */
+  backgroundColor: string;
+}
+
+/** 画布样式配置 */
+export interface CanvasStyleConfig {
+  /** 背景色 */
+  backgroundColor: string;
+}
+
+/** UI 组件通用样式配置 */
+export interface UIComponentStyleConfig {
+  /** 列表项高度 */
+  listItemHeight: number;
+  /** 搜索框高度 */
+  searchHeight: number;
+  /** 小按钮高度 */
+  smallButtonHeight: number;
+  /** 行高 */
+  rowHeight: number;
+  /** 标签宽度 */
+  labelWidth: number;
+  /** 间距 */
+  gap: number;
+  /** 小间距 */
+  smallGap: number;
+  /** 滚动条宽度 */
+  scrollbarWidth: number;
+  /** 面板宽度 - 窄 */
+  panelWidthNarrow: number;
+  /** 面板宽度 - 中 */
+  panelWidthMedium: number;
+  /** 面板最大高度 */
+  panelMaxHeight: number;
+  /** 阴影模糊 */
+  shadowBlur: number;
+  /** 阴影颜色 */
+  shadowColor: string;
+  /** 深色背景 */
+  darkBackground: string;
+  /** 按钮背景 */
+  buttonBackground: string;
+  /** 按钮 hover 背景 */
+  buttonHoverBackground: string;
+  /** 成功色 */
+  successColor: string;
+  /** 成功 hover 色 */
+  successHoverColor: string;
+  /** 光标闪烁间隔 */
+  cursorBlinkInterval: number;
+  /** 最小滚动条高度 */
+  minScrollbarHeight: number;
+  /** 关闭按钮偏移 */
+  closeButtonOffset: number;
+  /** 关闭按钮大小 */
+  closeButtonSize: number;
+  /** 标题左边距 */
+  titleLeftPadding: number;
+  /** 颜色标记大小 */
+  colorDotRadius: number;
+  /** 颜色标记后间距 */
+  colorDotGap: number;
+}
+
 /** 完整主题配置 */
 export interface ThemeConfig {
   node: NodeStyleConfig;
@@ -142,6 +237,14 @@ export interface ThemeConfig {
   button: ButtonStyleConfig;
   typeLabel: TypeLabelStyleConfig;
   overlay: OverlayStyleConfig;
+  /** 节点类型颜色 */
+  nodeTypeColors: NodeTypeColorsConfig;
+  /** MiniMap 样式 */
+  minimap: MiniMapStyleConfig;
+  /** 画布样式 */
+  canvas: CanvasStyleConfig;
+  /** UI 组件样式 */
+  ui: UIComponentStyleConfig;
   /** 方言颜色映射 */
   dialectColors: Record<string, string>;
   /** 类型颜色映射 */
@@ -156,10 +259,10 @@ export const DEFAULT_THEME: ThemeConfig = {
   node: {
     minWidth: 200,
     headerHeight: 32,
-    pinRowHeight: 24,
+    pinRowHeight: 28,  // ReactFlow: py-1.5 min-h-7 = 28px
     handleRadius: 6,
     handleOffset: 0,
-    padding: 8,
+    padding: 4,        // ReactFlow: px-1 py-1 = 4px
     borderRadius: 8,
     borderWidth: 1,
     backgroundColor: '#2d2d3d',
@@ -173,6 +276,7 @@ export const DEFAULT_THEME: ThemeConfig = {
     bezierOffset: 100,
     execColor: '#ffffff',
     defaultDataColor: '#888888',
+    pathType: 'bezier' as EdgePathType,
   },
   text: {
     fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -205,15 +309,60 @@ export const DEFAULT_THEME: ThemeConfig = {
     backgroundAlpha: 0.3,
     textColor: '#ffffff',
     fontSize: 10,
-    offsetFromHandle: 12,
+    offsetFromHandle: 16,  // ml-4 / mr-4 = 16px
   },
   overlay: {
-    backgroundColor: '#1e1e2e',
-    borderColor: '#3d3d4d',
+    backgroundColor: '#1f2937',   // gray-800
+    borderColor: '#4b5563',       // gray-600
     borderWidth: 1,
     borderRadius: 8,
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
     padding: 8,
+  },
+  nodeTypeColors: {
+    entry: '#22c55e',       // green-500
+    entryMain: '#f59e0b',   // amber-500
+    return: '#ef4444',      // red-500
+    returnMain: '#dc2626',  // red-600
+    call: '#a855f7',        // purple-500
+    operation: '#3b82f6',   // blue-500
+  },
+  minimap: {
+    nodeColor: '#4a5568',
+    selectedNodeColor: '#4299e1',
+    viewportColor: 'rgba(66, 153, 225, 0.3)',
+    viewportBorderColor: 'rgba(66, 153, 225, 0.8)',
+    backgroundColor: '#1a1a1a',
+  },
+  canvas: {
+    backgroundColor: '#030712',  // gray-950
+  },
+  ui: {
+    listItemHeight: 28,
+    searchHeight: 28,
+    smallButtonHeight: 24,
+    rowHeight: 28,
+    labelWidth: 80,
+    gap: 8,
+    smallGap: 6,
+    scrollbarWidth: 6,
+    panelWidthNarrow: 240,
+    panelWidthMedium: 280,
+    panelMaxHeight: 320,
+    shadowBlur: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.5)',
+    darkBackground: '#111827',      // gray-900
+    buttonBackground: '#374151',    // gray-700
+    buttonHoverBackground: '#4b5563', // gray-600
+    successColor: '#22c55e',        // green-500
+    successHoverColor: '#16a34a',   // green-600
+    cursorBlinkInterval: 530,
+    minScrollbarHeight: 20,
+    closeButtonOffset: 24,
+    closeButtonSize: 10,
+    titleLeftPadding: 12,
+    colorDotRadius: 4,
+    colorDotGap: 16,
   },
   dialectColors: {
     arith: '#4A90D9',
@@ -281,6 +430,31 @@ class StyleSystemImpl {
   /** 获取覆盖层样式 */
   getOverlayStyle(): OverlayStyleConfig {
     return this.theme.overlay;
+  }
+
+  /** 获取节点类型颜色 */
+  getNodeTypeColors(): NodeTypeColorsConfig {
+    return this.theme.nodeTypeColors;
+  }
+
+  /** 获取节点类型颜色（单个） */
+  getNodeTypeColor(type: 'entry' | 'entryMain' | 'return' | 'returnMain' | 'call' | 'operation'): string {
+    return this.theme.nodeTypeColors[type];
+  }
+
+  /** 获取 MiniMap 样式 */
+  getMiniMapStyle(): MiniMapStyleConfig {
+    return this.theme.minimap;
+  }
+
+  /** 获取画布样式 */
+  getCanvasStyle(): CanvasStyleConfig {
+    return this.theme.canvas;
+  }
+
+  /** 获取 UI 组件样式 */
+  getUIStyle(): UIComponentStyleConfig {
+    return this.theme.ui;
   }
 
   /** 获取方言颜色 */
@@ -360,10 +534,29 @@ class StyleSystemImpl {
       button: { ...this.theme.button, ...theme.button },
       typeLabel: { ...this.theme.typeLabel, ...theme.typeLabel },
       overlay: { ...this.theme.overlay, ...theme.overlay },
+      nodeTypeColors: { ...this.theme.nodeTypeColors, ...theme.nodeTypeColors },
+      minimap: { ...this.theme.minimap, ...theme.minimap },
+      canvas: { ...this.theme.canvas, ...theme.canvas },
+      ui: { ...this.theme.ui, ...theme.ui },
       dialectColors: { ...this.theme.dialectColors, ...theme.dialectColors },
       typeColors: { ...this.theme.typeColors, ...theme.typeColors },
     };
     this.notifyListeners();
+  }
+
+  /**
+   * 设置边路径类型
+   */
+  setEdgePathType(pathType: EdgePathType): void {
+    this.theme.edge.pathType = pathType;
+    this.notifyListeners();
+  }
+
+  /**
+   * 获取边路径类型
+   */
+  getEdgePathType(): EdgePathType {
+    return this.theme.edge.pathType;
   }
 
   /** 订阅主题变化 */

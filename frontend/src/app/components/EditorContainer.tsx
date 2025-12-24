@@ -8,9 +8,11 @@
  * - 管理编辑器实例的生命周期
  * - 同步 editorStore 状态到编辑器
  * - 处理编辑器事件并更新 store
+ * - 渲染类型选择器覆盖层（仅 ReactFlow/VueFlow）
+ * - Canvas/GPU 渲染器使用原生 Canvas TypeSelector
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useReducer } from 'react';
 import { useEditorStore } from '../../core/stores/editorStore';
 import type { INodeEditor } from '../../editor/INodeEditor';
 import type {
@@ -19,6 +21,13 @@ import type {
   NodeChange,
   ConnectionRequest,
 } from '../../editor/types';
+import { EditorOverlay } from '../../editor/adapters/shared/EditorOverlay';
+import { overlayReducer, type OverlayState } from '../../editor/adapters/shared/overlayTypes';
+import { getPortTypeInfo } from '../../editor/adapters/shared/PortTypeInfo';
+import { UnifiedTypeSelector } from '../../components/UnifiedTypeSelector';
+import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
+import { computeTypeSelectorData, computeTypeGroups } from '../../services/typeSelectorService';
+import type { TypeOption } from '../../editor/adapters/canvas/ui/TypeSelector';
 
 export type RendererType = 'reactflow' | 'canvas' | 'webgl' | 'webgpu' | 'vueflow';
 
@@ -52,6 +61,9 @@ export interface EditorContainerProps {
   
   /** 编辑器就绪回调 */
   onEditorReady?: (editor: INodeEditor) => void;
+  
+  /** 类型选择回调 */
+  onTypeSelect?: (nodeId: string, handleId: string, type: string) => void;
 }
 
 /**
@@ -70,9 +82,14 @@ export function EditorContainer({
   onSelectionChange: onSelectionChangeProp,
   onViewportChange: onViewportChangeProp,
   onEditorReady,
+  onTypeSelect,
 }: EditorContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<INodeEditor | null>(null);
+  
+  // 覆盖层状态
+  const [overlayState, dispatchOverlay] = useReducer(overlayReducer, null as OverlayState);
+  const viewportRef = useRef<EditorViewport>({ x: 0, y: 0, zoom: 1 });
   
   // 使用 ref 存储回调，避免 useEffect 依赖变化导致编辑器重建
   const callbacksRef = useRef({
@@ -84,6 +101,7 @@ export function EditorContainer({
     onSelectionChangeProp,
     onViewportChangeProp,
     onEditorReady,
+    onTypeSelect,
   });
   
   // 更新回调 ref
@@ -97,6 +115,7 @@ export function EditorContainer({
       onSelectionChangeProp,
       onViewportChangeProp,
       onEditorReady,
+      onTypeSelect,
     };
   });
   
@@ -116,9 +135,106 @@ export function EditorContainer({
   }, [setSelection]);
   
   const handleViewportChange = useCallback((newViewport: EditorViewport) => {
+    viewportRef.current = newViewport;
     setViewport(newViewport);
     callbacksRef.current.onViewportChangeProp?.(newViewport);
   }, [setViewport]);
+  
+  // 类型标签点击处理
+  // 对于 Canvas/GPU 渲染器，使用原生 Canvas TypeSelector
+  // 对于 ReactFlow/VueFlow，使用 DOM overlay
+  const handleTypeLabelClick = useCallback((nodeId: string, handleId: string, canvasX: number, canvasY: number) => {
+    const state = useEditorStore.getState();
+    const typeInfo = getPortTypeInfo(state.nodes, nodeId, handleId);
+    if (!typeInfo) return;
+    
+    // Canvas 和 GPU 渲染器使用原生 Canvas UI
+    if (rendererType === 'canvas' || rendererType === 'webgl' || rendererType === 'webgpu') {
+      const editor = editorRef.current;
+      if (!editor) return;
+      
+      // 获取类型约束 store 数据
+      const constraintState = useTypeConstraintStore.getState();
+      const { buildableTypes, constraintDefs, getConstraintElements, isShapedConstraint, getAllowedContainers } = constraintState;
+      
+      // 计算类型选项
+      const selectorData = computeTypeSelectorData({
+        constraint: typeInfo.constraint,
+        allowedTypes: typeInfo.allowedTypes,
+        buildableTypes,
+        constraintDefs,
+        getConstraintElements,
+        isShapedConstraint,
+        getAllowedContainers,
+      });
+      
+      // 计算类型分组
+      const typeGroups = computeTypeGroups(
+        selectorData,
+        { searchText: '', showConstraints: true, showTypes: true, useRegex: false },
+        typeInfo.constraint,
+        buildableTypes,
+        constraintDefs,
+        getConstraintElements
+      );
+      
+      // 转换为 TypeOption 格式
+      const options: TypeOption[] = [];
+      for (const group of typeGroups) {
+        for (const item of group.items) {
+          options.push({
+            name: item,
+            label: item,
+            group: group.label,
+          });
+        }
+      }
+      
+      // 转换画布坐标到屏幕坐标
+      const viewport = editor.getViewport();
+      const screenX = canvasX * viewport.zoom + viewport.x;
+      const screenY = canvasY * viewport.zoom + viewport.y;
+      
+      // 显示原生 Canvas TypeSelector
+      // 需要调用编辑器的 showTypeSelector 方法
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const canvasEditor = editor as any;
+      if (typeof canvasEditor.showTypeSelector === 'function') {
+        canvasEditor.showTypeSelector(nodeId, handleId, screenX, screenY, options, typeInfo.currentType);
+        
+        // 设置类型选择回调
+        if (typeof canvasEditor.setTypeSelectCallback === 'function') {
+          canvasEditor.setTypeSelectCallback((nId: string, hId: string, type: string) => {
+            callbacksRef.current.onTypeSelect?.(nId, hId, type);
+          });
+        }
+      }
+      return;
+    }
+    
+    // ReactFlow/VueFlow 使用 DOM overlay
+    dispatchOverlay({
+      type: 'show-type-selector',
+      payload: {
+        nodeId,
+        handleId,
+        canvasX,
+        canvasY,
+        currentType: typeInfo.currentType,
+        constraint: typeInfo.constraint,
+      },
+    });
+  }, [rendererType]);
+  
+  // 处理类型选择
+  const handleTypeSelect = useCallback((nodeId: string, handleId: string, type: string) => {
+    callbacksRef.current.onTypeSelect?.(nodeId, handleId, type);
+  }, []);
+
+  // 关闭覆盖层
+  const handleCloseOverlay = useCallback(() => {
+    dispatchOverlay({ type: 'close' });
+  }, [dispatchOverlay]);
   
   const handleConnect = useCallback((request: ConnectionRequest) => {
     callbacksRef.current.onConnect?.(request);
@@ -177,6 +293,7 @@ export function EditorContainer({
     editor.onDeleteRequest = handleDeleteRequest;
     editor.onEdgeDoubleClick = handleEdgeDoubleClick;
     editor.onNodeDoubleClick = handleNodeDoubleClick;
+    editor.onTypeLabelClick = handleTypeLabelClick;
     
     // 挂载到子容器
     editor.mount(subContainer);
@@ -232,11 +349,31 @@ export function EditorContainer({
   }, [viewport]);
   
   return (
-    <div 
-      ref={containerRef} 
-      className="w-full h-full"
-      style={{ minHeight: '100%' }}
-    />
+    <div className="w-full h-full relative">
+      <div 
+        ref={containerRef} 
+        className="w-full h-full"
+        style={{ minHeight: '100%' }}
+      />
+      
+      {/* 统一覆盖层 */}
+      <EditorOverlay
+        state={overlayState}
+        viewport={viewportRef.current}
+        onClose={handleCloseOverlay}
+        onTypeSelect={handleTypeSelect}
+        renderTypeSelector={({ state, onSelect }) => (
+          <div className="bg-gray-800 border border-gray-600 rounded shadow-xl p-1">
+            <UnifiedTypeSelector
+              selectedType={state.currentType}
+              onTypeSelect={onSelect}
+              constraint={state.constraint}
+              allowedTypes={state.allowedTypes}
+            />
+          </div>
+        )}
+      />
+    </div>
   );
 }
 

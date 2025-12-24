@@ -13,7 +13,6 @@ import type { NodeLayout } from '../../core/LayoutEngine';
 import type { GraphNode, BlueprintNodeData, FunctionEntryData, FunctionReturnData } from '../../../types';
 import { StyleSystem } from '../../core/StyleSystem';
 import {
-  getTypeLabelArea,
   getVariadicButtonsArea,
   getParamAddButtonArea,
   getParamRemoveButtonArea,
@@ -22,6 +21,8 @@ import {
   getTraitsToggleArea,
   type InteractiveArea,
 } from './HitTest';
+import { getPortTypeInfo } from '../shared/PortTypeInfo';
+import type { EditorNode } from '../../types';
 
 // ============================================================
 // 常量（从 StyleSystem 获取）
@@ -29,6 +30,7 @@ import {
 
 const getButtonStyle = () => StyleSystem.getButtonStyle();
 const getTypeLabelStyle = () => StyleSystem.getTypeLabelStyle();
+const getTextStyle = () => StyleSystem.getTextStyle();
 
 // ============================================================
 // 渲染扩展配置
@@ -37,6 +39,8 @@ const getTypeLabelStyle = () => StyleSystem.getTypeLabelStyle();
 export interface RenderExtensionConfig {
   /** 节点数据映射 */
   nodes: Map<string, GraphNode>;
+  /** 节点列表（用于 getPortTypeInfo） */
+  nodeList: EditorNode[];
   /** 当前 hover 的节点 ID */
   hoveredNodeId: string | null;
   /** 当前 hover 的参数索引 */
@@ -63,8 +67,8 @@ export function extendRenderData(
     const node = config.nodes.get(nodeId);
     if (!node) continue;
 
-    // 渲染类型标签
-    renderTypeLabels(data, layout, node);
+    // 渲染类型标签（使用共享的 getPortTypeInfo）
+    renderTypeLabels(data, layout, node, config.nodeList);
 
     // 根据节点类型渲染特定 UI
     switch (node.type) {
@@ -83,53 +87,89 @@ export function extendRenderData(
 
 /**
  * 渲染类型标签（带背景色）
+ * 
+ * 与 ReactFlow NodePins 布局一致：
+ * - label 和 TypeSelector 垂直堆叠（flex-col）
+ * - label 在上，TypeSelector 在下
+ * - 整体居中于端口 Y 坐标
+ * 
+ * ReactFlow 结构：
+ * <div className="mr-4 flex flex-col items-end">
+ *   <span className="text-xs text-gray-300">{label}</span>
+ *   <UnifiedTypeSelector ... />
+ * </div>
  */
 function renderTypeLabels(
   data: RenderData,
   layout: NodeLayout,
-  node: GraphNode
+  node: GraphNode,
+  nodeList: EditorNode[]
 ): void {
   const typeLabelStyle = getTypeLabelStyle();
+  const textStyle = getTextStyle();
+  const labelOffsetX = typeLabelStyle.offsetFromHandle;
+  
+  // ReactFlow 中 label 字号 12px，TypeSelector 高度约 16px
+  // 两者垂直堆叠，总高度约 28px（与 pinRowHeight 一致）
+  const labelFontSize = textStyle.labelFontSize; // 12px
+  const typeSelectorHeight = typeLabelStyle.height; // 16px
+  const verticalGap = 2; // label 和 TypeSelector 之间的间距
+  const totalHeight = labelFontSize + verticalGap + typeSelectorHeight;
   
   for (const handle of layout.handles) {
     // 只渲染数据端口的类型标签
     if (handle.kind !== 'data') continue;
 
-    const area = getTypeLabelArea(layout, handle.handleId);
-    if (!area) continue;
-
-    // 获取类型约束文本
-    const typeText = getTypeText(node, handle.handleId, handle.isOutput);
+    // 使用共享的 getPortTypeInfo 获取类型信息
+    const typeInfo = getPortTypeInfo(nodeList, node.id, handle.handleId);
+    const typeText = typeInfo?.currentType;
     if (!typeText) continue;
+
+    const handleX = layout.x + handle.x;
+    const handleY = layout.y + handle.y;
+    
+    // 计算垂直居中的起始 Y（label 顶部）
+    const startY = handleY - totalHeight / 2;
+    
+    // TypeSelector Y 坐标（背景矩形顶部）
+    // label 在上（由 GraphController 渲染），TypeSelector 在下
+    const typeSelectorY = startY + labelFontSize + verticalGap;
+    
+    // TypeSelector 背景矩形 X 坐标
+    const typeBgX = handle.isOutput 
+      ? handleX - labelOffsetX - typeLabelStyle.width
+      : handleX + labelOffsetX;
 
     // 计算背景色（基于端口颜色，带透明度）
     const bgColor = hexToRgba(handle.color, typeLabelStyle.backgroundAlpha);
+    // 边框色（稍微亮一点）
+    const borderColor = hexToRgba(handle.color, typeLabelStyle.backgroundAlpha + 0.2);
 
-    // 添加背景矩形
+    // 添加 TypeSelector 背景矩形（带边框，更接近 ReactFlow）
     data.rects.push({
       id: `type-label-bg-${layout.nodeId}-${handle.handleId}`,
-      x: area.x,
-      y: area.y,
-      width: area.width,
-      height: area.height,
+      x: typeBgX,
+      y: typeSelectorY,
+      width: typeLabelStyle.width,
+      height: typeSelectorHeight,
       fillColor: bgColor,
-      borderColor: 'transparent',
-      borderWidth: 0,
+      borderColor: borderColor,
+      borderWidth: 1,
       borderRadius: typeLabelStyle.borderRadius,
       selected: false,
       zIndex: layout.zIndex + 2,
     });
 
-    // 添加类型文本
+    // 添加类型文本（在背景矩形内）
     data.texts.push({
       id: `type-label-text-${layout.nodeId}-${handle.handleId}`,
       text: truncateText(typeText, 8),
-      x: area.x + area.width / 2,
-      y: area.y + area.height / 2,
+      x: handle.isOutput ? typeBgX + typeLabelStyle.width - 6 : typeBgX + 6,
+      y: typeSelectorY + typeSelectorHeight / 2,
       fontSize: typeLabelStyle.fontSize,
-      fontFamily: 'system-ui, sans-serif',
-      color: typeLabelStyle.textColor,
-      align: 'center',
+      fontFamily: textStyle.fontFamily,
+      color: handle.color, // 使用端口颜色作为文字颜色
+      align: handle.isOutput ? 'right' : 'left',
       baseline: 'middle',
     });
   }
@@ -246,7 +286,7 @@ function renderButton(
     x: area.x + area.width / 2,
     y: area.y + area.height / 2,
     fontSize: buttonStyle.fontSize,
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: getTextStyle().fontFamily,
     color: buttonStyle.textColor,
     align: 'center',
     baseline: 'middle',
@@ -264,6 +304,7 @@ function renderTraitsToggle(
   zIndex: number
 ): void {
   const buttonStyle = getButtonStyle();
+  const textStyle = getTextStyle();
   
   // 背景
   data.rects.push({
@@ -286,8 +327,8 @@ function renderTraitsToggle(
     text: isExpanded ? '▼' : '▶',
     x: area.x + area.width / 2,
     y: area.y + area.height / 2,
-    fontSize: 10,
-    fontFamily: 'system-ui, sans-serif',
+    fontSize: textStyle.labelFontSize - 2,
+    fontFamily: textStyle.fontFamily,
     color: buttonStyle.textColor,
     align: 'center',
     baseline: 'middle',
@@ -318,47 +359,6 @@ function getVariadicGroups(data: BlueprintNodeData): string[] {
   }
 
   return groups;
-}
-
-/**
- * 获取端口的类型文本
- */
-function getTypeText(node: GraphNode, handleId: string, isOutput: boolean): string | null {
-  switch (node.type) {
-    case 'operation': {
-      const data = node.data as BlueprintNodeData;
-      // 从 inputTypes/outputTypes 获取显示类型
-      if (isOutput) {
-        const resultName = handleId.replace('data-out-', '');
-        return data.outputTypes?.[resultName] ?? null;
-      } else {
-        const operandName = handleId.replace('data-in-', '');
-        return data.inputTypes?.[operandName] ?? null;
-      }
-    }
-    case 'function-entry': {
-      const data = node.data as FunctionEntryData;
-      const param = data.outputs?.find(o => o.id === handleId || `data-out-${o.name}` === handleId);
-      return param?.typeConstraint ?? null;
-    }
-    case 'function-return': {
-      const data = node.data as FunctionReturnData;
-      const ret = data.inputs?.find(i => i.id === handleId || `data-in-${i.name}` === handleId);
-      return ret?.typeConstraint ?? null;
-    }
-    case 'function-call': {
-      const data = node.data as import('../../../types').FunctionCallData;
-      if (isOutput) {
-        const output = data.outputs?.find(o => o.id === handleId || `data-out-${o.name}` === handleId);
-        return output?.typeConstraint ?? null;
-      } else {
-        const input = data.inputs?.find(i => i.id === handleId || `data-in-${i.name}` === handleId);
-        return input?.typeConstraint ?? null;
-      }
-    }
-    default:
-      return null;
-  }
 }
 
 /**

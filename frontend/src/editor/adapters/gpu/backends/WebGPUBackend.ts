@@ -171,28 +171,49 @@ export class WebGPUBackend implements IGPUBackend {
     this.eventListeners.clear();
   }
 
+  // 当前帧的资源
+  private currentCommandEncoder: GPUCommandEncoder | null = null;
+  private currentRenderPass: GPURenderPassEncoder | null = null;
+  private currentTextureView: GPUTextureView | null = null;
+
   beginFrame(): void {
-    // WebGPU 需要在第一个 render pass 中清除
-    // 我们在这里标记需要清除，第一个 render 方法会执行清除
-    this._needsClear = true;
-  }
-  
-  // 标记是否需要清除
-  private _needsClear: boolean = true;
-  
-  /**
-   * 获取当前帧的 loadOp
-   */
-  private getLoadOp(): GPULoadOp {
-    if (this._needsClear) {
-      this._needsClear = false;
-      return 'clear';
+    if (!this.device || !this.context) {
+      return;
     }
-    return 'load';
+    
+    // 创建当前帧的 command encoder
+    this.currentCommandEncoder = this.device.createCommandEncoder();
+    
+    // 获取当前帧的纹理视图（每帧只调用一次）
+    const texture = this.context.getCurrentTexture();
+    this.currentTextureView = texture.createView();
+    
+    // 开始 render pass
+    this.currentRenderPass = this.currentCommandEncoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.currentTextureView,
+        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    });
   }
 
   endFrame(): void {
-    // WebGPU 自动提交
+    if (!this.device || !this.currentRenderPass || !this.currentCommandEncoder) {
+      return;
+    }
+    
+    // 结束 render pass
+    this.currentRenderPass.end();
+    
+    // 提交命令
+    this.device.queue.submit([this.currentCommandEncoder.finish()]);
+    
+    // 清理当前帧资源
+    this.currentCommandEncoder = null;
+    this.currentRenderPass = null;
+    this.currentTextureView = null;
   }
 
   setViewTransform(matrix: Float32Array): void {
@@ -213,19 +234,9 @@ export class WebGPUBackend implements IGPUBackend {
 
 
   renderNodes(batch: NodeBatch): void {
-    if (!this.device || !this.context || !this.nodePipeline || batch.count === 0) return;
-    
-    const commandEncoder = this.device.createCommandEncoder();
-    const textureView = this.context.getCurrentTexture().createView();
-    
-    const renderPass = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: textureView,
-        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
-        loadOp: this.getLoadOp(),
-        storeOp: 'store',
-      }],
-    });
+    if (!this.device || !this.currentRenderPass || !this.nodePipeline || batch.count === 0) {
+      return;
+    }
     
     // 更新 uniform buffer
     const uniformData = new Float32Array([
@@ -240,30 +251,15 @@ export class WebGPUBackend implements IGPUBackend {
       batch.dirty = false;
     }
     
-    renderPass.setPipeline(this.nodePipeline);
-    renderPass.setBindGroup(0, this.nodeBindGroup!);
-    renderPass.setVertexBuffer(0, this.nodeQuadBuffer!);
-    renderPass.setVertexBuffer(1, this.nodeInstanceBuffer!);
-    renderPass.draw(4, batch.count);
-    
-    renderPass.end();
-    this.device.queue.submit([commandEncoder.finish()]);
+    this.currentRenderPass.setPipeline(this.nodePipeline);
+    this.currentRenderPass.setBindGroup(0, this.nodeBindGroup!);
+    this.currentRenderPass.setVertexBuffer(0, this.nodeQuadBuffer!);
+    this.currentRenderPass.setVertexBuffer(1, this.nodeInstanceBuffer!);
+    this.currentRenderPass.draw(4, batch.count);
   }
 
   renderEdges(batch: EdgeBatch): void {
-    if (!this.device || !this.context || !this.edgePipeline || batch.count === 0) return;
-    
-    const commandEncoder = this.device.createCommandEncoder();
-    const textureView = this.context.getCurrentTexture().createView();
-    
-    const renderPass = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: textureView,
-        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
-        loadOp: this.getLoadOp(),
-        storeOp: 'store',
-      }],
-    });
+    if (!this.device || !this.currentRenderPass || !this.edgePipeline || batch.count === 0) return;
     
     // 更新 uniform buffer
     const uniformData = new Float32Array([
@@ -278,30 +274,15 @@ export class WebGPUBackend implements IGPUBackend {
       batch.dirty = false;
     }
     
-    renderPass.setPipeline(this.edgePipeline);
-    renderPass.setBindGroup(0, this.edgeBindGroup!);
-    renderPass.setVertexBuffer(0, this.edgeTBuffer!);
-    renderPass.setVertexBuffer(1, this.edgeInstanceBuffer!);
-    renderPass.draw(EDGE_SEGMENTS + 1, batch.count);
-    
-    renderPass.end();
-    this.device.queue.submit([commandEncoder.finish()]);
+    this.currentRenderPass.setPipeline(this.edgePipeline);
+    this.currentRenderPass.setBindGroup(0, this.edgeBindGroup!);
+    this.currentRenderPass.setVertexBuffer(0, this.edgeTBuffer!);
+    this.currentRenderPass.setVertexBuffer(1, this.edgeInstanceBuffer!);
+    this.currentRenderPass.draw(EDGE_SEGMENTS + 1, batch.count);
   }
 
   renderText(batch: TextBatch): void {
-    if (!this.device || !this.context || !this.textPipeline || !this.textTexture || batch.count === 0) return;
-    
-    const commandEncoder = this.device.createCommandEncoder();
-    const textureView = this.context.getCurrentTexture().createView();
-    
-    const renderPass = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: textureView,
-        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
-        loadOp: this.getLoadOp(),
-        storeOp: 'store',
-      }],
-    });
+    if (!this.device || !this.currentRenderPass || !this.textPipeline || !this.textTexture || batch.count === 0) return;
     
     // 更新 uniform buffer
     const uniformData = new Float32Array([
@@ -316,30 +297,15 @@ export class WebGPUBackend implements IGPUBackend {
       batch.dirty = false;
     }
     
-    renderPass.setPipeline(this.textPipeline);
-    renderPass.setBindGroup(0, this.textBindGroup!);
-    renderPass.setVertexBuffer(0, this.textQuadBuffer!);
-    renderPass.setVertexBuffer(1, this.textInstanceBuffer!);
-    renderPass.draw(4, batch.count);
-    
-    renderPass.end();
-    this.device.queue.submit([commandEncoder.finish()]);
+    this.currentRenderPass.setPipeline(this.textPipeline);
+    this.currentRenderPass.setBindGroup(0, this.textBindGroup!);
+    this.currentRenderPass.setVertexBuffer(0, this.textQuadBuffer!);
+    this.currentRenderPass.setVertexBuffer(1, this.textInstanceBuffer!);
+    this.currentRenderPass.draw(4, batch.count);
   }
 
   renderCircles(batch: CircleBatch): void {
-    if (!this.device || !this.context || !this.circlePipeline || batch.count === 0) return;
-    
-    const commandEncoder = this.device.createCommandEncoder();
-    const textureView = this.context.getCurrentTexture().createView();
-    
-    const renderPass = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: textureView,
-        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
-        loadOp: this.getLoadOp(),
-        storeOp: 'store',
-      }],
-    });
+    if (!this.device || !this.currentRenderPass || !this.circlePipeline || batch.count === 0) return;
     
     // 更新 uniform buffer
     const uniformData = new Float32Array([
@@ -354,30 +320,15 @@ export class WebGPUBackend implements IGPUBackend {
       batch.dirty = false;
     }
     
-    renderPass.setPipeline(this.circlePipeline);
-    renderPass.setBindGroup(0, this.circleBindGroup!);
-    renderPass.setVertexBuffer(0, this.circleQuadBuffer!);
-    renderPass.setVertexBuffer(1, this.circleInstanceBuffer!);
-    renderPass.draw(4, batch.count);
-    
-    renderPass.end();
-    this.device.queue.submit([commandEncoder.finish()]);
+    this.currentRenderPass.setPipeline(this.circlePipeline);
+    this.currentRenderPass.setBindGroup(0, this.circleBindGroup!);
+    this.currentRenderPass.setVertexBuffer(0, this.circleQuadBuffer!);
+    this.currentRenderPass.setVertexBuffer(1, this.circleInstanceBuffer!);
+    this.currentRenderPass.draw(4, batch.count);
   }
 
   renderTriangles(batch: TriangleBatch): void {
-    if (!this.device || !this.context || !this.trianglePipeline || batch.count === 0) return;
-    
-    const commandEncoder = this.device.createCommandEncoder();
-    const textureView = this.context.getCurrentTexture().createView();
-    
-    const renderPass = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: textureView,
-        clearValue: { r: 0.03, g: 0.03, b: 0.05, a: 1.0 },
-        loadOp: this.getLoadOp(),
-        storeOp: 'store',
-      }],
-    });
+    if (!this.device || !this.currentRenderPass || !this.trianglePipeline || batch.count === 0) return;
     
     // 更新 uniform buffer
     const uniformData = new Float32Array([
@@ -392,14 +343,11 @@ export class WebGPUBackend implements IGPUBackend {
       batch.dirty = false;
     }
     
-    renderPass.setPipeline(this.trianglePipeline);
-    renderPass.setBindGroup(0, this.triangleBindGroup!);
-    renderPass.setVertexBuffer(0, this.triangleQuadBuffer!);
-    renderPass.setVertexBuffer(1, this.triangleInstanceBuffer!);
-    renderPass.draw(4, batch.count);
-    
-    renderPass.end();
-    this.device.queue.submit([commandEncoder.finish()]);
+    this.currentRenderPass.setPipeline(this.trianglePipeline);
+    this.currentRenderPass.setBindGroup(0, this.triangleBindGroup!);
+    this.currentRenderPass.setVertexBuffer(0, this.triangleQuadBuffer!);
+    this.currentRenderPass.setVertexBuffer(1, this.triangleInstanceBuffer!);
+    this.currentRenderPass.draw(4, batch.count);
   }
 
   updateTextTexture(canvas: OffscreenCanvas | HTMLCanvasElement): void {
@@ -507,10 +455,20 @@ export class WebGPUBackend implements IGPUBackend {
     if (!this.device) return;
     
     // 节点着色器
+    const shaderCode = await this.loadShader('node');
+    
     const nodeShaderModule = this.device.createShaderModule({
       label: 'Node Shader',
-      code: await this.loadShader('node'),
+      code: shaderCode,
     });
+    
+    // 检查着色器编译错误
+    const compilationInfo = await nodeShaderModule.getCompilationInfo();
+    if (compilationInfo.messages.length > 0) {
+      for (const msg of compilationInfo.messages) {
+        console.error('Node shader compilation:', msg.type, msg.message, 'line:', msg.lineNum);
+      }
+    }
     
     // 单位正方形顶点
     const quadVertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
@@ -597,10 +555,20 @@ export class WebGPUBackend implements IGPUBackend {
     if (!this.device) return;
     
     // 边着色器
+    const shaderCode = await this.loadShader('edge');
+    
     const edgeShaderModule = this.device.createShaderModule({
       label: 'Edge Shader',
-      code: await this.loadShader('edge'),
+      code: shaderCode,
     });
+    
+    // 检查着色器编译错误
+    const compilationInfo = await edgeShaderModule.getCompilationInfo();
+    if (compilationInfo.messages.length > 0) {
+      for (const msg of compilationInfo.messages) {
+        console.error('Edge shader compilation:', msg.type, msg.message, 'line:', msg.lineNum);
+      }
+    }
     
     // t 参数顶点
     const tValues = new Float32Array(EDGE_SEGMENTS + 1);
@@ -697,7 +665,7 @@ export class WebGPUBackend implements IGPUBackend {
       const module = await import('../shaders/webgpu/circle.wgsl?raw');
       return module.default;
     } else if (type === 'triangle') {
-      const module = await import('../shaders/wgsl/triangle.wgsl?raw');
+      const module = await import('../shaders/webgpu/triangle.wgsl?raw');
       return module.default;
     } else {
       const module = await import('../shaders/webgpu/text.wgsl?raw');
@@ -709,10 +677,20 @@ export class WebGPUBackend implements IGPUBackend {
     if (!this.device) return;
     
     // 圆形着色器
+    const shaderCode = await this.loadShader('circle');
+    
     const circleShaderModule = this.device.createShaderModule({
       label: 'Circle Shader',
-      code: await this.loadShader('circle'),
+      code: shaderCode,
     });
+    
+    // 检查着色器编译错误
+    const compilationInfo = await circleShaderModule.getCompilationInfo();
+    if (compilationInfo.messages.length > 0) {
+      for (const msg of compilationInfo.messages) {
+        console.error('Circle shader compilation:', msg.type, msg.message, 'line:', msg.lineNum);
+      }
+    }
     
     // [-1, 1] 正方形顶点
     const quadVertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
@@ -796,10 +774,20 @@ export class WebGPUBackend implements IGPUBackend {
     if (!this.device) return;
     
     // 三角形着色器
+    const shaderCode = await this.loadShader('triangle');
+    
     const triangleShaderModule = this.device.createShaderModule({
       label: 'Triangle Shader',
-      code: await this.loadShader('triangle'),
+      code: shaderCode,
     });
+    
+    // 检查着色器编译错误
+    const compilationInfo = await triangleShaderModule.getCompilationInfo();
+    if (compilationInfo.messages.length > 0) {
+      for (const msg of compilationInfo.messages) {
+        console.error('Triangle shader compilation:', msg.type, msg.message, 'line:', msg.lineNum);
+      }
+    }
     
     // [-1, 1] 正方形顶点
     const quadVertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
@@ -884,10 +872,20 @@ export class WebGPUBackend implements IGPUBackend {
     if (!this.device) return;
     
     // 文字着色器
+    const shaderCode = await this.loadShader('text');
+    
     const textShaderModule = this.device.createShaderModule({
       label: 'Text Shader',
-      code: await this.loadShader('text'),
+      code: shaderCode,
     });
+    
+    // 检查着色器编译错误
+    const compilationInfo = await textShaderModule.getCompilationInfo();
+    if (compilationInfo.messages.length > 0) {
+      for (const msg of compilationInfo.messages) {
+        console.error('Text shader compilation:', msg.type, msg.message, 'line:', msg.lineNum);
+      }
+    }
     
     // [0, 1] 正方形顶点
     const quadVertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);

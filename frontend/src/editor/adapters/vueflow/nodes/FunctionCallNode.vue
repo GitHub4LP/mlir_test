@@ -30,8 +30,12 @@ const props = defineProps<{
 // CSS 变量
 const cssVars = getCSSVariables();
 
-// Vue Flow 实例
-const { getNodes, getEdges, setNodes } = useVueFlow();
+// Vue Flow 实例（仅用于获取节点/边信息，不用于更新数据）
+const { getNodes, getEdges } = useVueFlow();
+
+// 直接更新 editorStore（数据一份，订阅更新）
+import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+const { updateNodeData } = useEditorStoreUpdate(props.id);
 
 // 使用 Vue Store Adapter 订阅 projectStore
 const currentFunction = useVueStore(
@@ -158,12 +162,12 @@ function getTypeSelectorParams(): TypeSelectorRenderParams {
   };
 }
 
-// 类型选择处理
+// 类型选择处理 - 直接更新 editorStore
 function handleTypeSelect(portId: string, type: string, _originalConstraint: string) {
-  const newPinnedTypes = { ...pinnedTypes.value, [portId]: type };
-  setNodes(ns => ns.map(n => 
-    n.id === props.id ? { ...n, data: { ...n.data, pinnedTypes: newPinnedTypes } } : n
-  ));
+  updateNodeData(data => ({
+    ...data,
+    pinnedTypes: { ...(data.pinnedTypes as Record<string, string> || {}), [portId]: type },
+  }));
   // TODO: 触发类型传播
 }
 

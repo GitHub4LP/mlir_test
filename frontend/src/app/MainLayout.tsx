@@ -13,7 +13,7 @@
  * - 使用 editorStore 管理节点/边状态
  */
 
-import { useCallback, useState, useEffect, useMemo, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { Node } from '@xyflow/react';
 
 import { NodePalette } from '../components/NodePalette';
@@ -24,10 +24,13 @@ import { EditorContainer, type RendererType } from './components/EditorContainer
 import { useEditorFactory } from './hooks/useEditorFactory';
 import { useGraphEditor } from './hooks/useGraphEditor';
 import type { EditorSelection, ConnectionRequest } from '../editor/types';
+import type { INodeEditor } from '../editor/INodeEditor';
 import type { OperationDef, FunctionDef } from '../types';
 import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
 import { useEditorStore } from '../core/stores/editorStore';
+import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { handlePinnedTypeChange, type TypeChangeHandlerDeps } from '../services/typeChangeHandler';
 
 // Layout components
 import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar } from '../components/layout';
@@ -64,6 +67,15 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   // Renderer state
   const [renderer, setRenderer] = useState<RendererType>('reactflow');
   
+  // 文字渲染模式状态（仅 WebGPU 有效）
+  const [textRenderMode, setTextRenderMode] = useState<'gpu' | 'canvas'>('gpu');
+  
+  // 边渲染模式状态（仅 GPU 渲染器有效）
+  const [edgeRenderMode, setEdgeRenderMode] = useState<'gpu' | 'canvas'>('gpu');
+  
+  // 编辑器实例引用
+  const editorRef = useRef<INodeEditor | null>(null);
+  
   // Editor factory
   const { createEditor } = useEditorFactory();
   
@@ -86,7 +98,40 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   // 渲染器切换处理
   const handleRendererChange = useCallback((newRenderer: RendererType) => {
     setRenderer(newRenderer);
+    // 切换渲染器时重置渲染模式
+    setTextRenderMode('gpu');
+    setEdgeRenderMode('gpu');
   }, []);
+  
+  // 文字渲染模式切换处理
+  const handleTextRenderModeChange = useCallback((mode: 'gpu' | 'canvas') => {
+    setTextRenderMode(mode);
+    // 通知编辑器切换文字渲染模式
+    const editor = editorRef.current;
+    if (editor && typeof (editor as unknown as { setTextRenderMode?: (m: string) => void }).setTextRenderMode === 'function') {
+      (editor as unknown as { setTextRenderMode: (m: string) => void }).setTextRenderMode(mode);
+    }
+  }, []);
+  
+  // 边渲染模式切换处理
+  const handleEdgeRenderModeChange = useCallback((mode: 'gpu' | 'canvas') => {
+    setEdgeRenderMode(mode);
+    // 通知编辑器切换边渲染模式
+    const editor = editorRef.current;
+    if (editor && typeof (editor as unknown as { setEdgeRenderMode?: (m: string) => void }).setEdgeRenderMode === 'function') {
+      (editor as unknown as { setEdgeRenderMode: (m: string) => void }).setEdgeRenderMode(mode);
+    }
+  }, []);
+  
+  // 编辑器就绪回调
+  const handleEditorReady = useCallback((editor: INodeEditor) => {
+    editorRef.current = editor;
+    // 如果是 GPU 渲染器（WebGL 或 WebGPU），同步当前文字模式
+    if ((renderer === 'webgpu' || renderer === 'webgl') && 
+        typeof (editor as unknown as { setTextRenderMode?: (m: string) => void }).setTextRenderMode === 'function') {
+      (editor as unknown as { setTextRenderMode: (m: string) => void }).setTextRenderMode(textRenderMode);
+    }
+  }, [renderer, textRenderMode]);
   
   // GPU availability detection
   const webglAvailable = useMemo(() => {
@@ -227,6 +272,79 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     }
   }, [nodes]);
 
+  // 类型选择处理
+  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
+  const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
+  
+  const handleTypeSelect = useCallback((nodeId: string, handleId: string, type: string) => {
+    const state = useEditorStore.getState();
+    const node = state.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    // 获取原始约束
+    let originalConstraint: string | undefined;
+    const data = node.data as Record<string, unknown>;
+    
+    if (node.type === 'operation') {
+      const operation = data.operation as { arguments: Array<{ kind: string; name: string; typeConstraint?: string }>; results: Array<{ name: string; typeConstraint?: string }> };
+      const isOutput = handleId.startsWith('data-out-');
+      const portName = handleId.replace(/^data-(in|out)-/, '');
+      
+      if (isOutput) {
+        const result = operation.results.find(r => r.name === portName);
+        originalConstraint = result?.typeConstraint;
+      } else {
+        const operand = operation.arguments.find(a => a.kind === 'operand' && a.name === portName);
+        originalConstraint = operand?.typeConstraint;
+      }
+    } else if (node.type === 'function-entry') {
+      const outputs = data.outputs as Array<{ name: string; typeConstraint?: string }> | undefined;
+      const portName = handleId.replace('data-out-', '');
+      const param = outputs?.find(o => o.name === portName);
+      originalConstraint = param?.typeConstraint;
+    } else if (node.type === 'function-return') {
+      const inputs = data.inputs as Array<{ name: string; typeConstraint?: string }> | undefined;
+      const portName = handleId.replace('data-in-', '');
+      const ret = inputs?.find(i => i.name === portName);
+      originalConstraint = ret?.typeConstraint;
+    } else if (node.type === 'function-call') {
+      const isOutput = handleId.startsWith('data-out-');
+      const portName = handleId.replace(/^data-(in|out)-/, '');
+      
+      if (isOutput) {
+        const outputs = data.outputs as Array<{ name: string; typeConstraint?: string }> | undefined;
+        const output = outputs?.find(o => o.name === portName);
+        originalConstraint = output?.typeConstraint;
+      } else {
+        const inputs = data.inputs as Array<{ name: string; typeConstraint?: string }> | undefined;
+        const input = inputs?.find(i => i.name === portName);
+        originalConstraint = input?.typeConstraint;
+      }
+    }
+    
+    // 构建依赖项
+    const deps: TypeChangeHandlerDeps = {
+      edges: state.edges,
+      getCurrentFunction,
+      getConstraintElements,
+      pickConstraintName,
+    };
+    
+    // 处理类型变更
+    const updatedNodes = handlePinnedTypeChange(
+      nodeId,
+      handleId,
+      type,
+      originalConstraint,
+      state.nodes,
+      deps
+    );
+    
+    // 更新 store
+    useEditorStore.getState().setNodes(updatedNodes);
+  }, [getCurrentFunction, getConstraintElements, pickConstraintName]);
+
   const dismissError = useCallback(() => {
     setConnectionError(null);
   }, []);
@@ -246,6 +364,10 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
         onRendererChange={handleRendererChange}
         webglAvailable={webglAvailable}
         webgpuAvailable={webgpuAvailable}
+        textRenderMode={textRenderMode}
+        onTextRenderModeChange={handleTextRenderModeChange}
+        edgeRenderMode={edgeRenderMode}
+        onEdgeRenderModeChange={handleEdgeRenderModeChange}
         onCreateClick={() => setIsCreateDialogOpen(true)}
         onOpenClick={() => setIsOpenDialogOpen(true)}
         onSaveClick={() => setIsSaveDialogOpen(true)}
@@ -292,6 +414,8 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
               onDeleteRequest={handleDeleteRequest}
               onSelectionChange={handleSelectionChange}
               onViewportChange={setViewport}
+              onTypeSelect={handleTypeSelect}
+              onEditorReady={handleEditorReady}
             />
 
             {connectionError && (

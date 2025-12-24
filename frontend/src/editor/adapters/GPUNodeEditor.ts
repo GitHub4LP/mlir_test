@@ -16,6 +16,7 @@ import type {
 } from '../types';
 import type { FunctionTrait } from '../../types';
 import { GPUNodeEditor as GPUNodeEditorCore } from './gpu/GPUNodeEditor';
+import type { TypeOption } from './canvas/ui/TypeSelector';
 
 /**
  * GPU 节点编辑器
@@ -54,6 +55,10 @@ export class GPUNodeEditor implements INodeEditor {
   onReturnTypeRemove: ((functionId: string, returnName: string) => void) | null = null;
   onReturnTypeRename: ((functionId: string, oldName: string, newName: string) => void) | null = null;
   onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null = null;
+  onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null = null;
+  
+  // onNodeDataChange 已废弃：节点组件现在直接更新 editorStore
+  onNodeDataChange: ((nodeId: string, data: Record<string, unknown>) => void) | null = null;
 
   constructor(preferWebGPU: boolean = true) {
     this.preferWebGPU = preferWebGPU;
@@ -88,23 +93,29 @@ export class GPUNodeEditor implements INodeEditor {
     this.editor.onReturnTypeRemove = this.onReturnTypeRemove;
     this.editor.onReturnTypeRename = this.onReturnTypeRename;
     this.editor.onTraitsChange = this.onTraitsChange;
+    this.editor.onTypeLabelClick = this.onTypeLabelClick;
     
     // 挂载
     this.editor.mount(container);
     
-    // 同步缓存的数据
-    if (this.nodes.length > 0) {
-      this.editor.setNodes(this.nodes);
-    }
-    if (this.edges.length > 0) {
-      this.editor.setEdges(this.edges);
-    }
-    if (this.viewport.x !== 0 || this.viewport.y !== 0 || this.viewport.zoom !== 1) {
-      this.editor.setViewport(this.viewport);
-    }
-    if (this.selection.nodeIds.length > 0 || this.selection.edgeIds.length > 0) {
-      this.editor.setSelection(this.selection);
-    }
+    // 等待渲染器就绪后同步数据并渲染
+    this.editor.waitForReady().then(() => {
+      if (!this.editor) return;
+      
+      // 同步缓存的数据
+      if (this.nodes.length > 0) {
+        this.editor.setNodes(this.nodes);
+      }
+      if (this.edges.length > 0) {
+        this.editor.setEdges(this.edges);
+      }
+      if (this.viewport.x !== 0 || this.viewport.y !== 0 || this.viewport.zoom !== 1) {
+        this.editor.setViewport(this.viewport);
+      }
+      if (this.selection.nodeIds.length > 0 || this.selection.edgeIds.length > 0) {
+        this.editor.setSelection(this.selection);
+      }
+    });
   }
 
   unmount(): void {
@@ -164,6 +175,78 @@ export class GPUNodeEditor implements INodeEditor {
 
   isAvailable(): boolean {
     return this.editor?.isAvailable() ?? true;
+  }
+
+  // ============================================================
+  // 类型选择器（原生 Canvas UI）
+  // ============================================================
+
+  /**
+   * 显示类型选择器
+   */
+  showTypeSelector(
+    nodeId: string,
+    handleId: string,
+    screenX: number,
+    screenY: number,
+    options: TypeOption[],
+    currentType?: string
+  ): void {
+    this.editor?.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType);
+  }
+
+  /**
+   * 隐藏类型选择器
+   */
+  hideTypeSelector(): void {
+    this.editor?.hideTypeSelector();
+  }
+
+  /**
+   * 设置类型选择回调
+   */
+  setTypeSelectCallback(callback: (nodeId: string, handleId: string, type: string) => void): void {
+    this.editor?.setTypeSelectCallback(callback);
+  }
+
+  /**
+   * 获取当前文字渲染模式
+   */
+  getTextRenderMode(): 'gpu' | 'canvas' {
+    return this.editor?.getTextRenderMode() ?? 'gpu';
+  }
+
+  /**
+   * 设置文字渲染模式
+   * @param mode 'gpu' - GPU 纹理渲染, 'canvas' - Canvas 2D 渲染
+   */
+  setTextRenderMode(mode: 'gpu' | 'canvas'): void {
+    this.editor?.setTextRenderMode(mode);
+  }
+
+  /**
+   * 获取当前边渲染模式
+   */
+  getEdgeRenderMode(): 'gpu' | 'canvas' {
+    return this.editor?.getEdgeRenderMode() ?? 'gpu';
+  }
+
+  /**
+   * 设置边渲染模式
+   * @param mode 'gpu' - GPU 渲染, 'canvas' - Canvas 2D 渲染
+   */
+  setEdgeRenderMode(mode: 'gpu' | 'canvas'): void {
+    this.editor?.setEdgeRenderMode(mode);
+  }
+
+  /**
+   * 手动触发渲染
+   */
+  render(): void {
+    // GPUNodeEditor 内部会自动渲染，这里通过重新设置数据触发
+    if (this.editor && this.nodes.length > 0) {
+      this.editor.setNodes(this.nodes);
+    }
   }
 }
 

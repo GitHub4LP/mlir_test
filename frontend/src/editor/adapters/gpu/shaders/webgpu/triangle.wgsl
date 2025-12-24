@@ -1,9 +1,8 @@
 // 三角形着色器 - 用于渲染执行引脚
 
 struct Uniforms {
-    viewMatrix: mat3x4<f32>,
-    resolution: vec2<f32>,
-    _padding: vec2<f32>,
+    viewMatrix: mat3x4<f32>,  // 48 bytes
+    resolution: vec2<f32>,     // 8 bytes
 }
 
 struct VertexInput {
