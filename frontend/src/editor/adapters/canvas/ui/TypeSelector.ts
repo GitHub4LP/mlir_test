@@ -7,14 +7,14 @@
  * - 包装按钮（+tensor, +vector 等）
  * - 颜色标记
  * 
- * 样式从 StyleSystem 统一获取
+ * 样式从 Design Tokens 统一获取
  */
 
 import { ContainerComponent, type UIMouseEvent, type UIKeyEvent } from './UIComponent';
 import { TextInput } from './TextInput';
 import { ScrollableList, type ListItem } from './ScrollableList';
 import { Button } from './Button';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { TEXT, UI, OVERLAY } from '../../shared/styles';
 
 export interface TypeOption {
   /** 类型名称 */
@@ -45,21 +45,19 @@ export interface TypeSelectorStyle {
 }
 
 function getDefaultStyle(): TypeSelectorStyle {
-  const overlayStyle = StyleSystem.getOverlayStyle();
-  const uiStyle = StyleSystem.getUIStyle();
   return {
-    width: uiStyle.panelWidthNarrow,
-    maxHeight: uiStyle.panelMaxHeight,
-    backgroundColor: overlayStyle.backgroundColor,
-    borderColor: overlayStyle.borderColor,
-    borderWidth: overlayStyle.borderWidth,
-    borderRadius: overlayStyle.borderRadius,
-    shadowColor: uiStyle.shadowColor,
-    shadowBlur: uiStyle.shadowBlur,
-    padding: overlayStyle.padding,
-    searchHeight: uiStyle.searchHeight,
-    wrapperButtonHeight: uiStyle.smallButtonHeight,
-    gap: uiStyle.smallGap,
+    width: UI.panelWidthNarrow,
+    maxHeight: UI.panelMaxHeight,
+    backgroundColor: OVERLAY.bg,
+    borderColor: OVERLAY.borderColor,
+    borderWidth: OVERLAY.borderWidth,
+    borderRadius: OVERLAY.borderRadius,
+    shadowColor: UI.shadowColor,
+    shadowBlur: UI.shadowBlur,
+    padding: OVERLAY.padding,
+    searchHeight: UI.searchHeight,
+    wrapperButtonHeight: UI.smallButtonHeight,
+    gap: UI.smallGap,
   };
 }
 
@@ -97,10 +95,9 @@ export class TypeSelector extends ContainerComponent {
     this.addChild(this.optionList);
 
     // 创建包装按钮
-    const textStyle = StyleSystem.getTextStyle();
     for (const wrapper of WRAPPER_TYPES) {
       const btn = new Button(`${id}-wrapper-${wrapper.prefix}`, wrapper.label, {
-        fontSize: textStyle.subtitleFontSize - 1,
+        fontSize: TEXT.subtitleSize - 1,
         padding: { x: 6, y: 2 },
       });
       btn.setOnClick(() => this.handleWrapperClick(wrapper.prefix));
@@ -301,7 +298,6 @@ export class TypeSelector extends ContainerComponent {
 
   private updateLayout(): void {
     const { padding, searchHeight, wrapperButtonHeight, gap, maxHeight } = this.style;
-    const uiStyle = StyleSystem.getUIStyle();
     const contentWidth = this.width - padding * 2;
 
     // 搜索框
@@ -322,7 +318,7 @@ export class TypeSelector extends ContainerComponent {
     // 选项列表
     const listY = buttonY + wrapperButtonHeight + gap;
     const listHeight = Math.min(
-      this.filteredItems.length * uiStyle.listItemHeight + 4,
+      this.filteredItems.length * UI.listItemHeight + 4,
       maxHeight - (listY - this.y) - padding
     );
     this.optionList.setPosition(this.x + padding, listY);

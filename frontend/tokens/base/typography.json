@@ -1,0 +1,26 @@
+{
+  "font": {
+    "family": {
+      "sans": { "value": "system-ui, -apple-system, sans-serif" },
+      "mono": { "value": "ui-monospace, monospace" }
+    },
+    "size": {
+      "xs": { "value": "10px" },
+      "sm": { "value": "12px" },
+      "base": { "value": "14px" },
+      "lg": { "value": "16px" },
+      "xl": { "value": "18px" }
+    },
+    "weight": {
+      "normal": { "value": "400" },
+      "medium": { "value": "500" },
+      "semibold": { "value": "600" },
+      "bold": { "value": "700" }
+    },
+    "lineHeight": {
+      "tight": { "value": "1.25" },
+      "normal": { "value": "1.5" },
+      "relaxed": { "value": "1.75" }
+    }
+  }
+}

@@ -1,10 +1,10 @@
 /**
  * Button - Canvas UI 按钮组件
- * 样式从 StyleSystem 统一获取
+ * 样式从 Design Tokens 统一获取
  */
 
 import { BaseUIComponent, type UIMouseEvent } from './UIComponent';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, TEXT, BUTTON, OVERLAY } from '../../shared/styles';
 
 export interface ButtonStyle {
   backgroundColor: string;
@@ -20,19 +20,16 @@ export interface ButtonStyle {
 }
 
 function getDefaultStyle(): ButtonStyle {
-  const btnStyle = StyleSystem.getButtonStyle();
-  const textStyle = StyleSystem.getTextStyle();
-  const overlayStyle = StyleSystem.getOverlayStyle();
   return {
-    backgroundColor: btnStyle.backgroundColor,
-    hoverBackgroundColor: btnStyle.hoverBackgroundColor,
-    activeBackgroundColor: overlayStyle.backgroundColor,
-    textColor: btnStyle.textColor,
-    borderColor: btnStyle.borderColor,
-    borderWidth: btnStyle.borderWidth,
-    borderRadius: btnStyle.borderRadius,
-    fontSize: btnStyle.fontSize,
-    fontFamily: textStyle.fontFamily,
+    backgroundColor: BUTTON.bg,
+    hoverBackgroundColor: BUTTON.hoverBg,
+    activeBackgroundColor: OVERLAY.bg,
+    textColor: BUTTON.textColor,
+    borderColor: BUTTON.borderColor,
+    borderWidth: BUTTON.borderWidth,
+    borderRadius: BUTTON.borderRadius,
+    fontSize: BUTTON.fontSize,
+    fontFamily: TEXT.fontFamily,
     padding: { x: 8, y: 4 },
   };
 }

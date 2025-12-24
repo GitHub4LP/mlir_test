@@ -1,0 +1,29 @@
+{
+  "ui": {
+    "listItemHeight": { "value": "28px" },
+    "searchHeight": { "value": "28px" },
+    "smallButtonHeight": { "value": "24px" },
+    "rowHeight": { "value": "28px" },
+    "labelWidth": { "value": "80px" },
+    "gap": { "value": "{size.2}" },
+    "smallGap": { "value": "6px" },
+    "scrollbarWidth": { "value": "6px" },
+    "panelWidthNarrow": { "value": "240px" },
+    "panelWidthMedium": { "value": "280px" },
+    "panelMaxHeight": { "value": "320px" },
+    "shadowBlur": { "value": "16px" },
+    "shadowColor": { "value": "rgba(0, 0, 0, 0.5)" },
+    "darkBg": { "value": "{color.gray.900}" },
+    "buttonBg": { "value": "{color.gray.700}" },
+    "buttonHoverBg": { "value": "{color.gray.600}" },
+    "successColor": { "value": "{color.green.500}" },
+    "successHoverColor": { "value": "{color.green.600}" },
+    "cursorBlinkInterval": { "value": "530" },
+    "minScrollbarHeight": { "value": "20px" },
+    "closeButtonOffset": { "value": "24px" },
+    "closeButtonSize": { "value": "10px" },
+    "titleLeftPadding": { "value": "12px" },
+    "colorDotRadius": { "value": "4px" },
+    "colorDotGap": { "value": "16px" }
+  }
+}

@@ -51,14 +51,14 @@ export const EditableName = memo(function EditableName({
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
         autoFocus
-        className={`text-xs bg-gray-700 text-white px-1 py-0.5 rounded border border-blue-500 outline-none w-16 ${className}`}
+        className={`rf-editable-input ${className}`}
       />
     );
   }
 
   return (
     <span
-      className={`text-xs text-gray-300 cursor-text hover:text-white ${className}`}
+      className={`rf-editable-name ${className}`}
       onDoubleClick={handleDoubleClick}
       title="Double-click to edit"
     >

@@ -4,14 +4,9 @@
  * 包含所有渲染器共享的类型定义、接口和工具。
  */
 
-// 样式系统
-export { StyleSystem, DEFAULT_THEME } from './StyleSystem';
-export type {
-  NodeStyleConfig,
-  EdgeStyleConfig,
-  TextStyleConfig,
-  ThemeConfig,
-} from './StyleSystem';
+// 样式系统 - 已迁移到 Design Tokens
+// 使用 frontend/src/editor/adapters/shared/styles.ts 代替
+// 使用 frontend/src/generated/tokens.ts 获取 token 值
 
 // 渲染数据模型
 export type {

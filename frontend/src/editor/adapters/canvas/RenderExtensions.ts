@@ -11,7 +11,7 @@
 import type { RenderData } from '../../core/RenderData';
 import type { NodeLayout } from '../../core/LayoutEngine';
 import type { GraphNode, BlueprintNodeData, FunctionEntryData, FunctionReturnData } from '../../../types';
-import { StyleSystem } from '../../core/StyleSystem';
+import { tokens, TEXT, BUTTON, TYPE_LABEL } from '../shared/styles';
 import {
   getVariadicButtonsArea,
   getParamAddButtonArea,
@@ -23,14 +23,6 @@ import {
 } from './HitTest';
 import { getPortTypeInfo } from '../shared/PortTypeInfo';
 import type { EditorNode } from '../../types';
-
-// ============================================================
-// 常量（从 StyleSystem 获取）
-// ============================================================
-
-const getButtonStyle = () => StyleSystem.getButtonStyle();
-const getTypeLabelStyle = () => StyleSystem.getTypeLabelStyle();
-const getTextStyle = () => StyleSystem.getTextStyle();
 
 // ============================================================
 // 渲染扩展配置
@@ -105,14 +97,12 @@ function renderTypeLabels(
   node: GraphNode,
   nodeList: EditorNode[]
 ): void {
-  const typeLabelStyle = getTypeLabelStyle();
-  const textStyle = getTextStyle();
-  const labelOffsetX = typeLabelStyle.offsetFromHandle;
+  const labelOffsetX = TYPE_LABEL.offsetFromHandle;
   
   // ReactFlow 中 label 字号 12px，TypeSelector 高度约 16px
   // 两者垂直堆叠，总高度约 28px（与 pinRowHeight 一致）
-  const labelFontSize = textStyle.labelFontSize; // 12px
-  const typeSelectorHeight = typeLabelStyle.height; // 16px
+  const labelFontSize = TEXT.labelSize; // 12px
+  const typeSelectorHeight = TYPE_LABEL.height; // 16px
   const verticalGap = 2; // label 和 TypeSelector 之间的间距
   const totalHeight = labelFontSize + verticalGap + typeSelectorHeight;
   
@@ -137,25 +127,25 @@ function renderTypeLabels(
     
     // TypeSelector 背景矩形 X 坐标
     const typeBgX = handle.isOutput 
-      ? handleX - labelOffsetX - typeLabelStyle.width
+      ? handleX - labelOffsetX - TYPE_LABEL.width
       : handleX + labelOffsetX;
 
     // 计算背景色（基于端口颜色，带透明度）
-    const bgColor = hexToRgba(handle.color, typeLabelStyle.backgroundAlpha);
+    const bgColor = hexToRgba(handle.color, parseFloat(TYPE_LABEL.bgAlpha));
     // 边框色（稍微亮一点）
-    const borderColor = hexToRgba(handle.color, typeLabelStyle.backgroundAlpha + 0.2);
+    const borderColor = hexToRgba(handle.color, parseFloat(TYPE_LABEL.bgAlpha) + 0.2);
 
     // 添加 TypeSelector 背景矩形（带边框，更接近 ReactFlow）
     data.rects.push({
       id: `type-label-bg-${layout.nodeId}-${handle.handleId}`,
       x: typeBgX,
       y: typeSelectorY,
-      width: typeLabelStyle.width,
+      width: TYPE_LABEL.width,
       height: typeSelectorHeight,
       fillColor: bgColor,
       borderColor: borderColor,
       borderWidth: 1,
-      borderRadius: typeLabelStyle.borderRadius,
+      borderRadius: TYPE_LABEL.borderRadius,
       selected: false,
       zIndex: layout.zIndex + 2,
     });
@@ -164,10 +154,10 @@ function renderTypeLabels(
     data.texts.push({
       id: `type-label-text-${layout.nodeId}-${handle.handleId}`,
       text: truncateText(typeText, 8),
-      x: handle.isOutput ? typeBgX + typeLabelStyle.width - 6 : typeBgX + 6,
+      x: handle.isOutput ? typeBgX + TYPE_LABEL.width - 6 : typeBgX + 6,
       y: typeSelectorY + typeSelectorHeight / 2,
-      fontSize: typeLabelStyle.fontSize,
-      fontFamily: textStyle.fontFamily,
+      fontSize: TYPE_LABEL.fontSize,
+      fontFamily: TEXT.fontFamily,
       color: handle.color, // 使用端口颜色作为文字颜色
       align: handle.isOutput ? 'right' : 'left',
       baseline: 'middle',
@@ -262,8 +252,6 @@ function renderButton(
   zIndex: number,
   isHover: boolean = false
 ): void {
-  const buttonStyle = getButtonStyle();
-  
   // 背景
   data.rects.push({
     id: `btn-bg-${nodeId}-${buttonId}`,
@@ -271,10 +259,10 @@ function renderButton(
     y: area.y,
     width: area.width,
     height: area.height,
-    fillColor: isHover ? buttonStyle.hoverBackgroundColor : buttonStyle.backgroundColor,
-    borderColor: buttonStyle.borderColor,
-    borderWidth: buttonStyle.borderWidth,
-    borderRadius: buttonStyle.borderRadius,
+    fillColor: isHover ? BUTTON.hoverBg : BUTTON.bg,
+    borderColor: BUTTON.borderColor,
+    borderWidth: BUTTON.borderWidth,
+    borderRadius: BUTTON.borderRadius,
     selected: false,
     zIndex: zIndex + 3,
   });
@@ -285,9 +273,9 @@ function renderButton(
     text,
     x: area.x + area.width / 2,
     y: area.y + area.height / 2,
-    fontSize: buttonStyle.fontSize,
-    fontFamily: getTextStyle().fontFamily,
-    color: buttonStyle.textColor,
+    fontSize: BUTTON.fontSize,
+    fontFamily: TEXT.fontFamily,
+    color: BUTTON.textColor,
     align: 'center',
     baseline: 'middle',
   });
@@ -303,9 +291,6 @@ function renderTraitsToggle(
   isExpanded: boolean,
   zIndex: number
 ): void {
-  const buttonStyle = getButtonStyle();
-  const textStyle = getTextStyle();
-  
   // 背景
   data.rects.push({
     id: `traits-toggle-bg-${nodeId}`,
@@ -313,10 +298,10 @@ function renderTraitsToggle(
     y: area.y,
     width: area.width,
     height: area.height,
-    fillColor: buttonStyle.backgroundColor,
-    borderColor: buttonStyle.borderColor,
-    borderWidth: buttonStyle.borderWidth,
-    borderRadius: buttonStyle.borderRadius,
+    fillColor: BUTTON.bg,
+    borderColor: BUTTON.borderColor,
+    borderWidth: BUTTON.borderWidth,
+    borderRadius: BUTTON.borderRadius,
     selected: false,
     zIndex: zIndex + 3,
   });
@@ -327,9 +312,9 @@ function renderTraitsToggle(
     text: isExpanded ? '▼' : '▶',
     x: area.x + area.width / 2,
     y: area.y + area.height / 2,
-    fontSize: textStyle.labelFontSize - 2,
-    fontFamily: textStyle.fontFamily,
-    color: buttonStyle.textColor,
+    fontSize: TEXT.labelSize - 2,
+    fontFamily: TEXT.fontFamily,
+    color: BUTTON.textColor,
     align: 'center',
     baseline: 'middle',
   });

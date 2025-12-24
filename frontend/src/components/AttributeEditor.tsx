@@ -121,18 +121,17 @@ const IntegerInput = memo(function IntegerInput({
   }, [onChange]);
 
   return (
-    <div className="flex flex-col">
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <input
         type="number"
-        className={`w-20 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
-          } focus:outline-none focus:border-blue-500`}
+        className={error ? 'rf-input rf-input-error rf-input-number' : 'rf-input rf-input-number'}
         value={displayValue}
         onChange={handleChange}
         onClick={(e) => e.stopPropagation()}
         disabled={disabled}
         aria-label={name}
       />
-      {error && <span className="text-xs text-red-400 mt-0.5">{error}</span>}
+      {error && <span className="rf-error-text">{error}</span>}
     </div>
   );
 });
@@ -168,19 +167,18 @@ const FloatInput = memo(function FloatInput({
   }, [onChange]);
 
   return (
-    <div className="flex flex-col">
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <input
         type="number"
         step="any"
-        className={`w-20 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
-          } focus:outline-none focus:border-blue-500`}
+        className={error ? 'rf-input rf-input-error rf-input-number' : 'rf-input rf-input-number'}
         value={displayValue}
         onChange={handleChange}
         onClick={(e) => e.stopPropagation()}
         disabled={disabled}
         aria-label={name}
       />
-      {error && <span className="text-xs text-red-400 mt-0.5">{error}</span>}
+      {error && <span className="rf-error-text">{error}</span>}
     </div>
   );
 });
@@ -206,7 +204,7 @@ const BooleanInput = memo(function BooleanInput({
   return (
     <input
       type="checkbox"
-      className="w-4 h-4 bg-gray-700 rounded border border-gray-600 accent-blue-500"
+      className="rf-checkbox"
       checked={Boolean(value)}
       onChange={handleChange}
       onClick={(e) => e.stopPropagation()}
@@ -237,7 +235,7 @@ const StringInput = memo(function StringInput({
   return (
     <input
       type="text"
-      className="w-24 text-xs bg-gray-700 text-white rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+      className="rf-input rf-input-text"
       value={String(value ?? '')}
       onChange={handleChange}
       onClick={(e) => e.stopPropagation()}
@@ -290,7 +288,7 @@ const EnumInput = memo(function EnumInput({
 
   return (
     <select
-      className="w-24 text-xs bg-gray-700 text-white rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+      className="rf-select"
       value={currentSymbol}
       onChange={handleChange}
       onClick={(e) => e.stopPropagation()}
@@ -343,7 +341,8 @@ const ArrayInput = memo(function ArrayInput({
   return (
     <input
       type="text"
-      className="w-32 text-xs bg-gray-700 text-white rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+      className="rf-input"
+      style={{ width: 128 }}
       value={displayValue}
       onChange={handleChange}
       onClick={(e) => e.stopPropagation()}
@@ -398,12 +397,11 @@ const TypedAttrInput = memo(function TypedAttrInput({
   }, [onChange]);
 
   return (
-    <div className="flex flex-col">
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <input
         type="text"
         inputMode="decimal"
-        className={`w-24 text-xs bg-gray-700 text-white rounded px-2 py-1 border ${error ? 'border-red-500' : 'border-gray-600'
-          } focus:outline-none focus:border-blue-500`}
+        className={error ? 'rf-input rf-input-error rf-input-text' : 'rf-input rf-input-text'}
         value={displayValue}
         onChange={handleChange}
         onClick={(e) => e.stopPropagation()}
@@ -411,7 +409,7 @@ const TypedAttrInput = memo(function TypedAttrInput({
         placeholder="0"
         aria-label={name}
       />
-      {error && <span className="text-xs text-red-400 mt-0.5">{error}</span>}
+      {error && <span className="rf-error-text">{error}</span>}
     </div>
   );
 });
@@ -438,7 +436,7 @@ export const AttributeEditor = memo(function AttributeEditor({
 
   // Render optional indicator
   const optionalIndicator = attribute.isOptional ? (
-    <span className="text-gray-500 text-xs ml-1">?</span>
+    <span className="rf-optional-indicator">?</span>
   ) : null;
 
   // 构建 tooltip：显示 displayName 和 description
@@ -448,9 +446,9 @@ export const AttributeEditor = memo(function AttributeEditor({
   ].filter(Boolean).join('\n') || undefined;
 
   return (
-    <div className="flex items-center justify-between py-1 gap-2">
+    <div className="rf-node-attr-row">
       <span
-        className="text-xs text-gray-400 flex items-center cursor-help"
+        className="rf-node-attr-label"
         title={tooltip}
       >
         {attribute.name}

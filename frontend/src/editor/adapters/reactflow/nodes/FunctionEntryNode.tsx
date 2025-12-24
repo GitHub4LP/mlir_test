@@ -12,14 +12,21 @@ import { useReactStore, projectStore, typeConstraintStore } from '../../../../st
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { FunctionTraitsEditor } from '../../../../components/FunctionTraitsEditor';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
-import { EditableName, execPinStyle, dataPinStyle, getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { EditableName } from '../../../../components/shared';
 import { dataOutHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
-import { StyleSystem } from '../../../core/StyleSystem';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { generateParameterName } from '../../../../services/parameterService';
 import { buildEntryDataPins } from '../../../../services/pinUtils';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import {
+  getNodeContainerStyle,
+  getNodeHeaderStyle,
+  getExecHandleStyleRight,
+  getDataHandleStyle,
+  getNodeTypeColor,
+  tokens,
+} from '../../shared/styles';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
@@ -104,58 +111,95 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     },
   }), [id, data, nodes, edges, currentFunction, getConstraintElements, handleTypeChange]);
 
-  const headerColor = isMain ? '#f59e0b' : '#22c55e';
-  const nodeStyle = StyleSystem.getNodeStyle();
+  const headerColor = isMain ? getNodeTypeColor('entryMain') : getNodeTypeColor('entry');
 
   return (
-    <div className="overflow-visible shadow-lg relative"
+    <div
+      className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: `${nodeStyle.minWidth}px`,
-      }}>
+        minWidth: tokens.node.minWidth,
+      }}
+    >
+      {/* Header */}
       <div style={getNodeHeaderStyle(headerColor)}>
-        <span className="text-sm font-semibold text-white">{functionName || 'Entry'}</span>
-        {isMain && <span className="ml-1 text-xs text-white/70">(main)</span>}
-      </div>
-      <div className="px-1 py-1">
-        <div className="relative flex items-center justify-end py-1.5 min-h-7">
-          <div className="mr-4" />
-          <Handle type="source" position={Position.Right} id={execOut.id} isConnectable={true}
-            className="!absolute !right-0 !top-1/2 !-translate-y-1/2 !translate-x-1/2" style={execPinStyle} />
+        <div className="rf-func-header">
+          <span className="rf-func-title">{functionName || 'Entry'}</span>
+          {isMain && <span className="rf-func-subtitle">(main)</span>}
         </div>
+      </div>
+
+      {/* Body */}
+      <div className="rf-func-body">
+        {/* Exec out pin */}
+        <div className="rf-exec-row rf-exec-row-right">
+          <div className="rf-spacer-right" />
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={execOut.id}
+            isConnectable={true}
+            className="rf-handle-right"
+            style={getExecHandleStyleRight()}
+          />
+        </div>
+
+        {/* Data pins */}
         {dataPins.map((pin) => {
           const { displayType, options, canEdit, onSelect } = computeTypeSelectorState(pin, typeSelectorParams);
           return (
-            <div key={pin.id} className="relative flex items-center justify-end py-1.5 min-h-7 group">
-              {!isMain && <button onClick={() => handleRemoveParameter(pin.label)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 mr-1" title="Remove">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>}
-              <div className="mr-4 flex flex-col items-end">
-                {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameParameter(pin.label, n)} />
-                  : <span className="text-xs text-gray-300">{pin.label}</span>}
-                <UnifiedTypeSelector 
+            <div key={pin.id} className="rf-data-row rf-data-row-right">
+              {!isMain && (
+                <button
+                  onClick={() => handleRemoveParameter(pin.label)}
+                  className="rf-remove-btn"
+                  title="Remove"
+                >
+                  <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+              <div className="rf-pin-content rf-pin-content-right">
+                {!isMain ? (
+                  <EditableName value={pin.label} onChange={(n) => handleRenameParameter(pin.label, n)} />
+                ) : (
+                  <span className="rf-pin-name">{pin.label}</span>
+                )}
+                <UnifiedTypeSelector
                   selectedType={displayType}
-                  onTypeSelect={onSelect} 
+                  onTypeSelect={onSelect}
                   constraint={pin.typeConstraint}
                   allowedTypes={options.length > 0 ? options : undefined}
-                  disabled={!canEdit} />
+                  disabled={!canEdit}
+                />
               </div>
-              <Handle type="source" position={Position.Right} id={pin.id} isConnectable={true}
-                className="!absolute !right-0 !top-1/2 !-translate-y-1/2 !translate-x-1/2"
-                style={dataPinStyle(pin.color || getTypeColor(pin.typeConstraint))} />
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={pin.id}
+                isConnectable={true}
+                className="rf-handle-right"
+                style={getDataHandleStyle(pin.color || getTypeColor(pin.typeConstraint))}
+              />
             </div>
           );
         })}
-        {!isMain && <div className="relative flex items-center justify-end py-1.5 min-h-7">
-          <button onClick={handleAddParameter} className="mr-4 text-gray-500 hover:text-white" title="Add parameter">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          </button>
-        </div>}
+
+        {/* Add parameter button */}
         {!isMain && (
-          <div className="px-2">
+          <div className="rf-add-row rf-exec-row-right">
+            <button onClick={handleAddParameter} className="rf-add-btn rf-spacer-right" title="Add parameter">
+              <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Traits editor */}
+        {!isMain && (
+          <div className="rf-traits-container">
             <FunctionTraitsEditor
               parameters={parameters}
               returnTypes={returnTypes}

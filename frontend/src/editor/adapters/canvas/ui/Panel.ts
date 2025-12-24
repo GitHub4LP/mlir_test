@@ -1,10 +1,10 @@
 /**
  * Panel - Canvas UI 面板容器组件
- * 样式从 StyleSystem 统一获取
+ * 样式从 Design Tokens 统一获取
  */
 
 import { ContainerComponent, type UIMouseEvent } from './UIComponent';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, TEXT, LAYOUT, UI, OVERLAY } from '../../shared/styles';
 
 export interface PanelStyle {
   backgroundColor: string;
@@ -25,30 +25,26 @@ export interface PanelStyle {
 }
 
 function getDefaultStyle(): PanelStyle {
-  const overlayStyle = StyleSystem.getOverlayStyle();
-  const textStyle = StyleSystem.getTextStyle();
-  const nodeStyle = StyleSystem.getNodeStyle();
-  const uiStyle = StyleSystem.getUIStyle();
   return {
-    backgroundColor: overlayStyle.backgroundColor,
-    borderColor: overlayStyle.borderColor,
-    borderWidth: overlayStyle.borderWidth,
-    borderRadius: overlayStyle.borderRadius,
-    shadowColor: uiStyle.shadowColor,
-    shadowBlur: uiStyle.shadowBlur,
+    backgroundColor: OVERLAY.bg,
+    borderColor: OVERLAY.borderColor,
+    borderWidth: OVERLAY.borderWidth,
+    borderRadius: OVERLAY.borderRadius,
+    shadowColor: UI.shadowColor,
+    shadowBlur: UI.shadowBlur,
     shadowOffsetX: 0,
     shadowOffsetY: 4,
     padding: { 
-      top: overlayStyle.padding, 
-      right: overlayStyle.padding, 
-      bottom: overlayStyle.padding, 
-      left: overlayStyle.padding 
+      top: OVERLAY.padding, 
+      right: OVERLAY.padding, 
+      bottom: OVERLAY.padding, 
+      left: OVERLAY.padding 
     },
-    headerHeight: nodeStyle.headerHeight,
-    headerBackgroundColor: uiStyle.darkBackground,
-    headerTextColor: textStyle.titleColor,
-    headerFontSize: textStyle.titleFontSize - 1,
-    headerFontFamily: textStyle.fontFamily,
+    headerHeight: LAYOUT.headerHeight,
+    headerBackgroundColor: UI.darkBg,
+    headerTextColor: TEXT.titleColor,
+    headerFontSize: TEXT.titleSize - 1,
+    headerFontFamily: TEXT.fontFamily,
   };
 }
 
@@ -117,18 +113,16 @@ export class Panel extends ContainerComponent {
 
       // 标题文字
       if (this.title) {
-        const uiStyle = StyleSystem.getUIStyle();
         ctx.fillStyle = this.style.headerTextColor;
         ctx.font = `${this.style.headerFontSize}px ${this.style.headerFontFamily}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(this.title, this.x + uiStyle.titleLeftPadding, this.y + this.style.headerHeight / 2);
+        ctx.fillText(this.title, this.x + UI.titleLeftPadding, this.y + this.style.headerHeight / 2);
       }
 
       // 关闭按钮
       if (this.showCloseButton) {
-        const uiStyle = StyleSystem.getUIStyle();
-        const closeX = this.x + this.width - uiStyle.closeButtonOffset;
+        const closeX = this.x + this.width - UI.closeButtonOffset;
         const closeY = this.y + this.style.headerHeight / 2;
         ctx.strokeStyle = this.style.headerTextColor;
         ctx.lineWidth = 1.5;
@@ -155,14 +149,13 @@ export class Panel extends ContainerComponent {
 
     // 检查关闭按钮
     if (this.showCloseButton && this.style.headerHeight > 0) {
-      const uiStyle = StyleSystem.getUIStyle();
-      const closeX = this.x + this.width - uiStyle.closeButtonOffset;
+      const closeX = this.x + this.width - UI.closeButtonOffset;
       const closeY = this.y + this.style.headerHeight / 2;
       if (
-        event.x >= closeX - uiStyle.closeButtonSize &&
-        event.x <= closeX + uiStyle.closeButtonSize &&
-        event.y >= closeY - uiStyle.closeButtonSize &&
-        event.y <= closeY + uiStyle.closeButtonSize
+        event.x >= closeX - UI.closeButtonSize &&
+        event.x <= closeX + UI.closeButtonSize &&
+        event.y >= closeY - UI.closeButtonSize &&
+        event.y <= closeY + UI.closeButtonSize
       ) {
         this.onClose?.();
         return true;

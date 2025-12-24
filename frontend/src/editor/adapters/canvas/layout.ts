@@ -22,31 +22,28 @@ export type {
   ComputeNodeLayoutFn,
 } from '../../core/LayoutEngine';
 
-// 为了向后兼容，保留常量导出（从 StyleSystem 派生）
-import { StyleSystem } from '../../core/StyleSystem';
+// 为了向后兼容，保留常量导出（从 Design Tokens 派生）
+import { tokens, LAYOUT } from '../shared/styles';
 
-const nodeStyle = StyleSystem.getNodeStyle();
-const edgeStyle = StyleSystem.getEdgeStyle();
-
-/** @deprecated 使用 StyleSystem.getNodeStyle() 代替 */
+/** @deprecated 使用 tokens 或 LAYOUT 代替 */
 export const NODE_LAYOUT = {
-  MIN_WIDTH: nodeStyle.minWidth,
-  HEADER_HEIGHT: nodeStyle.headerHeight,
-  PIN_ROW_HEIGHT: nodeStyle.pinRowHeight,
-  HANDLE_RADIUS: nodeStyle.handleRadius,
-  HANDLE_OFFSET: nodeStyle.handleOffset,
-  PADDING: nodeStyle.padding,
-  BORDER_RADIUS: nodeStyle.borderRadius,
-  DEFAULT_BG_COLOR: nodeStyle.backgroundColor,
-  DEFAULT_BORDER_COLOR: nodeStyle.borderColor,
-  SELECTED_BORDER_COLOR: nodeStyle.selectedBorderColor,
+  MIN_WIDTH: LAYOUT.minWidth,
+  HEADER_HEIGHT: LAYOUT.headerHeight,
+  PIN_ROW_HEIGHT: LAYOUT.pinRowHeight,
+  HANDLE_RADIUS: LAYOUT.handleRadius,
+  HANDLE_OFFSET: parseInt(tokens.node.handle.offset) || 0,
+  PADDING: LAYOUT.padding,
+  BORDER_RADIUS: LAYOUT.borderRadius,
+  DEFAULT_BG_COLOR: tokens.node.bg,
+  DEFAULT_BORDER_COLOR: tokens.node.border.color,
+  SELECTED_BORDER_COLOR: tokens.node.selected.borderColor,
 } as const;
 
-/** @deprecated 使用 StyleSystem.getEdgeStyle() 代替 */
+/** @deprecated 使用 tokens 代替 */
 export const EDGE_LAYOUT = {
-  WIDTH: edgeStyle.width,
-  SELECTED_WIDTH: edgeStyle.selectedWidth,
-  BEZIER_OFFSET: edgeStyle.bezierOffset,
-  EXEC_COLOR: edgeStyle.execColor,
-  DEFAULT_DATA_COLOR: edgeStyle.defaultDataColor,
+  WIDTH: tokens.edge.width,
+  SELECTED_WIDTH: tokens.edge.selectedWidth,
+  BEZIER_OFFSET: parseInt(tokens.edge.bezierOffset) || 100,
+  EXEC_COLOR: tokens.edge.exec.color,
+  DEFAULT_DATA_COLOR: tokens.edge.data.defaultColor,
 } as const;

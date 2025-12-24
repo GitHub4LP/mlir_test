@@ -12,7 +12,7 @@ import type {
   EditorSelection,
   ConnectionRequest,
 } from '../../types';
-import { StyleSystem } from '../../core/StyleSystem';
+import { tokens } from '../../../generated/tokens';
 
 // ============================================================
 // Vue Flow 类型定义（避免直接依赖 @vue-flow/core 类型）
@@ -78,7 +78,6 @@ export function fromVueFlowNode(node: VueFlowNode): EditorNode {
  * 将 EditorEdge 转换为 Vue Flow Edge
  */
 export function toVueFlowEdge(edge: EditorEdge): VueFlowEdge {
-  const edgeStyle = StyleSystem.getEdgeStyle();
   const isExecution = edge.type === 'execution';
   
   return {
@@ -90,8 +89,8 @@ export function toVueFlowEdge(edge: EditorEdge): VueFlowEdge {
     selected: edge.selected,
     type: 'default', // 贝塞尔曲线
     style: isExecution
-      ? { stroke: edgeStyle.execColor, strokeWidth: edgeStyle.width + 1 }
-      : { stroke: edge.data?.color || edgeStyle.defaultDataColor, strokeWidth: edgeStyle.width },
+      ? { stroke: tokens.edge.exec.color, strokeWidth: tokens.edge.width + 1 }
+      : { stroke: edge.data?.color || tokens.edge.data.defaultColor, strokeWidth: tokens.edge.width },
     animated: false,
   };
 }

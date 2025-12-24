@@ -54,29 +54,25 @@ const SameTypeTraitEditor = memo(function SameTypeTraitEditor({
   }, [trait, onUpdate]);
 
   return (
-    <div className="bg-gray-700/50 rounded p-2 mb-2">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-300">SameType</span>
+    <div className="rf-trait-editor">
+      <div className="rf-trait-header">
+        <span className="rf-trait-title">SameType</span>
         <button
           onClick={onRemove}
-          className="text-gray-500 hover:text-red-400 p-0.5"
+          className="rf-trait-remove-btn"
           title="删除"
         >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
       </div>
-      <div className="flex flex-wrap gap-1">
+      <div className="rf-trait-ports">
         {allPorts.map(port => (
           <button
             key={port.id}
             onClick={() => togglePort(port.id)}
-            className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
-              trait.ports.includes(port.id)
-                ? 'bg-blue-600/30 border-blue-500 text-blue-300'
-                : 'bg-gray-600/30 border-gray-600 text-gray-400 hover:border-gray-500'
-            }`}
+            className={trait.ports.includes(port.id) ? 'rf-trait-port rf-trait-port-selected' : 'rf-trait-port'}
             title={`${port.group}: ${port.label}`}
           >
             {port.group === '返回值' ? `→${port.label}` : port.label}
@@ -84,7 +80,7 @@ const SameTypeTraitEditor = memo(function SameTypeTraitEditor({
         ))}
       </div>
       {trait.ports.length < 2 && (
-        <p className="text-xs text-yellow-500 mt-1">至少选择 2 个端口</p>
+        <p className="rf-trait-warning">至少选择 2 个端口</p>
       )}
     </div>
   );
@@ -131,24 +127,29 @@ export const FunctionTraitsEditor = memo(function FunctionTraitsEditor({
   }
 
   return (
-    <div className="mt-2 border-t border-gray-600 pt-2">
+    <div className="rf-traits-panel">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
+        className="rf-traits-header"
       >
         <svg
-          className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+          style={{ 
+            width: 12, 
+            height: 12, 
+            transition: 'transform 0.2s',
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+          }}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        Traits ({traits.length})
+        <span className="rf-traits-title">Traits ({traits.length})</span>
       </button>
       
       {isExpanded && (
-        <div className="mt-2">
+        <div className="rf-traits-content">
           {traits.map((trait, index) => (
             <SameTypeTraitEditor
               key={index}
@@ -162,9 +163,9 @@ export const FunctionTraitsEditor = memo(function FunctionTraitsEditor({
           
           <button
             onClick={handleAddTrait}
-            className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
+            className="rf-trait-add-btn"
           >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             添加 SameType

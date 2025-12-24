@@ -7,14 +7,14 @@
  * - 枚举下拉
  * - 字符串输入
  * 
- * 样式从 StyleSystem 统一获取
+ * 样式从 Design Tokens 统一获取
  */
 
 import { ContainerComponent, type UIMouseEvent } from './UIComponent';
 import { TextInput } from './TextInput';
 import { Button } from './Button';
 import { ScrollableList, type ListItem } from './ScrollableList';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, TEXT, UI, OVERLAY, LAYOUT } from '../../shared/styles';
 
 /** 属性类型 */
 export type AttributeType = 'integer' | 'float' | 'boolean' | 'string' | 'enum';
@@ -59,28 +59,24 @@ export interface AttributeEditorStyle {
 }
 
 function getDefaultStyle(): AttributeEditorStyle {
-  const overlayStyle = StyleSystem.getOverlayStyle();
-  const textStyle = StyleSystem.getTextStyle();
-  const nodeStyle = StyleSystem.getNodeStyle();
-  const uiStyle = StyleSystem.getUIStyle();
   return {
-    width: uiStyle.panelWidthMedium,
-    backgroundColor: overlayStyle.backgroundColor,
-    borderColor: overlayStyle.borderColor,
-    borderWidth: overlayStyle.borderWidth,
-    borderRadius: overlayStyle.borderRadius,
-    shadowColor: uiStyle.shadowColor,
-    shadowBlur: uiStyle.shadowBlur,
-    padding: overlayStyle.padding + 4,
-    rowHeight: uiStyle.rowHeight,
-    labelWidth: uiStyle.labelWidth,
-    gap: uiStyle.gap,
-    labelColor: textStyle.mutedColor,
-    fontSize: textStyle.labelFontSize,
-    fontFamily: textStyle.fontFamily,
-    headerHeight: nodeStyle.headerHeight,
-    headerBackgroundColor: uiStyle.darkBackground,
-    headerTextColor: textStyle.titleColor,
+    width: UI.panelWidthMedium,
+    backgroundColor: OVERLAY.bg,
+    borderColor: OVERLAY.borderColor,
+    borderWidth: OVERLAY.borderWidth,
+    borderRadius: OVERLAY.borderRadius,
+    shadowColor: UI.shadowColor,
+    shadowBlur: UI.shadowBlur,
+    padding: OVERLAY.padding + 4,
+    rowHeight: UI.rowHeight,
+    labelWidth: UI.labelWidth,
+    gap: UI.gap,
+    labelColor: TEXT.mutedColor,
+    fontSize: TEXT.labelSize,
+    fontFamily: TEXT.fontFamily,
+    headerHeight: LAYOUT.headerHeight,
+    headerBackgroundColor: UI.darkBg,
+    headerTextColor: TEXT.titleColor,
   };
 }
 
@@ -197,15 +193,14 @@ export class AttributeEditor extends ContainerComponent {
     ctx.fill();
 
     // 标题
-    const uiStyle = StyleSystem.getUIStyle();
     ctx.fillStyle = this.style.headerTextColor;
     ctx.font = `${this.style.fontSize + 1}px ${this.style.fontFamily}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.title, this.x + uiStyle.titleLeftPadding, this.y + this.style.headerHeight / 2);
+    ctx.fillText(this.title, this.x + UI.titleLeftPadding, this.y + this.style.headerHeight / 2);
 
     // 关闭按钮
-    const closeX = this.x + this.width - uiStyle.closeButtonOffset;
+    const closeX = this.x + this.width - UI.closeButtonOffset;
     const closeY = this.y + this.style.headerHeight / 2;
     ctx.strokeStyle = this.style.headerTextColor;
     ctx.lineWidth = 1.5;
@@ -239,12 +234,11 @@ export class AttributeEditor extends ContainerComponent {
 
   onMouseDown(event: UIMouseEvent): boolean {
     // 关闭按钮
-    const uiStyle = StyleSystem.getUIStyle();
-    const closeX = this.x + this.width - uiStyle.closeButtonOffset;
+    const closeX = this.x + this.width - UI.closeButtonOffset;
     const closeY = this.y + this.style.headerHeight / 2;
     if (
-      event.x >= closeX - uiStyle.closeButtonSize && event.x <= closeX + uiStyle.closeButtonSize &&
-      event.y >= closeY - uiStyle.closeButtonSize && event.y <= closeY + uiStyle.closeButtonSize
+      event.x >= closeX - UI.closeButtonSize && event.x <= closeX + UI.closeButtonSize &&
+      event.y >= closeY - UI.closeButtonSize && event.y <= closeY + UI.closeButtonSize
     ) {
       this.onClose?.();
       return true;
@@ -318,11 +312,10 @@ export class AttributeEditor extends ContainerComponent {
   }
 
   private createBoolButton(attr: AttributeDef): void {
-    const uiStyle = StyleSystem.getUIStyle();
     const value = this.values.get(attr.name) ?? attr.defaultValue ?? false;
     const btn = new Button(`${this.id}-bool-${attr.name}`, value ? 'true' : 'false', {
-      backgroundColor: value ? uiStyle.successColor : uiStyle.buttonBackground,
-      hoverBackgroundColor: value ? uiStyle.successHoverColor : uiStyle.buttonHoverBackground,
+      backgroundColor: value ? UI.successColor : UI.buttonBg,
+      hoverBackgroundColor: value ? UI.successHoverColor : UI.buttonHoverBg,
     });
     btn.setOnClick(() => this.toggleBool(attr.name));
     
@@ -331,11 +324,10 @@ export class AttributeEditor extends ContainerComponent {
   }
 
   private createEnumSelector(attr: AttributeDef): void {
-    const uiStyle = StyleSystem.getUIStyle();
     // 显示当前值的按钮
     const value = this.values.get(attr.name) ?? attr.defaultValue ?? attr.options?.[0] ?? '';
     const btn = new Button(`${this.id}-enum-btn-${attr.name}`, String(value), {
-      backgroundColor: uiStyle.buttonBackground,
+      backgroundColor: UI.buttonBg,
     });
     btn.setOnClick(() => this.toggleEnumList(attr.name));
     
@@ -455,9 +447,8 @@ export class AttributeEditor extends ContainerComponent {
 
       const list = this.enumLists.get(attr.name);
       if (list) {
-        const uiStyle = StyleSystem.getUIStyle();
         list.setPosition(inputX, rowY + rowHeight + 2);
-        list.setSize(inputWidth, Math.min(150, (attr.options?.length ?? 5) * uiStyle.listItemHeight + 4));
+        list.setSize(inputWidth, Math.min(150, (attr.options?.length ?? 5) * UI.listItemHeight + 4));
       }
 
       rowY += rowHeight + gap;

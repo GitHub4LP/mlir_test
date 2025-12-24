@@ -11,7 +11,7 @@
 
 import type { NodeLayout } from '../../core/LayoutEngine';
 import { isPointInRect, isPointInCircle } from '../../core/LayoutEngine';
-import { StyleSystem } from '../../core/StyleSystem';
+import { tokens, LAYOUT, TYPE_LABEL } from '../shared/styles';
 
 // ============================================================
 // 命中测试结果类型
@@ -171,12 +171,18 @@ export type HitResult =
 // 命中测试函数
 // ============================================================
 
-const style = StyleSystem.getNodeStyle();
+const style = {
+  handleRadius: LAYOUT.handleRadius,
+  handleOffset: parseInt(tokens.node.handle.offset) || 0,
+  headerHeight: LAYOUT.headerHeight,
+  padding: LAYOUT.padding,
+  pinRowHeight: LAYOUT.pinRowHeight,
+};
 
 /** 类型标签区域宽度 */
-const TYPE_LABEL_WIDTH = 60;
+const TYPE_LABEL_WIDTH = TYPE_LABEL.width;
 /** 类型标签区域高度 */
-const TYPE_LABEL_HEIGHT = 16;
+const TYPE_LABEL_HEIGHT = TYPE_LABEL.height;
 
 /**
  * 检测点是否命中类型标签区域
@@ -198,13 +204,11 @@ export function hitTestTypeLabel(
   y: number,
   layout: NodeLayout
 ): HitTypeLabel | null {
-  const typeLabelStyle = StyleSystem.getTypeLabelStyle();
-  const textStyle = StyleSystem.getTextStyle();
-  const labelOffsetX = typeLabelStyle.offsetFromHandle;
+  const labelOffsetX = TYPE_LABEL.offsetFromHandle;
   
   // 与 RenderExtensions 保持一致的布局参数
-  const labelFontSize = textStyle.labelFontSize; // 12px
-  const typeSelectorHeight = typeLabelStyle.height; // 16px
+  const labelFontSize = tokens.text.label.size; // 12px
+  const typeSelectorHeight = TYPE_LABEL.height; // 16px
   const verticalGap = 2;
   const totalHeight = labelFontSize + verticalGap + typeSelectorHeight;
   
@@ -422,8 +426,7 @@ export function getTypeLabelPosition(
   
   const handleX = layout.x + handle.x;
   const handleY = layout.y + handle.y;
-  const typeLabelStyle = StyleSystem.getTypeLabelStyle();
-  const labelOffsetX = typeLabelStyle.offsetFromHandle;
+  const labelOffsetX = TYPE_LABEL.offsetFromHandle;
   
   let labelX: number;
   if (handle.isOutput) {
@@ -1007,8 +1010,7 @@ export function getTypeLabelArea(layout: NodeLayout, handleId: string): Interact
   
   const handleX = layout.x + handle.x;
   const handleY = layout.y + handle.y;
-  const typeLabelStyle = StyleSystem.getTypeLabelStyle();
-  const labelOffsetX = typeLabelStyle.offsetFromHandle;
+  const labelOffsetX = TYPE_LABEL.offsetFromHandle;
   
   let labelX: number;
   if (handle.isOutput) {

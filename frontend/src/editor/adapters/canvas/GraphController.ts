@@ -32,7 +32,7 @@ import {
   EDGE_LAYOUT,
   type NodeLayout,
 } from './layout';
-import { StyleSystem } from '../../core/StyleSystem';
+import { tokens, TEXT, TYPE_LABEL } from '../shared/styles';
 
 // ============================================================
 // 控制器状态类型
@@ -1007,8 +1007,7 @@ export class GraphController {
       return createEmptyRenderData();
     }
 
-    // 从 StyleSystem 获取样式，确保与 ReactFlow/VueFlow 一致
-    const textStyle = StyleSystem.getTextStyle();
+    // 从 Design Tokens 获取样式，确保与 ReactFlow/VueFlow 一致
 
     const rects: RenderRect[] = [];
     const texts: RenderText[] = [];
@@ -1071,9 +1070,9 @@ export class GraphController {
             text: layout.title,
             x: layout.x + NODE_LAYOUT.PADDING,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: textStyle.titleFontSize,
-            fontFamily: textStyle.fontFamily,
-            color: textStyle.titleColor,
+            fontSize: TEXT.titleSize,
+            fontFamily: TEXT.fontFamily,
+            color: TEXT.titleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1084,9 +1083,9 @@ export class GraphController {
             text: layout.subtitle, // 不 uppercase
             x: layout.x + NODE_LAYOUT.PADDING + titleWidth + 4,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: textStyle.subtitleFontSize,
-            fontFamily: textStyle.fontFamily,
-            color: textStyle.subtitleColor,
+            fontSize: TEXT.subtitleSize,
+            fontFamily: TEXT.fontFamily,
+            color: TEXT.subtitleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1097,9 +1096,9 @@ export class GraphController {
             text: layout.subtitle.toUpperCase(),
             x: layout.x + NODE_LAYOUT.PADDING,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: textStyle.subtitleFontSize,
-            fontFamily: textStyle.fontFamily,
-            color: textStyle.subtitleColor,
+            fontSize: TEXT.subtitleSize,
+            fontFamily: TEXT.fontFamily,
+            color: TEXT.subtitleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1110,9 +1109,9 @@ export class GraphController {
             text: layout.title,
             x: layout.x + NODE_LAYOUT.PADDING + subtitleWidth + 4,
             y: layout.y + layout.headerHeight / 2,
-            fontSize: textStyle.titleFontSize,
-            fontFamily: textStyle.fontFamily,
-            color: textStyle.titleColor,
+            fontSize: TEXT.titleSize,
+            fontFamily: TEXT.fontFamily,
+            color: TEXT.titleColor,
             align: 'left',
             baseline: 'middle',
           });
@@ -1124,9 +1123,9 @@ export class GraphController {
           text: layout.title,
           x: layout.x + NODE_LAYOUT.PADDING,
           y: layout.y + layout.headerHeight / 2,
-          fontSize: textStyle.titleFontSize,
-          fontFamily: textStyle.fontFamily,
-          color: textStyle.titleColor,
+          fontSize: TEXT.titleSize,
+          fontFamily: TEXT.fontFamily,
+          color: TEXT.titleColor,
           align: 'left',
           baseline: 'middle',
         });
@@ -1136,12 +1135,11 @@ export class GraphController {
       // 与 ReactFlow NodePins 布局一致：
       // - 数据端口：label 和 TypeSelector 垂直堆叠（flex-col），整体居中于端口
       // - 执行端口：只有 label，居中于端口
-      const typeLabelStyle = StyleSystem.getTypeLabelStyle();
-      const labelOffsetX = typeLabelStyle.offsetFromHandle;
+      const labelOffsetX = TYPE_LABEL.offsetFromHandle;
       
       // ReactFlow 布局参数
-      const labelFontSize = textStyle.labelFontSize; // 12px
-      const typeSelectorHeight = typeLabelStyle.height; // 16px
+      const labelFontSize = TEXT.labelSize; // 12px
+      const typeSelectorHeight = TYPE_LABEL.height; // 16px
       const verticalGap = 2; // label 和 TypeSelector 之间的间距
       const totalHeight = labelFontSize + verticalGap + typeSelectorHeight; // 约 30px
       
@@ -1172,9 +1170,9 @@ export class GraphController {
               text: handle.label,
               x: labelX,
               y: handleY,
-              fontSize: textStyle.labelFontSize,
-              fontFamily: textStyle.fontFamily,
-              color: textStyle.labelColor,
+              fontSize: TEXT.labelSize,
+              fontFamily: TEXT.fontFamily,
+              color: TEXT.labelColor,
               align: handle.isOutput ? 'right' : 'left',
               baseline: 'middle',
             });
@@ -1207,9 +1205,9 @@ export class GraphController {
               text: handle.label,
               x: labelX,
               y: labelY,
-              fontSize: textStyle.labelFontSize,
-              fontFamily: textStyle.fontFamily,
-              color: textStyle.labelColor,
+              fontSize: TEXT.labelSize,
+              fontFamily: TEXT.fontFamily,
+              color: TEXT.labelColor,
               align: handle.isOutput ? 'right' : 'left',
               baseline: 'middle',
             });

@@ -1,0 +1,22 @@
+{
+  "text": {
+    "fontFamily": { "value": "{font.family.sans}" },
+    "title": {
+      "size": { "value": "{font.size.base}" },
+      "color": { "value": "{color.white}" },
+      "weight": { "value": "{font.weight.semibold}" }
+    },
+    "subtitle": {
+      "size": { "value": "{font.size.sm}" },
+      "color": { "value": "rgba(255,255,255,0.7)" },
+      "weight": { "value": "{font.weight.medium}" }
+    },
+    "label": {
+      "size": { "value": "{font.size.sm}" },
+      "color": { "value": "{color.gray.300}" }
+    },
+    "muted": {
+      "color": { "value": "{color.gray.500}" }
+    }
+  }
+}

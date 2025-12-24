@@ -1,10 +1,10 @@
 /**
  * ScrollableList - Canvas UI 滚动列表组件
- * 样式从 StyleSystem 统一获取
+ * 样式从 Design Tokens 统一获取
  */
 
 import { BaseUIComponent, type UIMouseEvent, type UIWheelEvent } from './UIComponent';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, TEXT, UI, OVERLAY, LAYOUT } from '../../shared/styles';
 
 export interface ListItem {
   id: string;
@@ -38,28 +38,24 @@ export interface ScrollableListStyle {
 }
 
 function getDefaultStyle(): ScrollableListStyle {
-  const overlayStyle = StyleSystem.getOverlayStyle();
-  const textStyle = StyleSystem.getTextStyle();
-  const nodeStyle = StyleSystem.getNodeStyle();
-  const uiStyle = StyleSystem.getUIStyle();
   return {
-    backgroundColor: overlayStyle.backgroundColor,
+    backgroundColor: OVERLAY.bg,
     itemBackgroundColor: 'transparent',
-    itemHoverBackgroundColor: nodeStyle.borderColor,
-    itemSelectedBackgroundColor: nodeStyle.selectedBorderColor,
-    textColor: textStyle.titleColor,
-    secondaryTextColor: textStyle.mutedColor,
-    groupHeaderColor: textStyle.mutedColor,
-    borderColor: overlayStyle.borderColor,
-    borderWidth: overlayStyle.borderWidth,
-    borderRadius: overlayStyle.borderRadius / 2,
-    fontSize: textStyle.labelFontSize,
-    fontFamily: textStyle.fontFamily,
-    itemHeight: uiStyle.listItemHeight,
+    itemHoverBackgroundColor: tokens.node.border.color,
+    itemSelectedBackgroundColor: tokens.node.selected.borderColor,
+    textColor: TEXT.titleColor,
+    secondaryTextColor: TEXT.mutedColor,
+    groupHeaderColor: TEXT.mutedColor,
+    borderColor: OVERLAY.borderColor,
+    borderWidth: OVERLAY.borderWidth,
+    borderRadius: OVERLAY.borderRadius / 2,
+    fontSize: TEXT.labelSize,
+    fontFamily: TEXT.fontFamily,
+    itemHeight: UI.listItemHeight,
     itemPadding: { x: 8, y: 4 },
-    scrollbarWidth: uiStyle.scrollbarWidth,
-    scrollbarColor: nodeStyle.borderColor,
-    scrollbarTrackColor: overlayStyle.backgroundColor,
+    scrollbarWidth: UI.scrollbarWidth,
+    scrollbarColor: tokens.node.border.color,
+    scrollbarTrackColor: OVERLAY.bg,
   };
 }
 
@@ -197,12 +193,11 @@ export class ScrollableList extends BaseUIComponent {
     // 颜色标记
     let textX = x + itemPadding.x;
     if (item.color) {
-      const uiStyle = StyleSystem.getUIStyle();
       ctx.fillStyle = item.color;
       ctx.beginPath();
-      ctx.arc(textX + uiStyle.colorDotRadius, y + itemHeight / 2, uiStyle.colorDotRadius, 0, Math.PI * 2);
+      ctx.arc(textX + UI.colorDotRadius, y + itemHeight / 2, UI.colorDotRadius, 0, Math.PI * 2);
       ctx.fill();
-      textX += uiStyle.colorDotGap;
+      textX += UI.colorDotGap;
     }
 
     // 主文字
@@ -224,9 +219,8 @@ export class ScrollableList extends BaseUIComponent {
     const totalHeight = this.items.length * this.style.itemHeight;
     if (totalHeight <= this.height) return;
 
-    const uiStyle = StyleSystem.getUIStyle();
     const scrollbarX = this.x + this.width - this.style.scrollbarWidth;
-    const scrollbarHeight = Math.max(uiStyle.minScrollbarHeight, (this.height / totalHeight) * this.height);
+    const scrollbarHeight = Math.max(UI.minScrollbarHeight, (this.height / totalHeight) * this.height);
     const maxScroll = totalHeight - this.height;
     const scrollbarY = this.y + (this.scrollOffset / maxScroll) * (this.height - scrollbarHeight);
 
@@ -268,8 +262,7 @@ export class ScrollableList extends BaseUIComponent {
     if (this.isDraggingScrollbar) {
       const totalHeight = this.items.length * this.style.itemHeight;
       const maxScroll = totalHeight - this.height;
-      const uiStyle = StyleSystem.getUIStyle();
-      const scrollbarHeight = Math.max(uiStyle.minScrollbarHeight, (this.height / totalHeight) * this.height);
+      const scrollbarHeight = Math.max(UI.minScrollbarHeight, (this.height / totalHeight) * this.height);
       const scrollRange = this.height - scrollbarHeight;
       
       const deltaY = event.y - this.dragStartY;

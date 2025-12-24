@@ -2,11 +2,11 @@
  * TextInput - Canvas UI 文字输入组件
  * 
  * 使用隐藏的 DOM input 接收键盘事件，Canvas 渲染文字和光标。
- * 样式从 StyleSystem 统一获取。
+ * 样式从 Design Tokens 统一获取。
  */
 
 import { BaseUIComponent, type UIMouseEvent } from './UIComponent';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, TEXT, UI, OVERLAY } from '../../shared/styles';
 
 export interface TextInputStyle {
   backgroundColor: string;
@@ -24,23 +24,19 @@ export interface TextInputStyle {
 }
 
 function getDefaultStyle(): TextInputStyle {
-  const overlayStyle = StyleSystem.getOverlayStyle();
-  const textStyle = StyleSystem.getTextStyle();
-  const nodeStyle = StyleSystem.getNodeStyle();
-  const uiStyle = StyleSystem.getUIStyle();
   return {
-    backgroundColor: overlayStyle.backgroundColor,
-    focusBackgroundColor: uiStyle.darkBackground,
-    textColor: textStyle.titleColor,
-    placeholderColor: textStyle.mutedColor,
-    borderColor: overlayStyle.borderColor,
-    focusBorderColor: nodeStyle.selectedBorderColor,
-    borderWidth: overlayStyle.borderWidth,
-    borderRadius: overlayStyle.borderRadius / 2,
-    fontSize: textStyle.labelFontSize,
-    fontFamily: textStyle.fontFamily,
+    backgroundColor: OVERLAY.bg,
+    focusBackgroundColor: UI.darkBg,
+    textColor: TEXT.titleColor,
+    placeholderColor: TEXT.mutedColor,
+    borderColor: OVERLAY.borderColor,
+    focusBorderColor: tokens.node.selected.borderColor,
+    borderWidth: OVERLAY.borderWidth,
+    borderRadius: OVERLAY.borderRadius / 2,
+    fontSize: TEXT.labelSize,
+    fontFamily: TEXT.fontFamily,
     padding: { x: 8, y: 6 },
-    cursorColor: textStyle.titleColor,
+    cursorColor: TEXT.titleColor,
   };
 }
 
@@ -161,10 +157,9 @@ export class TextInput extends BaseUIComponent {
 
   private startCursorBlink(): void {
     this.cursorVisible = true;
-    const uiStyle = StyleSystem.getUIStyle();
     this.cursorBlinkTimer = window.setInterval(() => {
       this.cursorVisible = !this.cursorVisible;
-    }, uiStyle.cursorBlinkInterval);
+    }, UI.cursorBlinkInterval);
   }
 
   private stopCursorBlink(): void {

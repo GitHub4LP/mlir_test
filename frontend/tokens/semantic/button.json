@@ -1,0 +1,16 @@
+{
+  "button": {
+    "size": { "value": "16px" },
+    "borderRadius": { "value": "{radius.default}" },
+    "bg": { "value": "rgba(255, 255, 255, 0.1)" },
+    "hoverBg": { "value": "rgba(255, 255, 255, 0.2)" },
+    "borderColor": { "value": "rgba(255, 255, 255, 0.3)" },
+    "borderWidth": { "value": "{border.thin}" },
+    "textColor": { "value": "{color.white}" },
+    "fontSize": { "value": "{font.size.sm}" },
+    "danger": {
+      "color": { "value": "{color.red.500}" },
+      "hoverColor": { "value": "{color.red.400}" }
+    }
+  }
+}

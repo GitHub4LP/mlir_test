@@ -11,14 +11,21 @@ import { getTypeColor } from '../../../../services/typeSystem';
 import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
-import { EditableName, execPinStyle, dataPinStyle, getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { EditableName } from '../../../../components/shared';
 import { dataInHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
-import { StyleSystem } from '../../../core/StyleSystem';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { generateReturnTypeName } from '../../../../services/parameterService';
 import { buildReturnDataPins } from '../../../../services/pinUtils';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import {
+  getNodeContainerStyle,
+  getNodeHeaderStyle,
+  getExecHandleStyle,
+  getDataHandleStyle,
+  getNodeTypeColor,
+  tokens,
+} from '../../shared/styles';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
@@ -99,59 +106,94 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     },
   }), [id, data, nodes, edges, currentFunction, getConstraintElements, handleTypeChange]);
 
-  const headerColor = isMain ? '#dc2626' : '#ef4444';
+  const headerColor = isMain ? getNodeTypeColor('returnMain') : getNodeTypeColor('return');
   const headerText = branchName ? `Return "${branchName}"` : 'Return';
-  const nodeStyle = StyleSystem.getNodeStyle();
 
   return (
-    <div className="overflow-visible shadow-lg relative"
+    <div
+      className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: `${nodeStyle.minWidth}px`,
-      }}>
+        minWidth: tokens.node.minWidth,
+      }}
+    >
+      {/* Header */}
       <div style={getNodeHeaderStyle(headerColor)}>
-        <span className="text-sm font-semibold text-white">{headerText}</span>
-        {isMain && <span className="ml-1 text-xs text-white/70">(main)</span>}
-      </div>
-      <div className="px-1 py-1">
-        <div className="relative flex items-center py-1.5 min-h-7">
-          <Handle type="target" position={Position.Left} id={execIn.id} isConnectable={true}
-            className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2" style={execPinStyle} />
-          <div className="ml-4" />
+        <div className="rf-func-header">
+          <span className="rf-func-title">{headerText}</span>
+          {isMain && <span className="rf-func-subtitle">(main)</span>}
         </div>
+      </div>
+
+      {/* Body */}
+      <div className="rf-func-body">
+        {/* Exec in pin */}
+        <div className="rf-exec-row rf-exec-row-left">
+          <Handle
+            type="target"
+            position={Position.Left}
+            id={execIn.id}
+            isConnectable={true}
+            className="rf-handle-left"
+            style={getExecHandleStyle()}
+          />
+          <div className="rf-spacer-left" />
+        </div>
+
+        {/* Data pins */}
         {dataPins.map((pin) => {
           const { displayType, options, canEdit, onSelect } = computeTypeSelectorState(pin, typeSelectorParams);
           return (
-            <div key={pin.id} className="relative flex items-center py-1.5 min-h-7 group">
-              <Handle type="target" position={Position.Left} id={pin.id} isConnectable={true}
-                className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2"
-                style={dataPinStyle(pin.color || getTypeColor(pin.typeConstraint))} />
-              <div className="ml-4 flex flex-col items-start flex-1">
-                {!isMain ? <EditableName value={pin.label} onChange={(n) => handleRenameReturnType(pin.label, n)} />
-                  : <span className="text-xs text-gray-300">{pin.label}</span>}
-                <UnifiedTypeSelector 
+            <div key={pin.id} className="rf-data-row rf-data-row-left">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={pin.id}
+                isConnectable={true}
+                className="rf-handle-left"
+                style={getDataHandleStyle(pin.color || getTypeColor(pin.typeConstraint))}
+              />
+              <div className="rf-pin-content rf-pin-content-left">
+                {!isMain ? (
+                  <EditableName value={pin.label} onChange={(n) => handleRenameReturnType(pin.label, n)} />
+                ) : (
+                  <span className="rf-pin-name">{pin.label}</span>
+                )}
+                <UnifiedTypeSelector
                   selectedType={displayType}
-                  onTypeSelect={onSelect} 
+                  onTypeSelect={onSelect}
                   constraint={pin.typeConstraint}
                   allowedTypes={options.length > 0 ? options : undefined}
-                  disabled={!canEdit} />
+                  disabled={!canEdit}
+                />
               </div>
-              {!isMain && <button onClick={() => handleRemoveReturnType(pin.label)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 ml-1" title="Remove">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>}
+              {!isMain && (
+                <button
+                  onClick={() => handleRemoveReturnType(pin.label)}
+                  className="rf-remove-btn"
+                  title="Remove"
+                >
+                  <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           );
         })}
-        {!isMain && <div className="relative flex items-center py-1.5 min-h-7">
-          <div className="ml-4">
-            <button onClick={handleAddReturnType} className="text-gray-500 hover:text-white" title="Add return value">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            </button>
+
+        {/* Add return value button */}
+        {!isMain && (
+          <div className="rf-add-row rf-exec-row-left">
+            <div className="rf-spacer-left">
+              <button onClick={handleAddReturnType} className="rf-add-btn" title="Add return value">
+                <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            </div>
           </div>
-        </div>}
+        )}
       </div>
     </div>
   );

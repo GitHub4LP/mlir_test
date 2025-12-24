@@ -105,17 +105,17 @@ const SelectionPanel = memo(function SelectionPanel({
   return createPortal(
     <div
       ref={panelRef}
-      className="fixed w-72 bg-gray-800 border border-gray-600 rounded shadow-xl"
-      style={{ top: position.top, left: position.left, zIndex: 10000 }}
+      className="rf-type-selector-panel"
+      style={{ position: 'fixed', top: position.top, left: position.left, zIndex: 10000 }}
       onMouseDown={e => e.stopPropagation()}
     >
       {/* 搜索栏 */}
-      <div className="p-2 border-b border-gray-700">
-        <div className="flex items-center gap-1 bg-gray-700 rounded px-2 py-1">
+      <div className="rf-type-selector-search">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: 'var(--color-gray-700)', borderRadius: 'var(--radius-default)', padding: '4px 8px' }}>
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 text-xs bg-transparent focus:outline-none text-gray-200"
+            className="rf-type-selector-search-input"
             placeholder="搜索..."
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -123,22 +123,25 @@ const SelectionPanel = memo(function SelectionPanel({
           />
           {/* 只在无约束时显示过滤按钮 */}
           {!hasConstraint && (
-            <div className="flex gap-0.5 border-l border-gray-600 pl-1">
+            <div style={{ display: 'flex', gap: 2, borderLeft: '1px solid var(--color-gray-600)', paddingLeft: 4 }}>
               <button
                 type="button"
-                className={`w-5 h-5 text-xs rounded ${showConstraints ? 'bg-blue-600 text-white' : 'text-gray-500'}`}
+                className="rf-filter-btn"
+                style={{ backgroundColor: showConstraints ? 'var(--color-blue-600)' : 'transparent', color: showConstraints ? 'var(--color-white)' : 'var(--color-gray-500)' }}
                 onClick={() => setShowConstraints(v => !v)}
                 title="约束"
               >C</button>
               <button
                 type="button"
-                className={`w-5 h-5 text-xs rounded ${showTypes ? 'bg-blue-600 text-white' : 'text-gray-500'}`}
+                className="rf-filter-btn"
+                style={{ backgroundColor: showTypes ? 'var(--color-blue-600)' : 'transparent', color: showTypes ? 'var(--color-white)' : 'var(--color-gray-500)' }}
                 onClick={() => setShowTypes(v => !v)}
                 title="类型"
               >T</button>
               <button
                 type="button"
-                className={`w-5 h-5 text-xs rounded ${useRegex ? 'bg-blue-600 text-white' : 'text-gray-500'}`}
+                className="rf-filter-btn"
+                style={{ backgroundColor: useRegex ? 'var(--color-blue-600)' : 'transparent', color: useRegex ? 'var(--color-white)' : 'var(--color-gray-500)' }}
                 onClick={() => setUseRegex(v => !v)}
                 title="正则"
               >.*</button>
@@ -149,14 +152,14 @@ const SelectionPanel = memo(function SelectionPanel({
 
       {/* 包装选项 - 只在有允许的包装器时显示 */}
       {allowedWrappers.length > 0 && (
-        <div className="px-2 py-1.5 border-b border-gray-700">
-          <div className="text-xs text-gray-500 mb-1">包装为:</div>
-          <div className="flex flex-wrap gap-1">
+        <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-gray-700)' }}>
+          <div style={{ fontSize: 'var(--text-subtitle-size)', color: 'var(--color-gray-500)', marginBottom: 4 }}>包装为:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {allowedWrappers.map(w => (
               <button
                 key={w.name}
                 type="button"
-                className="text-xs px-1.5 py-0.5 rounded bg-gray-700 text-purple-400 hover:bg-gray-600"
+                className="rf-wrapper-btn"
                 onClick={() => onWrap(w.name)}
               >
                 +{w.name}
@@ -167,15 +170,15 @@ const SelectionPanel = memo(function SelectionPanel({
       )}
 
       {/* 列表 */}
-      <div className="max-h-52 overflow-y-auto">
+      <div className="rf-type-selector-list">
         {totalCount === 0 ? (
-          <div className="p-3 text-xs text-gray-500 text-center">无匹配结果</div>
+          <div style={{ padding: 12, fontSize: 'var(--text-label-size)', color: 'var(--color-gray-500)', textAlign: 'center' }}>无匹配结果</div>
         ) : (
           typeGroups.map((group) => (
             <div key={group.label}>
               {/* 有约束时只有一个分组，不显示标签 */}
               {!(hasConstraint && typeGroups.length === 1) && (
-                <div className="px-2 py-1 text-xs text-gray-500 bg-gray-900 sticky top-0">
+                <div className="rf-type-selector-group">
                   {group.label}
                 </div>
               )}
@@ -185,9 +188,8 @@ const SelectionPanel = memo(function SelectionPanel({
                   <button
                     key={item}
                     type="button"
-                    className={`w-full text-left px-3 py-1 text-xs hover:bg-gray-700
-                      ${item === currentValue ? 'bg-gray-700' : ''}`}
-                    style={{ color }}
+                    className="rf-type-selector-item"
+                    style={{ color, backgroundColor: item === currentValue ? 'var(--color-gray-700)' : 'transparent' }}
                     onClick={() => onSelect(item)}
                   >
                     {item}
@@ -199,7 +201,7 @@ const SelectionPanel = memo(function SelectionPanel({
         )}
       </div>
 
-      <div className="px-2 py-1 text-xs text-gray-500 border-t border-gray-700">
+      <div style={{ padding: '4px 8px', fontSize: 'var(--text-label-size)', color: 'var(--color-gray-500)', borderTop: '1px solid var(--color-gray-700)' }}>
         {totalCount} 个结果
       </div>
     </div>,
@@ -217,15 +219,14 @@ const ShapeEditor = memo(function ShapeEditor({
   onChange: (shape: (number | null)[]) => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-0.5">
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
       {shape.map((d, i) => (
-        <span key={i} className="inline-flex items-center">
-          {i > 0 && <span className="text-gray-500">×</span>}
-          <span className="relative group">
+        <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {i > 0 && <span style={{ color: 'var(--color-gray-500)' }}>×</span>}
+          <span style={{ position: 'relative' }} className="rf-shape-dim">
             <input
               type="text"
-              className="w-6 text-xs bg-gray-700 rounded px-0.5 py-0.5 border border-gray-600
-                focus:outline-none focus:border-blue-500 text-gray-200 text-center"
+              className="rf-shape-input"
               value={d === null ? '?' : d}
               onChange={e => {
                 const val = e.target.value;
@@ -238,8 +239,7 @@ const ShapeEditor = memo(function ShapeEditor({
             {shape.length > 1 && (
               <button
                 type="button"
-                className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full text-white 
-                  text-[8px] opacity-0 group-hover:opacity-100"
+                className="rf-shape-remove-btn"
                 onClick={() => onChange(shape.filter((_, j) => j !== i))}
               >×</button>
             )}
@@ -248,10 +248,10 @@ const ShapeEditor = memo(function ShapeEditor({
       ))}
       <button
         type="button"
-        className="w-4 h-4 text-[10px] bg-gray-700 hover:bg-gray-600 rounded text-gray-400"
+        className="rf-shape-add-btn"
         onClick={() => onChange([...shape, 4])}
       >+</button>
-      <span className="text-gray-500">×</span>
+      <span style={{ color: 'var(--color-gray-500)' }}>×</span>
     </span>
   );
 });
@@ -306,13 +306,12 @@ const BuildPanel = memo(function BuildPanel({
       <button
         ref={leafRef}
         type="button"
-        className="text-xs bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 
-          border border-gray-600 inline-flex items-center gap-1"
+        className="rf-type-leaf-btn"
         style={{ color }}
         onClick={handleLeafClick}
       >
         {node.name}
-        <span className="text-gray-500 text-[10px]">▼</span>
+        <span className="rf-type-dropdown-icon">▼</span>
       </button>
     );
   }
@@ -321,14 +320,13 @@ const BuildPanel = memo(function BuildPanel({
   const w = WRAPPERS.find(x => x.name === node.wrapper);
 
   return (
-    <span className="inline-flex items-center flex-wrap gap-0.5">
-      <span className="inline-flex items-center group">
-        <span className="text-purple-400">{node.wrapper}</span>
-        <span className="text-gray-500">&lt;</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center' }} className="rf-wrapper-group">
+        <span style={{ color: 'var(--color-purple-500)' }}>{node.wrapper}</span>
+        <span style={{ color: 'var(--color-gray-500)' }}>&lt;</span>
         <button
           type="button"
-          className="w-3 h-3 text-[8px] bg-red-600 rounded text-white ml-0.5
-            opacity-0 group-hover:opacity-100"
+          className="rf-unwrap-btn"
           onClick={handleUnwrap}
           title="移除此层"
         >×</button>
@@ -345,7 +343,7 @@ const BuildPanel = memo(function BuildPanel({
         path={`${path}.element`}
       />
 
-      <span className="text-gray-500">&gt;</span>
+      <span style={{ color: 'var(--color-gray-500)' }}>&gt;</span>
     </span>
   );
 });
@@ -491,7 +489,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
   if (disabled) {
     return (
       <span
-        className={`text-xs px-1.5 py-0.5 rounded ${className}`}
+        className={`rf-type-readonly ${className}`}
         style={{ color, backgroundColor: `${color}20`, border: `1px solid ${color}40` }}
       >
         {preview}
@@ -503,8 +501,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     <>
       <div
         ref={containerRef}
-        className={`inline-flex items-center gap-1 bg-gray-800 rounded px-2 py-1 
-          border border-gray-600 ${className}`}
+        className={`rf-type-container ${className}`}
         onMouseDown={e => e.stopPropagation()}
       >
         <BuildPanel

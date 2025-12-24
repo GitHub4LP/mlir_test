@@ -22,8 +22,7 @@ import { buildPinRows, buildOperationDataPins } from '../../../../services/pinUt
 import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
 import { computeTypeSelectionState } from '../../../../services/typeSelection';
 import { useTypeChangeHandler } from '../../../../hooks';
-import { StyleSystem } from '../../../core/StyleSystem';
-import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
+import { getNodeContainerStyle, getNodeHeaderStyle, getDialectColor, tokens } from '../../shared/styles';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { getPortType } from '../../../../services/portTypeService';
 import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
@@ -34,7 +33,7 @@ export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
 
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
   const { operation, attributes, inputTypes = {}, outputTypes = {}, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
-  const dialectColor = StyleSystem.getDialectColor(operation.dialect);
+  const dialectColor = getDialectColor(operation.dialect);
 
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<BlueprintNodeData>(id);
@@ -128,31 +127,30 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     }));
   }, [updateNodeData]);
 
-  const nodeStyle = StyleSystem.getNodeStyle();
-
   return (
-    <div className="overflow-visible shadow-lg"
+    <div
+      className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: `${nodeStyle.minWidth}px`,
-      }}>
-
+        minWidth: tokens.node.minWidth,
+      }}
+    >
       {/* Header */}
       <div
         style={getNodeHeaderStyle(dialectColor)}
         title={operation.description || undefined}
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-xs font-medium text-white/70 uppercase">{operation.dialect}</span>
-            <span className="text-sm font-semibold text-white ml-1">{operation.opName}</span>
+        <div className="rf-node-header">
+          <div className="rf-node-header-left">
+            <span className="rf-node-dialect">{operation.dialect}</span>
+            <span className="rf-node-opname">{operation.opName}</span>
           </div>
-          <div className="flex gap-1">
+          <div className="rf-node-header-right">
             {operation.isPure && (
-              <span className="text-xs text-white/60" title="Pure - no side effects">ƒ</span>
+              <span className="rf-node-badge" title="Pure - no side effects">ƒ</span>
             )}
             {operation.traits.includes('Commutative') && (
-              <span className="text-xs text-white/60" title="Commutative - operand order doesn't matter">⇄</span>
+              <span className="rf-node-badge" title="Commutative - operand order doesn't matter">⇄</span>
             )}
           </div>
         </div>
@@ -171,7 +169,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
 
       {/* Attributes */}
       {attrs.length > 0 && (
-        <div className="border-t border-gray-600 px-2 py-1">
+        <div className="rf-node-attrs">
           {attrs.map((attr) => (
             <AttributeEditor key={attr.name} attribute={attr} value={attributes[attr.name]} onChange={handleAttributeChange} />
           ))}
@@ -180,8 +178,8 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
 
       {/* Summary */}
       {operation.summary && (
-        <div className="px-2 py-1 border-t border-gray-600 bg-gray-800/50">
-          <span className="text-xs text-gray-500 line-clamp-1">{operation.summary}</span>
+        <div className="rf-node-summary">
+          <span className="rf-node-summary-text">{operation.summary}</span>
         </div>
       )}
     </div>

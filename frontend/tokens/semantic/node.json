@@ -1,0 +1,35 @@
+{
+  "node": {
+    "bg": { "value": "#2d2d3d" },
+    "minWidth": { "value": "200px" },
+    "padding": { "value": "4px" },
+    "border": {
+      "color": { "value": "#3d3d4d" },
+      "width": { "value": "1px" },
+      "radius": { "value": "8px" }
+    },
+    "selected": {
+      "borderColor": { "value": "{color.blue.400}" },
+      "borderWidth": { "value": "2px" }
+    },
+    "header": {
+      "height": { "value": "32px" }
+    },
+    "pin": {
+      "rowHeight": { "value": "28px" }
+    },
+    "handle": {
+      "radius": { "value": "6px" },
+      "size": { "value": "12px" },
+      "offset": { "value": "0" }
+    }
+  },
+  "nodeType": {
+    "entry": { "value": "{color.green.500}" },
+    "entryMain": { "value": "{color.amber.500}" },
+    "return": { "value": "{color.red.500}" },
+    "returnMain": { "value": "{color.red.600}" },
+    "call": { "value": "{color.purple.500}" },
+    "operation": { "value": "{color.blue.500}" }
+  }
+}

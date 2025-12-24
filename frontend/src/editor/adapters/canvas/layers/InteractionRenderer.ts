@@ -8,7 +8,7 @@
  * - 拖拽预览
  * 
  * 始终使用 Canvas 2D，独立于内容层更新。
- * 样式从 StyleSystem 统一获取。
+ * 样式从 Design Tokens 统一获取。
  */
 
 import type {
@@ -17,7 +17,7 @@ import type {
   RenderPath,
   Viewport,
 } from '../../../core/RenderData';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, LAYOUT } from '../../shared/styles';
 
 /** 交互状态 */
 export interface InteractionState {
@@ -243,15 +243,14 @@ export class InteractionRenderer {
 
   private renderHoverHighlight(ctx: CanvasRenderingContext2D, rect: RenderRect): void {
     ctx.save();
-    const nodeStyle = StyleSystem.getNodeStyle();
 
-    // 发光效果 - 使用 StyleSystem 颜色
-    ctx.shadowColor = rect.borderColor ?? nodeStyle.selectedBorderColor;
+    // 发光效果 - 使用 tokens 颜色
+    ctx.shadowColor = rect.borderColor ?? tokens.node.selected.borderColor;
     ctx.shadowBlur = 8;
-    ctx.strokeStyle = rect.borderColor ?? nodeStyle.selectedBorderColor;
-    ctx.lineWidth = nodeStyle.selectedBorderWidth;
+    ctx.strokeStyle = rect.borderColor ?? tokens.node.selected.borderColor;
+    ctx.lineWidth = tokens.node.selected.borderWidth;
 
-    this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
+    this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? LAYOUT.borderRadius);
     ctx.stroke();
 
     ctx.restore();

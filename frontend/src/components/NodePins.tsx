@@ -11,11 +11,11 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { DataPin, PinRow } from '../types';
 import { getTypeColor } from '../services/typeSystem';
-import { execPinStyle, dataPinStyle } from './shared';
-import { StyleSystem } from '../editor/core/StyleSystem';
-
-// 从 StyleSystem 获取引脚行高，确保与其他渲染器一致
-const PIN_ROW_HEIGHT = StyleSystem.getNodeStyle().pinRowHeight;
+import {
+  getExecHandleStyle,
+  getExecHandleStyleRight,
+  getDataHandleStyle,
+} from '../editor/adapters/shared/styles';
 
 interface PinRowProps {
   row: PinRow;
@@ -36,9 +36,9 @@ const PinRowComponent = memo(function PinRowComponent({
   const rightPin = row.right;
 
   return (
-    <div className="flex justify-between items-center" style={{ minHeight: PIN_ROW_HEIGHT }}>
+    <div className="rf-pin-row">
       {/* Left pin (input) */}
-      <div className="relative flex items-center py-1">
+      <div className="rf-pin-row-left">
         {leftPin && (
           <>
             <Handle
@@ -46,16 +46,16 @@ const PinRowComponent = memo(function PinRowComponent({
               position={Position.Left}
               id={leftPin.pin.id}
               isConnectable={true}
-              className="!absolute !left-0 !top-1/2 !-translate-y-1/2 !-translate-x-1/2"
+              className="rf-handle-left"
               style={leftPin.type === 'exec'
-                ? execPinStyle
-                : dataPinStyle((leftPin.pin as DataPin).color || getTypeColor((leftPin.pin as DataPin).typeConstraint))
+                ? getExecHandleStyle()
+                : getDataHandleStyle((leftPin.pin as DataPin).color || getTypeColor((leftPin.pin as DataPin).typeConstraint))
               }
             />
-            <div className="ml-4 flex flex-col items-start">
+            <div className="rf-pin-content rf-pin-content-left">
               {/* Show label for data pins, or exec pins with non-empty label */}
               {(leftPin.type === 'data' || leftPin.pin.label) && (
-                <span className="text-xs text-gray-300">{leftPin.pin.label}</span>
+                <span className="rf-pin-label">{leftPin.pin.label}</span>
               )}
               {/* Type selector for data pins */}
               {leftPin.type === 'data' && renderTypeSelector && (
@@ -70,13 +70,13 @@ const PinRowComponent = memo(function PinRowComponent({
       </div>
 
       {/* Right pin (output) */}
-      <div className="relative flex items-center justify-end py-1">
+      <div className="rf-pin-row-right">
         {rightPin && (
           <>
-            <div className="mr-4 flex flex-col items-end">
+            <div className="rf-pin-content rf-pin-content-right">
               {/* Show label for data pins, or exec pins with non-empty label */}
               {(rightPin.type === 'data' || rightPin.pin.label) && (
-                <span className="text-xs text-gray-300">{rightPin.pin.label}</span>
+                <span className="rf-pin-label">{rightPin.pin.label}</span>
               )}
               {/* Type selector for data pins */}
               {rightPin.type === 'data' && renderTypeSelector && (
@@ -91,10 +91,10 @@ const PinRowComponent = memo(function PinRowComponent({
               position={Position.Right}
               id={rightPin.pin.id}
               isConnectable={true}
-              className="!absolute !right-0 !top-1/2 !-translate-y-1/2 !translate-x-1/2"
+              className="rf-handle-right"
               style={rightPin.type === 'exec'
-                ? execPinStyle
-                : dataPinStyle((rightPin.pin as DataPin).color || getTypeColor((rightPin.pin as DataPin).typeConstraint))
+                ? getExecHandleStyleRight()
+                : getDataHandleStyle((rightPin.pin as DataPin).color || getTypeColor((rightPin.pin as DataPin).typeConstraint))
               }
             />
           </>
@@ -123,10 +123,10 @@ const VariadicControlRow = memo(function VariadicControlRow({
   canRemove,
 }: VariadicControlRowProps) {
   const controls = (
-    <div className="flex items-center gap-1 text-xs">
+    <div className="rf-node-header-right">
       <button
         type="button"
-        className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-green-400 flex items-center justify-center"
+        className="rf-variadic-btn rf-variadic-btn-add"
         onClick={onAdd}
         title={`添加 ${groupName}`}
       >
@@ -135,7 +135,7 @@ const VariadicControlRow = memo(function VariadicControlRow({
       {canRemove && (
         <button
           type="button"
-          className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-red-400 flex items-center justify-center"
+          className="rf-variadic-btn rf-variadic-btn-remove"
           onClick={onRemove}
           title={`删除 ${groupName}`}
         >
@@ -146,7 +146,7 @@ const VariadicControlRow = memo(function VariadicControlRow({
   );
 
   return (
-    <div className="flex justify-between items-center px-4" style={{ minHeight: PIN_ROW_HEIGHT }}>
+    <div className="rf-pin-row" style={{ paddingLeft: 16, paddingRight: 16 }}>
       {side === 'left' ? controls : <div />}
       {side === 'right' ? controls : <div />}
     </div>
@@ -214,7 +214,7 @@ export const NodePins = memo(function NodePins({
   });
 
   return (
-    <div className="px-1 py-1">
+    <div className="rf-func-body">
       {renderItems.map((item) => {
         if (item.type === 'row') {
           return (

@@ -8,7 +8,7 @@
  * - 完全自定义渲染，不依赖 DOM 节点
  * - 支持高 DPI 显示
  * - 需要 OverlayManager 来处理属性编辑器
- * - 样式从 StyleSystem 统一获取
+ * - 样式从 Design Tokens 统一获取
  */
 
 import type { IRenderer } from './IRenderer';
@@ -24,7 +24,7 @@ import type {
 } from './types';
 import type { RawInputCallback, MouseButton } from './input';
 import { createPointerInput, createWheelInput, createKeyInput, extractModifiers } from './input';
-import { StyleSystem } from '../../core/StyleSystem';
+import { tokens, LAYOUT, TEXT } from '../shared/styles';
 
 /**
  * Canvas 2D 渲染后端
@@ -358,24 +358,23 @@ export class CanvasRenderer implements IRenderer {
 
   private renderRect(ctx: CanvasRenderingContext2D, rect: RenderRect): void {
     ctx.save();
-    const nodeStyle = StyleSystem.getNodeStyle();
     
     if (rect.fillColor && rect.fillColor !== 'transparent') {
       ctx.fillStyle = rect.fillColor;
-      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
+      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? LAYOUT.borderRadius);
       ctx.fill();
     }
     
     if (rect.borderWidth && rect.borderWidth > 0 && rect.borderColor && rect.borderColor !== 'transparent') {
       ctx.strokeStyle = rect.borderColor;
       ctx.lineWidth = rect.borderWidth;
-      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
+      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? LAYOUT.borderRadius);
       ctx.stroke();
     }
     
     if (rect.selected) {
-      ctx.strokeStyle = nodeStyle.selectedBorderColor;
-      ctx.lineWidth = nodeStyle.selectedBorderWidth;
+      ctx.strokeStyle = tokens.node.selected.borderColor;
+      ctx.lineWidth = tokens.node.selected.borderWidth;
       const selectionRadius = typeof rect.borderRadius === 'number' 
         ? (rect.borderRadius ?? 0) + 2 
         : {
@@ -393,12 +392,11 @@ export class CanvasRenderer implements IRenderer {
 
   private renderText(ctx: CanvasRenderingContext2D, text: RenderText): void {
     ctx.save();
-    const textStyle = StyleSystem.getTextStyle();
     // 启用高质量文字渲染
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.font = `${text.fontSize ?? textStyle.labelFontSize}px ${text.fontFamily ?? textStyle.fontFamily}`;
-    ctx.fillStyle = text.color ?? textStyle.labelColor;
+    ctx.font = `${text.fontSize ?? TEXT.labelSize}px ${text.fontFamily ?? TEXT.fontFamily}`;
+    ctx.fillStyle = text.color ?? TEXT.labelColor;
     ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
     ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
     ctx.fillText(text.text, text.x, text.y);

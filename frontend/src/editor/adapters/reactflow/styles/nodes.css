@@ -1,0 +1,793 @@
+/**
+ * ReactFlow 节点样式
+ * 
+ * 使用 CSS Variables（来自 Design Tokens）
+ * 替代 Tailwind 类，确保与其他渲染器视觉一致
+ */
+
+/* ============================================================
+   节点容器
+   ============================================================ */
+
+.rf-node {
+  overflow: visible;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================================
+   节点头部
+   ============================================================ */
+
+.rf-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rf-node-header-left {
+  display: flex;
+  align-items: center;
+}
+
+.rf-node-header-right {
+  display: flex;
+  gap: 4px;
+}
+
+.rf-node-dialect {
+  font-size: var(--text-subtitle-size);
+  font-weight: var(--text-subtitle-weight);
+  color: var(--text-subtitle-color);
+  text-transform: uppercase;
+}
+
+.rf-node-opname {
+  font-size: var(--text-title-size);
+  font-weight: var(--text-title-weight);
+  color: var(--text-title-color);
+  margin-left: 4px;
+}
+
+.rf-node-badge {
+  font-size: var(--text-subtitle-size);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ============================================================
+   节点 Body
+   ============================================================ */
+
+.rf-node-body {
+  padding: var(--node-padding);
+}
+
+/* ============================================================
+   引脚行
+   ============================================================ */
+
+.rf-pin-row {
+  min-height: var(--node-pin-rowHeight);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--node-padding);
+}
+
+.rf-pin-row-left {
+  display: flex;
+  align-items: center;
+}
+
+.rf-pin-row-right {
+  display: flex;
+  align-items: center;
+}
+
+.rf-pin-label {
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
+}
+
+.rf-pin-label-left {
+  margin-left: var(--typeLabel-offsetFromHandle);
+}
+
+.rf-pin-label-right {
+  margin-right: var(--typeLabel-offsetFromHandle);
+}
+
+/* ============================================================
+   属性区域
+   ============================================================ */
+
+.rf-node-attrs {
+  border-top: 1px solid var(--color-gray-600);
+  padding: var(--node-padding) 8px;
+}
+
+.rf-node-attr-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--node-padding) 0;
+  gap: 8px;
+}
+
+.rf-node-attr-label {
+  font-size: var(--text-label-size);
+  color: var(--color-gray-400);
+  cursor: help;
+}
+
+/* ============================================================
+   Summary 区域
+   ============================================================ */
+
+.rf-node-summary {
+  padding: var(--node-padding) 8px;
+  border-top: 1px solid var(--color-gray-600);
+  background-color: rgba(31, 41, 55, 0.5);
+}
+
+.rf-node-summary-text {
+  font-size: var(--text-subtitle-size);
+  color: var(--text-muted-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   输入框样式
+   ============================================================ */
+
+.rf-input {
+  font-size: var(--text-label-size);
+  background-color: var(--color-gray-700);
+  color: var(--color-white);
+  border-radius: var(--radius-default);
+  padding: var(--node-padding) 8px;
+  border: 1px solid var(--color-gray-600);
+  outline: none;
+}
+
+.rf-input:focus {
+  border-color: var(--color-blue-500);
+}
+
+.rf-input-error {
+  border-color: var(--color-red-500);
+}
+
+.rf-input-number {
+  width: 80px;
+}
+
+.rf-input-text {
+  width: 96px;
+}
+
+.rf-select {
+  width: 96px;
+  font-size: var(--text-label-size);
+  background-color: var(--color-gray-700);
+  color: var(--color-white);
+  border-radius: var(--radius-default);
+  padding: var(--node-padding) 8px;
+  border: 1px solid var(--color-gray-600);
+  outline: none;
+}
+
+.rf-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-blue-500);
+}
+
+/* ============================================================
+   Variadic 控制按钮
+   ============================================================ */
+
+.rf-variadic-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-default);
+  background-color: var(--color-gray-700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  font-size: var(--text-label-size);
+}
+
+.rf-variadic-btn:hover {
+  background-color: var(--color-gray-600);
+}
+
+.rf-variadic-btn-add {
+  color: var(--color-green-400);
+}
+
+.rf-variadic-btn-remove {
+  color: var(--color-red-400);
+}
+
+/* ============================================================
+   类型选择器
+   ============================================================ */
+
+.rf-type-selector {
+  background-color: var(--overlay-bg);
+  border-radius: var(--radius-default);
+  padding: var(--node-padding) 8px;
+  border: 1px solid var(--overlay-borderColor);
+  cursor: pointer;
+}
+
+.rf-type-selector-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.rf-type-selector-panel {
+  width: 288px;
+  background-color: var(--overlay-bg);
+  border: 1px solid var(--overlay-borderColor);
+  border-radius: var(--radius-default);
+  box-shadow: var(--overlay-boxShadow);
+  z-index: 10000;
+}
+
+.rf-type-selector-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--color-gray-700);
+}
+
+.rf-type-selector-search-input {
+  background-color: var(--color-gray-700);
+  color: var(--color-gray-200);
+  font-size: var(--text-label-size);
+  border: none;
+  outline: none;
+  flex: 1;
+  width: 100%;
+  padding: var(--node-padding) 8px;
+  border-radius: var(--radius-default);
+}
+
+.rf-type-selector-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.rf-type-selector-item {
+  width: 100%;
+  text-align: left;
+  padding: var(--node-padding) 12px;
+  font-size: var(--text-label-size);
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+}
+
+.rf-type-selector-item:hover {
+  background-color: var(--color-gray-700);
+}
+
+.rf-type-selector-group {
+  padding: var(--node-padding) 8px;
+  font-size: var(--text-label-size);
+  color: var(--text-muted-color);
+  background-color: var(--ui-darkBg);
+}
+
+/* ============================================================
+   Traits 面板
+   ============================================================ */
+
+.rf-traits-panel {
+  border-top: 1px solid var(--color-gray-600);
+  padding: var(--node-padding) 8px;
+}
+
+.rf-traits-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: var(--node-padding) 0;
+}
+
+.rf-traits-title {
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
+}
+
+.rf-traits-toggle {
+  font-size: var(--text-subtitle-size);
+  color: var(--text-muted-color);
+}
+
+.rf-traits-content {
+  padding-top: var(--node-padding);
+}
+
+/* ============================================================
+   函数参数/返回值编辑
+   ============================================================ */
+
+.rf-param-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--node-pin-rowHeight);
+}
+
+.rf-param-name {
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
+  flex: 1;
+}
+
+.rf-param-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.rf-param-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-default);
+  background-color: var(--color-gray-700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  font-size: 10px;
+  color: var(--text-muted-color);
+}
+
+.rf-param-btn:hover {
+  background-color: var(--color-gray-600);
+}
+
+.rf-param-btn-danger:hover {
+  color: var(--color-red-400);
+}
+
+/* ============================================================
+   函数节点特定样式
+   ============================================================ */
+
+.rf-func-header {
+  display: flex;
+  align-items: center;
+}
+
+.rf-func-title {
+  font-size: var(--text-title-size);
+  font-weight: var(--text-title-weight);
+  color: var(--text-title-color);
+}
+
+.rf-func-subtitle {
+  margin-left: 4px;
+  font-size: var(--text-subtitle-size);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.rf-func-body {
+  padding: 4px;
+}
+
+/* 执行引脚行 */
+.rf-exec-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--node-pin-rowHeight);
+  padding: 6px 0;
+}
+
+.rf-exec-row-left {
+  justify-content: flex-start;
+}
+
+.rf-exec-row-right {
+  justify-content: flex-end;
+}
+
+/* 数据引脚行 */
+.rf-data-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--node-pin-rowHeight);
+  padding: 6px 0;
+}
+
+.rf-data-row-left {
+  justify-content: flex-start;
+}
+
+.rf-data-row-right {
+  justify-content: flex-end;
+}
+
+/* 引脚内容容器 */
+.rf-pin-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.rf-pin-content-left {
+  align-items: flex-start;
+  margin-left: 16px;
+  flex: 1;
+}
+
+.rf-pin-content-right {
+  align-items: flex-end;
+  margin-right: 16px;
+}
+
+/* 引脚标签 */
+.rf-pin-name {
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
+}
+
+/* 删除按钮 */
+.rf-remove-btn {
+  opacity: 0;
+  padding: 2px;
+  color: var(--color-gray-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-remove-btn:hover {
+  color: var(--color-red-400);
+}
+
+.rf-data-row:hover .rf-remove-btn,
+.rf-param-row:hover .rf-remove-btn {
+  opacity: 1;
+}
+
+/* 添加按钮行 */
+.rf-add-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--node-pin-rowHeight);
+  padding: 6px 0;
+}
+
+.rf-add-btn {
+  color: var(--color-gray-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-add-btn:hover {
+  color: var(--color-white);
+}
+
+/* Traits 编辑器容器 */
+.rf-traits-container {
+  padding: 0 8px;
+}
+
+/* Handle 定位 */
+.rf-handle-left {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.rf-handle-right {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translate(50%, -50%);
+}
+
+/* 间隔占位 */
+.rf-spacer-left {
+  margin-left: 16px;
+}
+
+.rf-spacer-right {
+  margin-right: 16px;
+}
+
+/* ============================================================
+   错误和可选指示器
+   ============================================================ */
+
+.rf-error-text {
+  font-size: var(--text-subtitle-size);
+  color: var(--color-red-400);
+  margin-top: 2px;
+}
+
+.rf-optional-indicator {
+  color: var(--color-gray-500);
+  font-size: var(--text-subtitle-size);
+  margin-left: 4px;
+}
+
+/* ============================================================
+   类型选择器扩展样式
+   ============================================================ */
+
+.rf-filter-btn {
+  width: 20px;
+  height: 20px;
+  font-size: var(--text-label-size);
+  border-radius: var(--radius-default);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-wrapper-btn {
+  font-size: var(--text-label-size);
+  padding: 2px 6px;
+  border-radius: var(--radius-default);
+  background-color: var(--color-gray-700);
+  color: var(--color-purple-500);
+  border: none;
+  cursor: pointer;
+}
+
+.rf-wrapper-btn:hover {
+  background-color: var(--color-gray-600);
+}
+
+.rf-type-leaf-btn {
+  font-size: var(--text-label-size);
+  background-color: var(--color-gray-700);
+  border-radius: var(--radius-default);
+  padding: 2px 6px;
+  border: 1px solid var(--color-gray-600);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rf-type-leaf-btn:hover {
+  background-color: var(--color-gray-600);
+}
+
+.rf-type-dropdown-icon {
+  color: var(--color-gray-500);
+  font-size: 10px;
+}
+
+.rf-wrapper-group .rf-unwrap-btn {
+  opacity: 0;
+}
+
+.rf-wrapper-group:hover .rf-unwrap-btn {
+  opacity: 1;
+}
+
+.rf-unwrap-btn {
+  width: 12px;
+  height: 12px;
+  font-size: 8px;
+  background-color: var(--color-red-600);
+  border-radius: var(--radius-default);
+  color: var(--color-white);
+  margin-left: 2px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-shape-input {
+  width: 24px;
+  font-size: var(--text-label-size);
+  background-color: var(--color-gray-700);
+  border-radius: var(--radius-default);
+  padding: 2px;
+  border: 1px solid var(--color-gray-600);
+  color: var(--color-gray-200);
+  text-align: center;
+  outline: none;
+}
+
+.rf-shape-input:focus {
+  border-color: var(--color-blue-500);
+}
+
+.rf-shape-dim .rf-shape-remove-btn {
+  opacity: 0;
+}
+
+.rf-shape-dim:hover .rf-shape-remove-btn {
+  opacity: 1;
+}
+
+.rf-shape-remove-btn {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
+  background-color: var(--color-red-600);
+  border-radius: 50%;
+  color: var(--color-white);
+  font-size: 8px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-shape-add-btn {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  background-color: var(--color-gray-700);
+  border-radius: var(--radius-default);
+  color: var(--color-gray-400);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-shape-add-btn:hover {
+  background-color: var(--color-gray-600);
+}
+
+.rf-type-readonly {
+  font-size: var(--text-label-size);
+  padding: 2px 6px;
+  border-radius: var(--radius-default);
+}
+
+.rf-type-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--color-gray-800);
+  border-radius: var(--radius-default);
+  padding: 4px 8px;
+  border: 1px solid var(--color-gray-600);
+}
+
+/* ============================================================
+   可编辑名称
+   ============================================================ */
+
+.rf-editable-name {
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
+  cursor: text;
+}
+
+.rf-editable-name:hover {
+  color: var(--color-white);
+}
+
+.rf-editable-input {
+  font-size: var(--text-label-size);
+  background-color: var(--color-gray-700);
+  color: var(--color-white);
+  padding: 2px 4px;
+  border-radius: var(--radius-default);
+  border: 1px solid var(--color-blue-500);
+  outline: none;
+  width: 64px;
+}
+
+/* ============================================================
+   Traits 编辑器
+   ============================================================ */
+
+.rf-trait-editor {
+  background-color: rgba(55, 65, 81, 0.5);
+  border-radius: var(--radius-default);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.rf-trait-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rf-trait-title {
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-label-color);
+}
+
+.rf-trait-remove-btn {
+  color: var(--color-gray-500);
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-trait-remove-btn:hover {
+  color: var(--color-red-400);
+}
+
+.rf-trait-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rf-trait-port {
+  font-size: var(--text-label-size);
+  padding: 2px 6px;
+  border-radius: var(--radius-default);
+  border: 1px solid var(--color-gray-600);
+  background-color: rgba(75, 85, 99, 0.3);
+  color: var(--color-gray-400);
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.rf-trait-port:hover {
+  border-color: var(--color-gray-500);
+}
+
+.rf-trait-port-selected {
+  background-color: rgba(37, 99, 235, 0.3);
+  border-color: var(--color-blue-500);
+  color: var(--color-blue-400);
+}
+
+.rf-trait-warning {
+  font-size: var(--text-label-size);
+  color: var(--color-amber-500);
+  margin-top: 4px;
+}
+
+.rf-trait-add-btn {
+  font-size: var(--text-label-size);
+  color: var(--color-gray-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rf-trait-add-btn:hover {
+  color: var(--text-label-color);
+}
+

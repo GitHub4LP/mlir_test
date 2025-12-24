@@ -7,7 +7,7 @@
  * 设计：
  * - 图形渲染：可切换 Canvas 2D / WebGL / WebGPU
  * - 文字渲染：始终使用 Canvas 2D + LOD 策略
- * - 样式：从 StyleSystem 统一获取
+ * - 样式：从 Design Tokens 统一获取
  */
 
 import type {
@@ -20,7 +20,7 @@ import type {
 } from '../../../core/RenderData';
 import type { IContentRenderer } from './IContentRenderer';
 import { TextLODManager, type TextStrategy } from './TextLOD';
-import { StyleSystem } from '../../../core/StyleSystem';
+import { tokens, LAYOUT, TEXT } from '../../shared/styles';
 
 /** 图形渲染器类型 */
 export type GraphicsBackend = 'canvas2d' | 'webgl' | 'webgpu';
@@ -292,25 +292,24 @@ export class ContentRenderer implements IContentRenderer {
 
   private renderRect(ctx: CanvasRenderingContext2D, rect: RenderRect): void {
     ctx.save();
-    const nodeStyle = StyleSystem.getNodeStyle();
 
     if (rect.fillColor && rect.fillColor !== 'transparent') {
       ctx.fillStyle = rect.fillColor;
-      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
+      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? LAYOUT.borderRadius);
       ctx.fill();
     }
 
     if (rect.borderWidth && rect.borderWidth > 0 && rect.borderColor && rect.borderColor !== 'transparent') {
       ctx.strokeStyle = rect.borderColor;
       ctx.lineWidth = rect.borderWidth;
-      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? nodeStyle.borderRadius);
+      this.roundRect(ctx, rect.x, rect.y, rect.width, rect.height, rect.borderRadius ?? LAYOUT.borderRadius);
       ctx.stroke();
     }
 
-    // 选中高亮 - 使用 StyleSystem 颜色
+    // 选中高亮 - 使用 tokens 颜色
     if (rect.selected) {
-      ctx.strokeStyle = nodeStyle.selectedBorderColor;
-      ctx.lineWidth = nodeStyle.selectedBorderWidth;
+      ctx.strokeStyle = tokens.node.selected.borderColor;
+      ctx.lineWidth = tokens.node.selected.borderWidth;
       const selectionRadius = typeof rect.borderRadius === 'number'
         ? (rect.borderRadius ?? 0) + 2
         : {
@@ -419,10 +418,9 @@ export class ContentRenderer implements IContentRenderer {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    const textStyle = StyleSystem.getTextStyle();
-    const fontSize = (text.fontSize ?? textStyle.labelFontSize) * strategy.fontScale;
-    ctx.font = `${fontSize}px ${text.fontFamily ?? textStyle.fontFamily}`;
-    ctx.fillStyle = text.color ?? textStyle.labelColor;
+    const fontSize = (text.fontSize ?? TEXT.labelSize) * strategy.fontScale;
+    ctx.font = `${fontSize}px ${text.fontFamily ?? TEXT.fontFamily}`;
+    ctx.fillStyle = text.color ?? TEXT.labelColor;
     ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
     ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
     ctx.fillText(text.text, text.x, text.y);

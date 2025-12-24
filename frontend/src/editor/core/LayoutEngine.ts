@@ -5,7 +5,7 @@
  * 所有渲染器共享同一套布局计算逻辑，确保视觉一致性。
  */
 
-import { StyleSystem } from './StyleSystem';
+import { tokens, LAYOUT, getDialectColor, getTypeColor } from '../adapters/shared/styles';
 import type { GraphNode } from '../../types';
 
 // ============================================================
@@ -79,6 +79,15 @@ export interface EdgeLayout {
 }
 
 // ============================================================
+// 布局常量（从 tokens 获取）
+// ============================================================
+
+const HANDLE_OFFSET = parseInt(tokens.node.handle.offset) || 0;
+const BEZIER_OFFSET = parseInt(tokens.edge.bezierOffset) || 100;
+const EXEC_COLOR = tokens.edge.exec.color;
+const DEFAULT_DATA_COLOR = tokens.edge.data.defaultColor;
+
+// ============================================================
 // 布局计算函数
 // ============================================================
 
@@ -99,17 +108,14 @@ function getNodeTitle(node: GraphNode): string {
     }
     case 'function-entry': {
       const data = node.data as import('../../types').FunctionEntryData;
-      // React Flow: {functionName || 'Entry'}
       return data.functionName || 'Entry';
     }
     case 'function-return': {
       const data = node.data as import('../../types').FunctionReturnData;
-      // React Flow: branchName ? `Return "${branchName}"` : 'Return'
       return data.branchName ? `Return "${data.branchName}"` : 'Return';
     }
     case 'function-call': {
       const data = node.data as import('../../types').FunctionCallData;
-      // React Flow: functionName (subtitle 是 'call')
       return data.functionName;
     }
     default:
@@ -129,16 +135,13 @@ function getNodeSubtitle(node: GraphNode): string | undefined {
     }
     case 'function-entry': {
       const data = node.data as import('../../types').FunctionEntryData;
-      // React Flow: isMain && '(main)'
       return data.isMain ? '(main)' : undefined;
     }
     case 'function-return': {
       const data = node.data as import('../../types').FunctionReturnData;
-      // React Flow: isMain && '(main)'
       return data.isMain ? '(main)' : undefined;
     }
     case 'function-call': {
-      // React Flow: 'call' (uppercase)
       return 'call';
     }
     default:
@@ -154,23 +157,20 @@ function getNodeHeaderColor(node: GraphNode): string {
   switch (node.type) {
     case 'operation': {
       const data = node.data as import('../../types').BlueprintNodeData;
-      return StyleSystem.getDialectColor(data.operation.dialect);
+      return getDialectColor(data.operation.dialect);
     }
     case 'function-entry': {
       const data = node.data as import('../../types').FunctionEntryData;
-      // 与 FunctionEntryNode.tsx 一致
-      return data.isMain ? '#f59e0b' : '#22c55e';
+      return data.isMain ? tokens.nodeType.entryMain : tokens.nodeType.entry;
     }
     case 'function-return': {
       const data = node.data as import('../../types').FunctionReturnData;
-      // 与 FunctionReturnNode.tsx 一致
-      return data.isMain ? '#dc2626' : '#ef4444';
+      return data.isMain ? tokens.nodeType.returnMain : tokens.nodeType.return;
     }
     case 'function-call':
-      // 与 FunctionCallNode.tsx 一致
-      return '#a855f7';
+      return tokens.nodeType.call;
     default:
-      return StyleSystem.getDialectColor('builtin');
+      return getDialectColor('builtin');
   }
 }
 
@@ -178,14 +178,13 @@ function getNodeHeaderColor(node: GraphNode): string {
  * 构建节点的端口列表
  */
 function buildNodeHandles(node: GraphNode): HandleLayout[] {
-  const style = StyleSystem.getNodeStyle();
   const handles: HandleLayout[] = [];
   let inputIndex = 0;
   let outputIndex = 0;
 
-  // 计算端口 Y 坐标的辅助函数（使用 StyleSystem 统一值）
+  // 计算端口 Y 坐标的辅助函数
   const getHandleY = (index: number): number => {
-    return style.headerHeight + style.padding + index * style.pinRowHeight + style.pinRowHeight / 2;
+    return LAYOUT.headerHeight + LAYOUT.padding + index * LAYOUT.pinRowHeight + LAYOUT.pinRowHeight / 2;
   };
 
   switch (node.type) {
@@ -198,11 +197,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       if (data.execIn) {
         handles.push({
           handleId: 'exec-in',
-          x: style.handleOffset,
+          x: HANDLE_OFFSET,
           y: getHandleY(inputIndex),
           isOutput: false,
           kind: 'exec',
-          color: StyleSystem.getEdgeStyle().execColor,
+          color: EXEC_COLOR,
           label: '',
         });
         inputIndex++;
@@ -214,11 +213,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
         const typeConstraint = data.inputTypes?.[operand.name] || operand.typeConstraint;
         handles.push({
           handleId: `data-in-${operand.name}`,
-          x: style.handleOffset,
+          x: HANDLE_OFFSET,
           y: getHandleY(inputIndex),
           isOutput: false,
           kind: 'data',
-          color: StyleSystem.getTypeColor(typeConstraint),
+          color: getTypeColor(typeConstraint),
           label: operand.name,
         });
         inputIndex++;
@@ -229,11 +228,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       for (const execOut of data.execOuts) {
         handles.push({
           handleId: execOut.id,
-          x: style.minWidth - style.handleOffset,
+          x: LAYOUT.minWidth - HANDLE_OFFSET,
           y: getHandleY(outputIndex),
           isOutput: true,
           kind: 'exec',
-          color: StyleSystem.getEdgeStyle().execColor,
+          color: EXEC_COLOR,
           label: execOut.label || '',
         });
         outputIndex++;
@@ -245,11 +244,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
         const typeConstraint = data.outputTypes?.[resultName] || result.typeConstraint;
         handles.push({
           handleId: `data-out-${resultName}`,
-          x: style.minWidth - style.handleOffset,
+          x: LAYOUT.minWidth - HANDLE_OFFSET,
           y: getHandleY(outputIndex),
           isOutput: true,
           kind: 'data',
-          color: StyleSystem.getTypeColor(typeConstraint),
+          color: getTypeColor(typeConstraint),
           label: resultName,
         });
         outputIndex++;
@@ -264,11 +263,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       // 1. execOut
       handles.push({
         handleId: 'exec-out',
-        x: style.minWidth - style.handleOffset,
+        x: LAYOUT.minWidth - HANDLE_OFFSET,
         y: getHandleY(outputIndex),
         isOutput: true,
         kind: 'exec',
-        color: StyleSystem.getEdgeStyle().execColor,
+        color: EXEC_COLOR,
         label: '',
       });
       outputIndex++;
@@ -277,11 +276,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       for (const param of data.outputs) {
         handles.push({
           handleId: param.id || `data-out-${param.name}`,
-          x: style.minWidth - style.handleOffset,
+          x: LAYOUT.minWidth - HANDLE_OFFSET,
           y: getHandleY(outputIndex),
           isOutput: true,
           kind: 'data',
-          color: StyleSystem.getTypeColor(param.typeConstraint),
+          color: getTypeColor(param.typeConstraint),
           label: param.name,
         });
         outputIndex++;
@@ -296,11 +295,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       // 1. execIn
       handles.push({
         handleId: 'exec-in',
-        x: style.handleOffset,
+        x: HANDLE_OFFSET,
         y: getHandleY(inputIndex),
         isOutput: false,
         kind: 'exec',
-        color: StyleSystem.getEdgeStyle().execColor,
+        color: EXEC_COLOR,
         label: '',
       });
       inputIndex++;
@@ -309,11 +308,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       for (const input of data.inputs) {
         handles.push({
           handleId: input.id || `data-in-${input.name}`,
-          x: style.handleOffset,
+          x: HANDLE_OFFSET,
           y: getHandleY(inputIndex),
           isOutput: false,
           kind: 'data',
-          color: StyleSystem.getTypeColor(input.typeConstraint),
+          color: getTypeColor(input.typeConstraint),
           label: input.name,
         });
         inputIndex++;
@@ -328,11 +327,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       // 1. execIn
       handles.push({
         handleId: 'exec-in',
-        x: style.handleOffset,
+        x: HANDLE_OFFSET,
         y: getHandleY(inputIndex),
         isOutput: false,
         kind: 'exec',
-        color: StyleSystem.getEdgeStyle().execColor,
+        color: EXEC_COLOR,
         label: '',
       });
       inputIndex++;
@@ -341,11 +340,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       for (const input of data.inputs) {
         handles.push({
           handleId: input.id || `data-in-${input.name}`,
-          x: style.handleOffset,
+          x: HANDLE_OFFSET,
           y: getHandleY(inputIndex),
           isOutput: false,
           kind: 'data',
-          color: StyleSystem.getTypeColor(input.typeConstraint),
+          color: getTypeColor(input.typeConstraint),
           label: input.name,
         });
         inputIndex++;
@@ -356,11 +355,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       for (const execOut of data.execOuts) {
         handles.push({
           handleId: execOut.id,
-          x: style.minWidth - style.handleOffset,
+          x: LAYOUT.minWidth - HANDLE_OFFSET,
           y: getHandleY(outputIndex),
           isOutput: true,
           kind: 'exec',
-          color: StyleSystem.getEdgeStyle().execColor,
+          color: EXEC_COLOR,
           label: execOut.label || '',
         });
         outputIndex++;
@@ -370,11 +369,11 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
       for (const output of data.outputs) {
         handles.push({
           handleId: output.id || `data-out-${output.name}`,
-          x: style.minWidth - style.handleOffset,
+          x: LAYOUT.minWidth - HANDLE_OFFSET,
           y: getHandleY(outputIndex),
           isOutput: true,
           kind: 'data',
-          color: StyleSystem.getTypeColor(output.typeConstraint),
+          color: getTypeColor(output.typeConstraint),
           label: output.name,
         });
         outputIndex++;
@@ -391,8 +390,6 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
  * 计算节点布局
  */
 export function computeNodeLayout(node: GraphNode, selected: boolean = false): NodeLayout {
-  const style = StyleSystem.getNodeStyle();
-  
   const title = getNodeTitle(node);
   const subtitle = getNodeSubtitle(node);
   const headerColor = getNodeHeaderColor(node);
@@ -405,18 +402,18 @@ export function computeNodeLayout(node: GraphNode, selected: boolean = false): N
   const outputCount = handles.filter(h => h.isOutput).length;
   const pinRows = Math.max(inputCount, outputCount);
   
-  // 计算节点高度（使用 StyleSystem 统一值）
-  const height = style.headerHeight + pinRows * style.pinRowHeight + style.padding * 2;
+  // 计算节点高度
+  const height = LAYOUT.headerHeight + pinRows * LAYOUT.pinRowHeight + LAYOUT.padding * 2;
   
   return {
     nodeId: node.id,
     x: node.position.x,
     y: node.position.y,
-    width: style.minWidth,
+    width: LAYOUT.minWidth,
     height,
-    headerHeight: style.headerHeight,
+    headerHeight: LAYOUT.headerHeight,
     headerColor,
-    backgroundColor: style.backgroundColor,
+    backgroundColor: tokens.node.bg,
     title,
     subtitle,
     handles,
@@ -439,33 +436,9 @@ export function computeEdgePath(
   targetX: number,
   targetY: number
 ): Array<{ x: number; y: number }> {
-  const style = StyleSystem.getEdgeStyle();
-  const pathType = style.pathType;
-  
-  if (pathType === 'straight') {
-    // 直线：返回 4 个点但控制点在直线上
-    return [
-      { x: sourceX, y: sourceY },
-      { x: sourceX + (targetX - sourceX) / 3, y: sourceY + (targetY - sourceY) / 3 },
-      { x: sourceX + (targetX - sourceX) * 2 / 3, y: sourceY + (targetY - sourceY) * 2 / 3 },
-      { x: targetX, y: targetY },
-    ];
-  }
-  
-  if (pathType === 'smoothstep') {
-    // SmoothStep：水平-垂直-水平的阶梯路径
-    const midX = (sourceX + targetX) / 2;
-    return [
-      { x: sourceX, y: sourceY },
-      { x: midX, y: sourceY },
-      { x: midX, y: targetY },
-      { x: targetX, y: targetY },
-    ];
-  }
-  
-  // 默认 bezier：贝塞尔曲线
+  // 默认使用 bezier 曲线
   const dx = Math.abs(targetX - sourceX);
-  const offset = Math.min(style.bezierOffset, dx * 0.5);
+  const offset = Math.min(BEZIER_OFFSET, dx * 0.5);
   
   // 返回 4 个点：起点、控制点1、控制点2、终点
   return [
@@ -487,8 +460,6 @@ export function computeEdgeLayout(
   targetHandleId: string,
   selected: boolean = false
 ): EdgeLayout {
-  const style = StyleSystem.getEdgeStyle();
-  
   // 查找源端口和目标端口
   const sourceHandle = sourceLayout.handles.find(h => h.handleId === sourceHandleId);
   const targetHandle = targetLayout.handles.find(h => h.handleId === targetHandleId);
@@ -508,7 +479,7 @@ export function computeEdgeLayout(
     sourceY,
     targetX,
     targetY,
-    color: isExec ? style.execColor : (sourceHandle?.color ?? style.defaultDataColor),
+    color: isExec ? EXEC_COLOR : (sourceHandle?.color ?? DEFAULT_DATA_COLOR),
     selected,
     isExec,
   };
@@ -517,10 +488,6 @@ export function computeEdgeLayout(
 /**
  * 计算点到贝塞尔曲线的最近距离（用于命中测试）
  * 使用采样近似法
- * @param px - 测试点 X
- * @param py - 测试点 Y
- * @param points - 贝塞尔曲线的 4 个控制点
- * @returns 最近距离
  */
 export function distanceToEdge(
   px: number,

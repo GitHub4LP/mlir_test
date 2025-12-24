@@ -16,10 +16,14 @@ import { useReactStore, projectStore, typeConstraintStore } from '../../../../st
 import { computeTypeSelectionState } from '../../../../services/typeSelection';
 import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { useTypeChangeHandler } from '../../../../hooks';
-import { StyleSystem } from '../../../core/StyleSystem';
-import { getNodeContainerStyle, getNodeHeaderStyle } from '../../../../components/shared';
 import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { getPortType } from '../../../../services/portTypeService';
+import {
+  getNodeContainerStyle,
+  getNodeHeaderStyle,
+  getDialectColor,
+  tokens,
+} from '../../shared/styles';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -77,19 +81,27 @@ export const FunctionCallNode = memo(function FunctionCallNode({
     return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
   }, [pinnedTypes, inputTypes, outputTypes]);
 
-  const headerColor = StyleSystem.getDialectColor('scf');
-  const nodeStyle = StyleSystem.getNodeStyle();
+  const headerColor = getDialectColor('scf');
 
   return (
-    <div className="overflow-visible shadow-lg"
+    <div
+      className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: `${nodeStyle.minWidth}px`,
-      }}>
+        minWidth: tokens.node.minWidth,
+      }}
+    >
+      {/* Header */}
       <div style={getNodeHeaderStyle(headerColor)}>
-        <span className="text-xs font-medium text-white/70 uppercase">call</span>
-        <span className="text-sm font-semibold text-white ml-1">{functionName}</span>
+        <div className="rf-node-header">
+          <div className="rf-node-header-left">
+            <span className="rf-node-dialect">call</span>
+            <span className="rf-node-opname">{functionName}</span>
+          </div>
+        </div>
       </div>
+
+      {/* Body */}
       <NodePins
         rows={pinRows}
         nodeId={id}
