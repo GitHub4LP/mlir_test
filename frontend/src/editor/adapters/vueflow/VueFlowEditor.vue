@@ -13,7 +13,7 @@
   - EditorContainer 监听 editorStore 变化并同步到 VueFlow
 -->
 <script setup lang="ts">
-import { computed, markRaw, onMounted } from 'vue';
+import { computed, markRaw, onMounted, watch, nextTick } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import type { NodeDragEvent, Connection, ViewportTransform } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
@@ -38,11 +38,13 @@ const {
   setViewport: vfSetViewport, 
   fitView: vfFitView,
   project,  // 屏幕坐标转画布坐标
+  setNodes,
+  setEdges,
 } = useVueFlow();
 
 // 加载用户快捷键配置
 const keyBindings: KeyBindings = loadUserKeyBindings();
-const vueFlowKeyConfig = getVueFlowKeyConfig(keyBindings);
+const vueFlowKeyConfig = getVueFlowKeyConfig();
 
 // Props
 const props = defineProps<{
@@ -92,11 +94,35 @@ const nodeTypes: any = {
   'function-call': markRaw(FunctionCallNode),
 };
 
-// 转换节点格式 - 使用适配器
-const vueFlowNodes = computed(() => toVueFlowNodes(props.nodes));
+// 转换后的节点和边（用于初始化）
+const initialNodes = computed(() => toVueFlowNodes(props.nodes));
+const initialEdges = computed(() => toVueFlowEdges(props.edges));
 
-// 转换边格式 - 使用适配器
-const vueFlowEdges = computed(() => toVueFlowEdges(props.edges));
+// 监听 props.nodes 变化，使用 setNodes 更新 Vue Flow
+// 这是因为 Vue 的 computed 不会检测到数组内部对象的深层属性变化（如 node.data.inputTypes）
+watch(
+  () => props.nodes,
+  (newNodes) => {
+    // 使用 nextTick 确保 Vue Flow 已经准备好
+    nextTick(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setNodes(toVueFlowNodes(newNodes) as any);
+    });
+  },
+  { deep: true }
+);
+
+// 监听 props.edges 变化
+watch(
+  () => props.edges,
+  (newEdges) => {
+    nextTick(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setEdges(toVueFlowEdges(newEdges) as any);
+    });
+  },
+  { deep: true }
+);
 
 // 默认视口
 const defaultViewport = computed(() => props.viewport || { x: 0, y: 0, zoom: 1 });
@@ -135,7 +161,8 @@ function getPortType(nodeId: string, portId: string): string | null {
 }
 
 // 创建连线验证器
-const isValidConnection = createVueFlowValidator(getPortType);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const isValidConnection = createVueFlowValidator(getPortType) as any;
 
 // 节点拖拽结束
 function handleNodeDragStop(event: NodeDragEvent) {
@@ -230,8 +257,8 @@ function handleKeyDown(event: KeyboardEvent) {
     tabindex="0"
   >
     <VueFlow
-      :nodes="vueFlowNodes"
-      :edges="vueFlowEdges"
+      :nodes="initialNodes"
+      :edges="initialEdges"
       :node-types="nodeTypes"
       :default-viewport="defaultViewport"
       :min-zoom="0.1"
@@ -268,7 +295,7 @@ function handleKeyDown(event: KeyboardEvent) {
 .vue-flow-container {
   width: 100%;
   height: 100%;
-  background-color: #111827;
+  background-color: var(--ui-darkBg, #111827);
 }
 
 .vue-flow-editor {
@@ -278,16 +305,16 @@ function handleKeyDown(event: KeyboardEvent) {
 
 /* 覆盖 Vue Flow 默认样式 - 匹配 React Flow */
 .vue-flow__background {
-  background-color: #111827 !important;
+  background-color: var(--ui-darkBg, #111827) !important;
 }
 
 .vue-flow__pane {
-  background-color: #111827;
+  background-color: var(--ui-darkBg, #111827);
 }
 
 /* 网格点样式 */
 .vue-flow__background pattern circle {
-  fill: #374151;
+  fill: var(--ui-buttonBg, #374151);
 }
 
 /* 边样式 */
@@ -296,41 +323,41 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 .vue-flow__edge.selected .vue-flow__edge-path {
-  stroke: #60a5fa !important;
+  stroke: var(--node-selected-borderColor, #60a5fa) !important;
 }
 
 /* 连接线样式 */
 .vue-flow__connection-path {
-  stroke: #60a5fa;
+  stroke: var(--node-selected-borderColor, #60a5fa);
   stroke-width: 2;
 }
 
 /* 选择框 */
 .vue-flow__selection {
   background: rgba(96, 165, 250, 0.1);
-  border: 1px solid #60a5fa;
+  border: 1px solid var(--node-selected-borderColor, #60a5fa);
 }
 
 /* 控制面板 */
 .vue-flow__controls {
-  background-color: #1f2937;
-  border-color: #374151;
+  background-color: var(--overlay-bg, #1f2937);
+  border-color: var(--ui-buttonBg, #374151);
   border-radius: 6px;
 }
 
 .vue-flow__controls-button {
-  background-color: #1f2937;
-  border-color: #374151;
-  color: #9ca3af;
+  background-color: var(--overlay-bg, #1f2937);
+  border-color: var(--ui-buttonBg, #374151);
+  color: var(--text-muted-color, #9ca3af);
 }
 
 .vue-flow__controls-button:hover {
-  background-color: #374151;
+  background-color: var(--ui-buttonBg, #374151);
 }
 
 /* 小地图 */
 .vue-flow__minimap {
-  background-color: #1f2937;
+  background-color: var(--overlay-bg, #1f2937);
   border-radius: 6px;
 }
 

@@ -156,6 +156,8 @@ export interface BlueprintNodeData extends TypePropagationData {
   execIn?: ExecPin;      // Execution input pin (optional)
   execOuts: ExecPin[];   // Execution output pins (supports multiple for control flow)
   regionPins: RegionPinConfig[];  // Region data pins for control flow operations
+  /** 节点头部颜色（运行时派生，不持久化） */
+  headerColor?: string;
 }
 
 export interface PortConfig {
@@ -305,6 +307,8 @@ export interface FunctionEntryData extends TypePropagationData {
   outputs: PortConfig[];        // Parameter outputs (data pins) - 运行时从 FunctionDef 派生
   execOut: ExecPin;             // Execution output pin
   isMain: boolean;              // Whether this is the main function entry
+  /** 节点头部颜色（创建时计算，不会变化） */
+  headerColor?: string;
 }
 
 export interface FunctionReturnData extends TypePropagationData {
@@ -315,6 +319,8 @@ export interface FunctionReturnData extends TypePropagationData {
   inputs: PortConfig[];         // Return value inputs (data pins) - 运行时从 FunctionDef 派生
   execIn: ExecPin;              // Execution input pin
   isMain: boolean;              // Whether this is the main function return
+  /** 节点头部颜色（创建时计算，不会变化） */
+  headerColor?: string;
 }
 
 /**
@@ -360,6 +366,8 @@ export interface FunctionCallData extends TypePropagationData {
   outputs: PortConfig[];        // Return value outputs (data pins) - 运行时从 FunctionDef 派生
   execIn: ExecPin;              // Execution input pin
   execOuts: ExecPin[];          // Execution output pins (one per Return node in function)
+  /** 节点头部颜色（创建时计算，不会变化） */
+  headerColor?: string;
 }
 
 // Project Types

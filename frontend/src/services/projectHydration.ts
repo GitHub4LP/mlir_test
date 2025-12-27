@@ -28,6 +28,7 @@ import type {
   StoredFunctionCallData,
 } from '../types';
 import { dataOutHandle, dataInHandle } from './port';
+import { getDialectColor, tokens } from '../editor/adapters/shared/styles';
 import { getTypeColor } from '../stores/typeColorCache';
 import { createInputPortsFromParams, createOutputPortsFromReturns, getExecOutputsFromFunction } from './functionNodeGenerator';
 
@@ -194,9 +195,14 @@ export function hydrateGraphNode(
   getFunctionById?: (id: string) => FunctionDef | undefined  // 用于重建 function-call 节点
 ): GraphNode {
   if (node.type === 'operation') {
+    const hydratedData = hydrateNodeData(node.data as StoredBlueprintNodeData, getOperation);
+    // 设置 headerColor（如果 hydratedData 中没有）
+    if (!hydratedData.headerColor && hydratedData.operation) {
+      hydratedData.headerColor = getDialectColor(hydratedData.operation.dialect);
+    }
     return {
       ...node,
-      data: hydrateNodeData(node.data as StoredBlueprintNodeData, getOperation),
+      data: hydratedData,
     };
   }
   
@@ -209,6 +215,8 @@ export function hydrateGraphNode(
       outputs: rebuildEntryOutputs(func),
       outputTypes: {},
       narrowedConstraints: {},
+      // 节点头部颜色
+      headerColor: stored.isMain ? tokens.nodeType.entryMain : tokens.nodeType.entry,
     };
     return {
       ...node,
@@ -225,6 +233,8 @@ export function hydrateGraphNode(
       inputs: rebuildReturnInputs(func),
       inputTypes: {},
       narrowedConstraints: {},
+      // 节点头部颜色
+      headerColor: stored.isMain ? tokens.nodeType.returnMain : tokens.nodeType.return,
     };
     return {
       ...node,
@@ -250,8 +260,11 @@ export function hydrateGraphNode(
       inputTypes: stored.inputTypes || {},
       outputTypes: stored.outputTypes || {},
       narrowedConstraints: {},
-      execIn: stored.execIn,
+      // 确保 execIn 有默认值（向后兼容旧数据）
+      execIn: stored.execIn || { id: 'exec-in', label: '' },
       execOuts: getExecOutputsFromFunction(calleeFunc),
+      // 节点头部颜色
+      headerColor: tokens.nodeType.call,
     };
     return {
       ...node,

@@ -16,7 +16,7 @@ import type {
 } from '../types';
 import type { FunctionTrait } from '../../types';
 import { GPUNodeEditor as GPUNodeEditorCore } from './gpu/GPUNodeEditor';
-import type { TypeOption } from './canvas/ui/TypeSelector';
+import type { TypeOption, ConstraintData } from './canvas/ui/TypeSelector';
 
 /**
  * GPU 节点编辑器
@@ -190,9 +190,10 @@ export class GPUNodeEditor implements INodeEditor {
     screenX: number,
     screenY: number,
     options: TypeOption[],
-    currentType?: string
+    currentType?: string,
+    constraintData?: ConstraintData
   ): void {
-    this.editor?.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType);
+    this.editor?.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType, constraintData);
   }
 
   /**

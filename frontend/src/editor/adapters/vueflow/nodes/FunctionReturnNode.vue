@@ -19,7 +19,7 @@ import {
 } from '../../../../stores';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
 import { dataInHandle } from '../../../../services/port';
-import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, EXEC_COLOR } from './nodeStyles';
+import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, EXEC_COLOR, getNodeTypeColor } from './nodeStyles';
 import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
 import EditableName from '../components/EditableName.vue';
 import type { DataPin } from '../../../../types';
@@ -180,7 +180,7 @@ function handleRenameReturnType(oldName: string, newName: string) {
 
 // 样式
 const containerStyle = computed(() => getContainerStyle(props.selected || false));
-const headerColor = computed(() => isMain.value ? '#dc2626' : '#ef4444');
+const headerColor = computed(() => isMain.value ? getNodeTypeColor('returnMain') : getNodeTypeColor('return'));
 const headerText = computed(() => branchName.value ? `Return "${branchName.value}"` : 'Return');
 const headerStyle = computed(() => getHeaderStyle(headerColor.value));
 </script>

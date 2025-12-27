@@ -9,6 +9,7 @@
 import type { EditorNode, EditorEdge } from '../editor/types';
 import type { OperationDef, BlueprintNodeData, GraphNode, GraphEdge } from '../types';
 import { generateExecConfig, createExecIn } from '../services/operationClassifier';
+import { getDialectColor } from '../editor/adapters/shared/styles';
 
 /**
  * Generates a unique node ID
@@ -92,6 +93,9 @@ export function createBlueprintNodeData(operation: OperationDef): BlueprintNodeD
   // Generate execution pin configuration based on operation classification
   const execConfig = generateExecConfig(operation);
 
+  // 计算 headerColor（创建时确定，不会变化）
+  const headerColor = getDialectColor(operation.dialect);
+
   return {
     operation,
     attributes,
@@ -102,5 +106,7 @@ export function createBlueprintNodeData(operation: OperationDef): BlueprintNodeD
     execOuts: execConfig.execOuts,
     // Region data pins for control flow operations
     regionPins: execConfig.regionPins,
+    // 节点头部颜色
+    headerColor,
   };
 }

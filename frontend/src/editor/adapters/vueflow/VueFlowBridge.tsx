@@ -122,8 +122,8 @@ export const VueFlowBridge = forwardRef<VueFlowBridgeHandle, VueFlowBridgeProps>
 
     if (!mounted) {
       return (
-        <div style={{ width: '100%', height: '100%', backgroundColor: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: '#666' }}>Loading Vue Flow...</span>
+        <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--ui-darkBg, #111827)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: 'var(--text-muted-color, #6b7280)' }}>Loading Vue Flow...</span>
         </div>
       );
     }

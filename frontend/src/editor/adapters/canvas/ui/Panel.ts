@@ -4,7 +4,7 @@
  */
 
 import { ContainerComponent, type UIMouseEvent } from './UIComponent';
-import { tokens, TEXT, LAYOUT, UI, OVERLAY } from '../../shared/styles';
+import { TEXT, LAYOUT, UI, OVERLAY } from '../../shared/styles';
 
 export interface PanelStyle {
   backgroundColor: string;

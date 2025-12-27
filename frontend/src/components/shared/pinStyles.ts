@@ -2,7 +2,7 @@
  * 引脚样式定义
  * 
  * 统一的执行引脚和数据引脚样式
- * 使用 shared/styles 获取样式，确保与所有渲染器一致
+ * 使用 shared/figmaStyles 获取样式，确保与所有渲染器一致
  */
 
 import type React from 'react';
@@ -10,8 +10,8 @@ import {
   getExecHandleStyle,
   getDataHandleStyle,
   getNodeContainerStyle,
-  getNodeHeaderStyle,
-} from '../../editor/adapters/shared/styles';
+  getHeaderContentStyle,
+} from '../../editor/adapters/shared/figmaStyles';
 
 /**
  * 执行引脚样式 - 白色实心向右三角形
@@ -27,4 +27,4 @@ export function dataPinStyle(color: string): React.CSSProperties {
 }
 
 // 重导出节点样式函数
-export { getNodeContainerStyle, getNodeHeaderStyle };
+export { getNodeContainerStyle, getHeaderContentStyle as getNodeHeaderStyle };

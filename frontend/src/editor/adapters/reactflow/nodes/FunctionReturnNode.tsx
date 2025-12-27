@@ -5,35 +5,32 @@
  */
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
-import { Handle, Position, type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import type { FunctionReturnData } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
-import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
+import { useReactStore, projectStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
-import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
+import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { EditableName } from '../../../../components/shared';
 import { dataInHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
-import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { generateReturnTypeName } from '../../../../services/parameterService';
 import { buildReturnDataPins } from '../../../../services/pinUtils';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
 import {
   getNodeContainerStyle,
-  getNodeHeaderStyle,
+  getHeaderContentStyle,
   getExecHandleStyle,
   getDataHandleStyle,
   getNodeTypeColor,
-  tokens,
-} from '../../shared/styles';
+  NODE_MIN_WIDTH,
+} from '../../shared/figmaStyles';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
 
 export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, selected }: FunctionReturnNodeProps) {
   const { branchName, execIn, isMain, pinnedTypes = {}, inputTypes = {} } = data;
-  const edges = useEdges();
-  const nodes = useNodes();
   
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<FunctionReturnData>(id);
@@ -43,6 +40,9 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const updateReturnType = useReactStore(projectStore, state => state.updateReturnType);
   const getFunctionById = useReactStore(projectStore, state => state.getFunctionById);
   const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
+  
+  // 从 portStateStore 获取端口状态
+  const getPortState = usePortStateStore(state => state.getPortState);
 
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -94,18 +94,6 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     return buildReturnDataPins(returnTypes, { pinnedTypes, inputTypes }, isMain);
   }, [isMain, currentFunction?.returnTypes, inputTypes, pinnedTypes]);
 
-  const typeSelectorParams: TypeSelectorRenderParams = useMemo(() => ({
-    nodeId: id,
-    data,
-    nodes: toEditorNodes(nodes),
-    edges: toEditorEdges(edges),
-    currentFunction: currentFunction ?? undefined,
-    getConstraintElements,
-    onTypeSelect: (portId: string, type: string, originalConstraint: string) => {
-      handleTypeChange(portId, type, originalConstraint);
-    },
-  }), [id, data, nodes, edges, currentFunction, getConstraintElements, handleTypeChange]);
-
   const headerColor = isMain ? getNodeTypeColor('returnMain') : getNodeTypeColor('return');
   const headerText = branchName ? `Return "${branchName}"` : 'Return';
 
@@ -114,11 +102,11 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
       className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: tokens.node.minWidth,
+        minWidth: NODE_MIN_WIDTH,
       }}
     >
       {/* Header */}
-      <div style={getNodeHeaderStyle(headerColor)}>
+      <div style={getHeaderContentStyle(headerColor)}>
         <div className="rf-func-header">
           <span className="rf-func-title">{headerText}</span>
           {isMain && <span className="rf-func-subtitle">(main)</span>}
@@ -142,7 +130,13 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
 
         {/* Data pins */}
         {dataPins.map((pin) => {
-          const { displayType, options, canEdit, onSelect } = computeTypeSelectorState(pin, typeSelectorParams);
+          const displayType = getDisplayType(pin, data);
+          const portState = getPortState(id, pin.id);
+          // 如果 portState 不存在，默认不可编辑（等待类型传播完成）
+          const canEdit = portState?.canEdit ?? false;
+          const constraint = portState?.constraint ?? pin.typeConstraint;
+          const options = getConstraintElements(constraint);
+          
           return (
             <div key={pin.id} className="rf-data-row rf-data-row-left">
               <Handle
@@ -161,7 +155,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
                 )}
                 <UnifiedTypeSelector
                   selectedType={displayType}
-                  onTypeSelect={onSelect}
+                  onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
                   constraint={pin.typeConstraint}
                   allowedTypes={options.length > 0 ? options : undefined}
                   disabled={!canEdit}

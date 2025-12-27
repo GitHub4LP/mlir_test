@@ -244,7 +244,7 @@ export class ContentRenderer implements IContentRenderer {
     if (path.points.length < 2) return;
 
     ctx.save();
-    ctx.strokeStyle = path.color ?? '#ffffff';
+    ctx.strokeStyle = path.color ?? tokens.edge.exec.color;
     ctx.lineWidth = path.width ?? 2;
 
     if (path.dashed && path.dashPattern) {
@@ -276,7 +276,7 @@ export class ContentRenderer implements IContentRenderer {
       const lastIdx = path.points.length - 1;
       const end = path.points[lastIdx];
       const prev = path.points[lastIdx - 1];
-      this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? '#ffffff');
+      this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? tokens.edge.exec.color);
     }
 
     ctx.restore();
@@ -292,6 +292,11 @@ export class ContentRenderer implements IContentRenderer {
 
   private renderRect(ctx: CanvasRenderingContext2D, rect: RenderRect): void {
     ctx.save();
+
+    // 调试：打印 header rect 的 fillColor
+    if (rect.id?.startsWith('header-')) {
+      console.log(`[ContentRenderer.renderRect] ${rect.id} fillColor=${rect.fillColor}`);
+    }
 
     if (rect.fillColor && rect.fillColor !== 'transparent') {
       ctx.fillStyle = rect.fillColor;

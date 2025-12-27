@@ -30,8 +30,17 @@ import textFragSource from '../shaders/webgl/text.frag.glsl?raw';
 
 type EventCallback<K extends keyof GPUBackendEvents> = GPUBackendEvents[K];
 
-/** 节点实例数据布局（每实例 floats 数量） */
-const NODE_INSTANCE_FLOATS = 16;
+/** 节点实例数据布局（每实例 floats 数量）
+ * position: vec2 (2)
+ * size: vec2 (2)
+ * headerHeight: float (1)
+ * borderRadius: vec4 (4) - topLeft, topRight, bottomRight, bottomLeft
+ * bodyColor: vec4 (4)
+ * headerColor: vec4 (4)
+ * selected: float (1)
+ * Total: 18
+ */
+const NODE_INSTANCE_FLOATS = 18;
 
 /** 边实例数据布局（每实例 floats 数量） */
 const EDGE_INSTANCE_FLOATS = 14;
@@ -245,11 +254,8 @@ export class WebGLBackend implements IGPUBackend {
 
   renderNodes(batch: NodeBatch): void {
     if (!this.gl || !this.nodeProgram || !this.nodeVAO || batch.count === 0) {
-      console.log('WebGLBackend.renderNodes: skipping, count:', batch.count, 'gl:', !!this.gl, 'program:', !!this.nodeProgram, 'vao:', !!this.nodeVAO);
       return;
     }
-    
-    console.log('WebGLBackend.renderNodes: rendering', batch.count, 'nodes');
     
     const gl = this.gl;
     
@@ -440,7 +446,6 @@ export class WebGLBackend implements IGPUBackend {
   }
 
   private handleContextRestored(): void {
-    console.log('WebGL context restored');
     this.initShaders().then(() => {
       this.emit('contextrestored');
     });
@@ -533,7 +538,7 @@ export class WebGLBackend implements IGPUBackend {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeInstanceBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, NODE_INSTANCE_FLOATS * 4 * 100, gl.DYNAMIC_DRAW);
     
-    const stride = NODE_INSTANCE_FLOATS * 4; // 16 floats * 4 bytes
+    const stride = NODE_INSTANCE_FLOATS * 4; // 18 floats * 4 bytes
     let offset = 0;
     
     const setupInstanceAttrib = (name: string, size: number) => {
@@ -550,11 +555,11 @@ export class WebGLBackend implements IGPUBackend {
     setupInstanceAttrib('a_instancePosition', 2);  // offset 0
     setupInstanceAttrib('a_instanceSize', 2);      // offset 8
     setupInstanceAttrib('a_headerHeight', 1);      // offset 16
-    setupInstanceAttrib('a_borderRadius', 1);      // offset 20
-    setupInstanceAttrib('a_bodyColor', 4);         // offset 24
-    setupInstanceAttrib('a_headerColor', 4);       // offset 40
-    setupInstanceAttrib('a_selected', 1);          // offset 56
-    // padding 1 float at offset 60, total 64 bytes = 16 floats
+    setupInstanceAttrib('a_borderRadius', 4);      // offset 20 (vec4)
+    setupInstanceAttrib('a_bodyColor', 4);         // offset 36
+    setupInstanceAttrib('a_headerColor', 4);       // offset 52
+    setupInstanceAttrib('a_selected', 1);          // offset 68
+    // total 72 bytes = 18 floats
     
     gl.bindVertexArray(null);
   }

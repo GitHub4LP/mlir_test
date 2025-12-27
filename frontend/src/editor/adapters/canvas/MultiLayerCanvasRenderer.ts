@@ -27,7 +27,7 @@ import { WebGPUContentRenderer } from './layers/WebGPUContentRenderer';
 import { InteractionRenderer } from './layers/InteractionRenderer';
 import { UIRenderer } from './layers/UIRenderer';
 import { TextCache } from './layers/TextCache';
-import { TypeSelector, type TypeOption } from './ui/TypeSelector';
+import { TypeSelector, type TypeOption, type ConstraintData } from './ui/TypeSelector';
 import { AttributeEditor, type AttributeDef, type AttributeValue } from './ui/AttributeEditor';
 import { detectBestRendererSync } from './layers/RendererDetector';
 
@@ -275,14 +275,25 @@ export class MultiLayerCanvasRenderer implements IRenderer {
     handleId: string,
     screenX: number,
     screenY: number,
-    options: TypeOption[]
+    options: TypeOption[],
+    currentType?: string,
+    constraintData?: ConstraintData
   ): void {
     // 隐藏现有的
     this.hideTypeSelector();
     
     // 创建新的类型选择器
     this.typeSelector = new TypeSelector(`type-selector-${nodeId}-${handleId}`);
-    this.typeSelector.setOptions(options);
+    
+    // 设置约束数据（优先使用新 API）
+    if (constraintData) {
+      this.typeSelector.setConstraintData(constraintData);
+      this.typeSelector.setCurrentType(currentType || '');
+    } else {
+      // 兼容旧 API
+      this.typeSelector.setOptions(options);
+    }
+    
     this.typeSelector.setPosition(screenX, screenY);
     this.typeSelector.setOnSelect((type) => {
       this.onTypeSelect?.(nodeId, handleId, type);

@@ -97,6 +97,8 @@ function updateFunctionCallNodeData(
     functionName: func.name,
     inputs: createInputPortsFromParams(func),
     outputs: createOutputPortsFromReturns(func),
+    // 确保 execIn 有默认值（向后兼容旧数据）
+    execIn: existingData.execIn || { id: 'exec-in', label: '' },
     execOuts: getExecOutputsFromFunction(func),
   };
 }

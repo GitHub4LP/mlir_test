@@ -18,8 +18,17 @@ import type {
 
 type EventCallback<K extends keyof GPUBackendEvents> = GPUBackendEvents[K];
 
-/** 节点实例数据布局（每实例 floats 数量） */
-const NODE_INSTANCE_FLOATS = 16;
+/** 节点实例数据布局（每实例 floats 数量）
+ * position: vec2 (2)
+ * size: vec2 (2)
+ * headerHeight: float (1)
+ * borderRadius: vec4 (4) - topLeft, topRight, bottomRight, bottomLeft
+ * bodyColor: vec4 (4)
+ * headerColor: vec4 (4)
+ * selected: float (1)
+ * Total: 18
+ */
+const NODE_INSTANCE_FLOATS = 18;
 
 /** 边实例数据布局（每实例 floats 数量） */
 const EDGE_INSTANCE_FLOATS = 14;
@@ -525,10 +534,10 @@ export class WebGPUBackend implements IGPUBackend {
               { shaderLocation: 1, offset: 0, format: 'float32x2' },   // position
               { shaderLocation: 2, offset: 8, format: 'float32x2' },   // size
               { shaderLocation: 3, offset: 16, format: 'float32' },    // headerHeight
-              { shaderLocation: 4, offset: 20, format: 'float32' },    // borderRadius
-              { shaderLocation: 5, offset: 24, format: 'float32x4' },  // bodyColor
-              { shaderLocation: 6, offset: 40, format: 'float32x4' },  // headerColor
-              { shaderLocation: 7, offset: 56, format: 'float32' },    // selected
+              { shaderLocation: 4, offset: 20, format: 'float32x4' },  // borderRadius (vec4)
+              { shaderLocation: 5, offset: 36, format: 'float32x4' },  // bodyColor
+              { shaderLocation: 6, offset: 52, format: 'float32x4' },  // headerColor
+              { shaderLocation: 7, offset: 68, format: 'float32' },    // selected
             ],
           },
         ],

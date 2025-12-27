@@ -9,7 +9,7 @@
  */
 
 import type { UIMouseEvent, UIKeyEvent, UIWheelEvent } from './ui/UIComponent';
-import { TypeSelector, type TypeOption } from './ui/TypeSelector';
+import { TypeSelector, type TypeOption, type ConstraintData } from './ui/TypeSelector';
 
 export interface TypeSelectorState {
   visible: boolean;
@@ -19,6 +19,7 @@ export interface TypeSelectorState {
   screenY: number;
   options: TypeOption[];
   currentType?: string;
+  constraintData?: ConstraintData;
 }
 
 export interface UIManagerCallbacks {
@@ -88,7 +89,8 @@ export class UIManager {
     screenX: number,
     screenY: number,
     options: TypeOption[],
-    currentType?: string
+    currentType?: string,
+    constraintData?: ConstraintData
   ): void {
     this.typeSelectorState = {
       visible: true,
@@ -98,9 +100,18 @@ export class UIManager {
       screenY,
       options,
       currentType,
+      constraintData,
     };
     
-    this.typeSelector.setOptions(options);
+    // 设置约束数据（优先使用新 API）
+    if (constraintData) {
+      this.typeSelector.setConstraintData(constraintData);
+      this.typeSelector.setCurrentType(currentType || '');
+    } else {
+      // 兼容旧 API
+      this.typeSelector.setOptions(options);
+    }
+    
     this.typeSelector.setPosition(screenX, screenY);
     this.typeSelector.show();
   }

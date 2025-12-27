@@ -14,6 +14,7 @@
  */
 
 import type { OperationDef, ExecPin, RegionDef, DataPin } from '../types';
+import { getTypeColor } from '../stores/typeColorCache';
 
 /**
  * Region data pin configuration
@@ -128,30 +129,6 @@ function generateRegionPins(regions: RegionDef[]): RegionPinConfig[] {
       hasYieldInputs: region.hasYieldInputs,
     };
   });
-}
-
-/**
- * Gets a color for a type constraint (simplified version)
- */
-function getTypeColor(typeConstraint: string): string {
-  // Index type - cyan
-  if (typeConstraint === 'Index') {
-    return '#00bcd4';
-  }
-  // Integer types - green
-  if (typeConstraint.includes('Integer') || typeConstraint.includes('Int')) {
-    return '#4caf50';
-  }
-  // Float types - blue
-  if (typeConstraint.includes('Float') || typeConstraint.includes('F32') || typeConstraint.includes('F64')) {
-    return '#2196f3';
-  }
-  // Inferred type - gray
-  if (typeConstraint === 'inferred') {
-    return '#9e9e9e';
-  }
-  // Default - purple
-  return '#9c27b0';
 }
 
 /**

@@ -15,7 +15,7 @@ import {
   getExecHandleStyle,
   getExecHandleStyleRight,
   getDataHandleStyle,
-} from '../editor/adapters/shared/styles';
+} from '../editor/adapters/shared/figmaStyles';
 
 interface PinRowProps {
   row: PinRow;

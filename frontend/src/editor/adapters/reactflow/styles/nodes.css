@@ -1,122 +1,220 @@
 /**
  * ReactFlow 节点样式
  * 
- * 使用 CSS Variables（来自 Design Tokens）
- * 替代 Tailwind 类，确保与其他渲染器视觉一致
+ * 基于 Figma Auto Layout 模型
+ * 使用 CSS Variables（来自 variables.css）
+ * 使用 Flexbox 实现布局
  */
 
+@import './variables.css';
+
 /* ============================================================
-   节点容器
+   节点容器 - Figma: node
+   direction: vertical, spacing: 0
    ============================================================ */
 
 .rf-node {
+  display: flex;
+  flex-direction: column;
+  min-width: var(--node-min-width);
+  padding: var(--node-padding);
+  background-color: var(--node-bg);
+  border: var(--node-border-width) solid var(--node-border-color);
+  border-radius: var(--node-border-radius);
+  font-family: var(--font-family);
   overflow: visible;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
+.rf-node.selected {
+  border-color: var(--node-selected-border-color);
+  border-width: var(--node-selected-border-width);
+}
+
 /* ============================================================
-   节点头部
+   节点头部 - Figma: header
+   direction: horizontal, spacing: auto (space-between)
    ============================================================ */
 
 .rf-node-header {
   display: flex;
-  align-items: center;
+  flex-direction: row;
   justify-content: space-between;
+  align-items: center;
+  height: var(--header-height);
+  padding: var(--header-padding);
 }
+
+/* ============================================================
+   标题组 - Figma: titleGroup
+   direction: horizontal, spacing: 4px
+   ============================================================ */
 
 .rf-node-header-left {
   display: flex;
-  align-items: center;
-}
-
-.rf-node-header-right {
-  display: flex;
-  gap: 4px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--title-group-spacing);
 }
 
 .rf-node-dialect {
-  font-size: var(--text-subtitle-size);
-  font-weight: var(--text-subtitle-weight);
-  color: var(--text-subtitle-color);
+  font-size: var(--subtitle-font-size);
+  font-weight: var(--subtitle-font-weight);
+  color: var(--subtitle-color);
   text-transform: uppercase;
 }
 
 .rf-node-opname {
-  font-size: var(--text-title-size);
-  font-weight: var(--text-title-weight);
-  color: var(--text-title-color);
-  margin-left: 4px;
+  font-size: var(--title-font-size);
+  font-weight: var(--title-font-weight);
+  color: var(--title-color);
+}
+
+/* ============================================================
+   徽章组 - Figma: badgesGroup
+   direction: horizontal, spacing: 4px
+   ============================================================ */
+
+.rf-node-header-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
 }
 
 .rf-node-badge {
-  font-size: var(--text-subtitle-size);
+  font-size: var(--subtitle-font-size);
   color: rgba(255, 255, 255, 0.6);
 }
 
 /* ============================================================
-   节点 Body
+   引脚区域 - Figma: pinArea
+   direction: vertical, spacing: 0
    ============================================================ */
 
 .rf-node-body {
-  padding: var(--node-padding);
+  display: flex;
+  flex-direction: column;
+  padding: var(--pin-area-padding);
+  gap: var(--pin-area-spacing);
 }
 
 /* ============================================================
-   引脚行
+   引脚行 - Figma: pinRow
+   direction: horizontal, spacing: auto (space-between)
    ============================================================ */
 
 .rf-pin-row {
-  min-height: var(--node-pin-rowHeight);
+  position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: row;
   justify-content: space-between;
-  padding: 0 var(--node-padding);
+  align-items: center;
+  min-height: var(--pin-row-min-height);
+  padding: var(--pin-row-padding);
 }
+
+/* ============================================================
+   引脚侧 - Figma: pinSide
+   direction: horizontal, spacing: 0
+   ============================================================ */
 
 .rf-pin-row-left {
   display: flex;
+  flex-direction: row;
   align-items: center;
 }
 
 .rf-pin-row-right {
   display: flex;
+  flex-direction: row;
   align-items: center;
-}
-
-.rf-pin-label {
-  font-size: var(--text-label-size);
-  color: var(--text-label-color);
-}
-
-.rf-pin-label-left {
-  margin-left: var(--typeLabel-offsetFromHandle);
-}
-
-.rf-pin-label-right {
-  margin-right: var(--typeLabel-offsetFromHandle);
 }
 
 /* ============================================================
-   属性区域
+   引脚内容 - Figma: pinContent / pinContentRight
+   direction: vertical, spacing: 2px
+   ============================================================ */
+
+.rf-pin-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pin-content-spacing);
+}
+
+.rf-pin-content-left {
+  align-items: flex-start;
+  margin-left: var(--pin-content-margin-left);
+}
+
+.rf-pin-content-right {
+  align-items: flex-end;
+  margin-right: var(--pin-content-margin-right);
+}
+
+.rf-pin-label {
+  font-size: var(--label-font-size);
+  color: var(--label-color);
+}
+
+.rf-pin-name {
+  font-size: var(--label-font-size);
+  color: var(--label-color);
+}
+
+/* ============================================================
+   类型标签 - Figma: typeLabel
+   ============================================================ */
+
+.rf-type-selector {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--type-label-padding);
+  min-width: var(--type-label-min-width);
+  background-color: var(--type-label-bg);
+  border-radius: var(--type-label-border-radius);
+  font-size: var(--label-font-size);
+  color: var(--label-color);
+  cursor: pointer;
+}
+
+.rf-type-selector-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   属性区域 - Figma: attrArea
+   direction: vertical, spacing: 4px
    ============================================================ */
 
 .rf-node-attrs {
-  border-top: 1px solid var(--color-gray-600);
-  padding: var(--node-padding) 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--attr-area-spacing);
+  padding: var(--attr-area-padding);
+  border-top: 1px solid var(--node-border-color);
 }
+
+/* ============================================================
+   属性行 - Figma: attrRow
+   direction: horizontal, spacing: 8px
+   ============================================================ */
 
 .rf-node-attr-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--node-padding) 0;
-  gap: 8px;
+  height: var(--attr-row-height);
+  gap: var(--attr-row-spacing);
 }
 
 .rf-node-attr-label {
-  font-size: var(--text-label-size);
-  color: var(--color-gray-400);
+  width: var(--attr-label-width);
+  font-size: var(--label-font-size);
+  color: var(--muted-color);
   cursor: help;
+  flex-shrink: 0;
 }
 
 /* ============================================================
@@ -124,14 +222,14 @@
    ============================================================ */
 
 .rf-node-summary {
-  padding: var(--node-padding) 8px;
-  border-top: 1px solid var(--color-gray-600);
+  padding: var(--attr-area-padding);
+  border-top: 1px solid var(--node-border-color);
   background-color: rgba(31, 41, 55, 0.5);
 }
 
 .rf-node-summary-text {
-  font-size: var(--text-subtitle-size);
-  color: var(--text-muted-color);
+  font-size: var(--subtitle-font-size);
+  color: var(--muted-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -142,21 +240,22 @@
    ============================================================ */
 
 .rf-input {
-  font-size: var(--text-label-size);
-  background-color: var(--color-gray-700);
-  color: var(--color-white);
-  border-radius: var(--radius-default);
-  padding: var(--node-padding) 8px;
-  border: 1px solid var(--color-gray-600);
+  font-size: var(--label-font-size);
+  font-family: var(--font-family);
+  background-color: #374151;
+  color: #ffffff;
+  border-radius: var(--type-label-border-radius);
+  padding: 4px 8px;
+  border: 1px solid #4b5563;
   outline: none;
 }
 
 .rf-input:focus {
-  border-color: var(--color-blue-500);
+  border-color: #3b82f6;
 }
 
 .rf-input-error {
-  border-color: var(--color-red-500);
+  border-color: #ef4444;
 }
 
 .rf-input-number {
@@ -169,19 +268,20 @@
 
 .rf-select {
   width: 96px;
-  font-size: var(--text-label-size);
-  background-color: var(--color-gray-700);
-  color: var(--color-white);
-  border-radius: var(--radius-default);
-  padding: var(--node-padding) 8px;
-  border: 1px solid var(--color-gray-600);
+  font-size: var(--label-font-size);
+  font-family: var(--font-family);
+  background-color: #374151;
+  color: #ffffff;
+  border-radius: var(--type-label-border-radius);
+  padding: 4px 8px;
+  border: 1px solid #4b5563;
   outline: none;
 }
 
 .rf-checkbox {
   width: 16px;
   height: 16px;
-  accent-color: var(--color-blue-500);
+  accent-color: #3b82f6;
 }
 
 /* ============================================================
@@ -191,81 +291,84 @@
 .rf-variadic-btn {
   width: 20px;
   height: 20px;
-  border-radius: var(--radius-default);
-  background-color: var(--color-gray-700);
+  border-radius: var(--type-label-border-radius);
+  background-color: #374151;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   border: none;
-  font-size: var(--text-label-size);
+  font-size: var(--label-font-size);
 }
 
 .rf-variadic-btn:hover {
-  background-color: var(--color-gray-600);
+  background-color: #4b5563;
 }
 
 .rf-variadic-btn-add {
-  color: var(--color-green-400);
+  color: #4ade80;
 }
 
 .rf-variadic-btn-remove {
-  color: var(--color-red-400);
+  color: #f87171;
 }
 
 /* ============================================================
-   类型选择器
+   类型选择器面板
    ============================================================ */
-
-.rf-type-selector {
-  background-color: var(--overlay-bg);
-  border-radius: var(--radius-default);
-  padding: var(--node-padding) 8px;
-  border: 1px solid var(--overlay-borderColor);
-  cursor: pointer;
-}
-
-.rf-type-selector-disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 .rf-type-selector-panel {
   width: 288px;
-  background-color: var(--overlay-bg);
-  border: 1px solid var(--overlay-borderColor);
-  border-radius: var(--radius-default);
-  box-shadow: var(--overlay-boxShadow);
+  background-color: #1f2937;
+  border: 1px solid #374151;
+  border-radius: var(--type-label-border-radius);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
   z-index: 10000;
 }
 
 .rf-type-selector-search {
   padding: 8px;
-  border-bottom: 1px solid var(--color-gray-700);
+  border-bottom: 1px solid #374151;
 }
 
 .rf-type-selector-search-input {
-  background-color: var(--color-gray-700);
-  color: var(--color-gray-200);
-  font-size: var(--text-label-size);
+  width: 100%;
+  background-color: #374151;
+  color: #e5e7eb;
+  font-size: var(--label-font-size);
+  font-family: var(--font-family);
   border: none;
   outline: none;
-  flex: 1;
-  width: 100%;
-  padding: var(--node-padding) 8px;
-  border-radius: var(--radius-default);
+  padding: 4px 8px;
+  border-radius: var(--type-label-border-radius);
 }
 
 .rf-type-selector-list {
-  max-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #1f2937;
+}
+
+.rf-type-selector-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rf-type-selector-list::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.rf-type-selector-list::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+  border-radius: 3px;
 }
 
 .rf-type-selector-item {
   width: 100%;
   text-align: left;
-  padding: var(--node-padding) 12px;
-  font-size: var(--text-label-size);
+  padding: 4px 12px;
+  font-size: var(--label-font-size);
+  font-family: var(--font-family);
   cursor: pointer;
   background: none;
   border: none;
@@ -273,14 +376,14 @@
 }
 
 .rf-type-selector-item:hover {
-  background-color: var(--color-gray-700);
+  background-color: #374151;
 }
 
 .rf-type-selector-group {
-  padding: var(--node-padding) 8px;
-  font-size: var(--text-label-size);
-  color: var(--text-muted-color);
-  background-color: var(--ui-darkBg);
+  padding: 4px 8px;
+  font-size: var(--label-font-size);
+  color: var(--muted-color);
+  background-color: #111827;
 }
 
 /* ============================================================
@@ -288,8 +391,8 @@
    ============================================================ */
 
 .rf-traits-panel {
-  border-top: 1px solid var(--color-gray-600);
-  padding: var(--node-padding) 8px;
+  border-top: 1px solid var(--node-border-color);
+  padding: var(--attr-area-padding);
 }
 
 .rf-traits-header {
@@ -297,21 +400,21 @@
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  padding: var(--node-padding) 0;
+  padding: 4px 0;
 }
 
 .rf-traits-title {
-  font-size: var(--text-label-size);
-  color: var(--text-label-color);
+  font-size: var(--label-font-size);
+  color: var(--label-color);
 }
 
 .rf-traits-toggle {
-  font-size: var(--text-subtitle-size);
-  color: var(--text-muted-color);
+  font-size: var(--subtitle-font-size);
+  color: var(--muted-color);
 }
 
 .rf-traits-content {
-  padding-top: var(--node-padding);
+  padding-top: 4px;
 }
 
 /* ============================================================
@@ -322,12 +425,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: var(--node-pin-rowHeight);
+  min-height: var(--pin-row-min-height);
 }
 
 .rf-param-name {
-  font-size: var(--text-label-size);
-  color: var(--text-label-color);
+  font-size: var(--label-font-size);
+  color: var(--label-color);
   flex: 1;
 }
 
@@ -339,23 +442,23 @@
 .rf-param-btn {
   width: 20px;
   height: 20px;
-  border-radius: var(--radius-default);
-  background-color: var(--color-gray-700);
+  border-radius: var(--type-label-border-radius);
+  background-color: #374151;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   border: none;
   font-size: 10px;
-  color: var(--text-muted-color);
+  color: var(--muted-color);
 }
 
 .rf-param-btn:hover {
-  background-color: var(--color-gray-600);
+  background-color: #4b5563;
 }
 
 .rf-param-btn-danger:hover {
-  color: var(--color-red-400);
+  color: #f87171;
 }
 
 /* ============================================================
@@ -368,15 +471,15 @@
 }
 
 .rf-func-title {
-  font-size: var(--text-title-size);
-  font-weight: var(--text-title-weight);
-  color: var(--text-title-color);
+  font-size: var(--title-font-size);
+  font-weight: var(--title-font-weight);
+  color: var(--title-color);
 }
 
 .rf-func-subtitle {
   margin-left: 4px;
-  font-size: var(--text-subtitle-size);
-  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--subtitle-font-size);
+  color: var(--subtitle-color);
 }
 
 .rf-func-body {
@@ -388,8 +491,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-height: var(--node-pin-rowHeight);
-  padding: 6px 0;
+  min-height: var(--pin-row-min-height);
+  padding: var(--pin-row-padding);
 }
 
 .rf-exec-row-left {
@@ -405,8 +508,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-height: var(--node-pin-rowHeight);
-  padding: 6px 0;
+  min-height: var(--pin-row-min-height);
+  padding: var(--pin-row-padding);
 }
 
 .rf-data-row-left {
@@ -444,7 +547,7 @@
 .rf-remove-btn {
   opacity: 0;
   padding: 2px;
-  color: var(--color-gray-500);
+  color: #6b7280;
   background: none;
   border: none;
   cursor: pointer;
@@ -454,7 +557,7 @@
 }
 
 .rf-remove-btn:hover {
-  color: var(--color-red-400);
+  color: #f87171;
 }
 
 .rf-data-row:hover .rf-remove-btn,
@@ -467,12 +570,12 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-height: var(--node-pin-rowHeight);
-  padding: 6px 0;
+  min-height: var(--pin-row-min-height);
+  padding: var(--pin-row-padding);
 }
 
 .rf-add-btn {
-  color: var(--color-gray-500);
+  color: #6b7280;
   background: none;
   border: none;
   cursor: pointer;
@@ -482,7 +585,7 @@
 }
 
 .rf-add-btn:hover {
-  color: var(--color-white);
+  color: #ffffff;
 }
 
 /* Traits 编辑器容器 */
@@ -507,11 +610,11 @@
 
 /* 间隔占位 */
 .rf-spacer-left {
-  margin-left: 16px;
+  margin-left: var(--pin-content-margin-left);
 }
 
 .rf-spacer-right {
-  margin-right: 16px;
+  margin-right: var(--pin-content-margin-right);
 }
 
 /* ============================================================
@@ -519,14 +622,14 @@
    ============================================================ */
 
 .rf-error-text {
-  font-size: var(--text-subtitle-size);
-  color: var(--color-red-400);
+  font-size: var(--subtitle-font-size);
+  color: #f87171;
   margin-top: 2px;
 }
 
 .rf-optional-indicator {
-  color: var(--color-gray-500);
-  font-size: var(--text-subtitle-size);
+  color: #6b7280;
+  font-size: var(--subtitle-font-size);
   margin-left: 4px;
 }
 
@@ -537,8 +640,8 @@
 .rf-filter-btn {
   width: 20px;
   height: 20px;
-  font-size: var(--text-label-size);
-  border-radius: var(--radius-default);
+  font-size: var(--label-font-size);
+  border-radius: var(--type-label-border-radius);
   border: none;
   cursor: pointer;
   display: flex;
@@ -547,25 +650,25 @@
 }
 
 .rf-wrapper-btn {
-  font-size: var(--text-label-size);
+  font-size: var(--label-font-size);
   padding: 2px 6px;
-  border-radius: var(--radius-default);
-  background-color: var(--color-gray-700);
-  color: var(--color-purple-500);
+  border-radius: var(--type-label-border-radius);
+  background-color: #374151;
+  color: #a855f7;
   border: none;
   cursor: pointer;
 }
 
 .rf-wrapper-btn:hover {
-  background-color: var(--color-gray-600);
+  background-color: #4b5563;
 }
 
 .rf-type-leaf-btn {
-  font-size: var(--text-label-size);
-  background-color: var(--color-gray-700);
-  border-radius: var(--radius-default);
+  font-size: var(--label-font-size);
+  background-color: #374151;
+  border-radius: var(--type-label-border-radius);
   padding: 2px 6px;
-  border: 1px solid var(--color-gray-600);
+  border: 1px solid #4b5563;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -573,11 +676,11 @@
 }
 
 .rf-type-leaf-btn:hover {
-  background-color: var(--color-gray-600);
+  background-color: #4b5563;
 }
 
 .rf-type-dropdown-icon {
-  color: var(--color-gray-500);
+  color: #6b7280;
   font-size: 10px;
 }
 
@@ -593,9 +696,9 @@
   width: 12px;
   height: 12px;
   font-size: 8px;
-  background-color: var(--color-red-600);
-  border-radius: var(--radius-default);
-  color: var(--color-white);
+  background-color: #dc2626;
+  border-radius: var(--type-label-border-radius);
+  color: #ffffff;
   margin-left: 2px;
   border: none;
   cursor: pointer;
@@ -606,18 +709,18 @@
 
 .rf-shape-input {
   width: 24px;
-  font-size: var(--text-label-size);
-  background-color: var(--color-gray-700);
-  border-radius: var(--radius-default);
+  font-size: var(--label-font-size);
+  background-color: #374151;
+  border-radius: var(--type-label-border-radius);
   padding: 2px;
-  border: 1px solid var(--color-gray-600);
-  color: var(--color-gray-200);
+  border: 1px solid #4b5563;
+  color: #e5e7eb;
   text-align: center;
   outline: none;
 }
 
 .rf-shape-input:focus {
-  border-color: var(--color-blue-500);
+  border-color: #3b82f6;
 }
 
 .rf-shape-dim .rf-shape-remove-btn {
@@ -634,9 +737,9 @@
   right: -4px;
   width: 12px;
   height: 12px;
-  background-color: var(--color-red-600);
+  background-color: #dc2626;
   border-radius: 50%;
-  color: var(--color-white);
+  color: #ffffff;
   font-size: 8px;
   border: none;
   cursor: pointer;
@@ -649,9 +752,9 @@
   width: 16px;
   height: 16px;
   font-size: 10px;
-  background-color: var(--color-gray-700);
-  border-radius: var(--radius-default);
-  color: var(--color-gray-400);
+  background-color: #374151;
+  border-radius: var(--type-label-border-radius);
+  color: #9ca3af;
   border: none;
   cursor: pointer;
   display: flex;
@@ -660,23 +763,23 @@
 }
 
 .rf-shape-add-btn:hover {
-  background-color: var(--color-gray-600);
+  background-color: #4b5563;
 }
 
 .rf-type-readonly {
-  font-size: var(--text-label-size);
+  font-size: var(--label-font-size);
   padding: 2px 6px;
-  border-radius: var(--radius-default);
+  border-radius: var(--type-label-border-radius);
 }
 
 .rf-type-container {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background-color: var(--color-gray-800);
-  border-radius: var(--radius-default);
+  background-color: #1f2937;
+  border-radius: var(--type-label-border-radius);
   padding: 4px 8px;
-  border: 1px solid var(--color-gray-600);
+  border: 1px solid #4b5563;
 }
 
 /* ============================================================
@@ -684,22 +787,23 @@
    ============================================================ */
 
 .rf-editable-name {
-  font-size: var(--text-label-size);
-  color: var(--text-label-color);
+  font-size: var(--label-font-size);
+  color: var(--label-color);
   cursor: text;
 }
 
 .rf-editable-name:hover {
-  color: var(--color-white);
+  color: #ffffff;
 }
 
 .rf-editable-input {
-  font-size: var(--text-label-size);
-  background-color: var(--color-gray-700);
-  color: var(--color-white);
+  font-size: var(--label-font-size);
+  font-family: var(--font-family);
+  background-color: #374151;
+  color: #ffffff;
   padding: 2px 4px;
-  border-radius: var(--radius-default);
-  border: 1px solid var(--color-blue-500);
+  border-radius: var(--type-label-border-radius);
+  border: 1px solid #3b82f6;
   outline: none;
   width: 64px;
 }
@@ -710,7 +814,7 @@
 
 .rf-trait-editor {
   background-color: rgba(55, 65, 81, 0.5);
-  border-radius: var(--radius-default);
+  border-radius: var(--type-label-border-radius);
   padding: 8px;
   margin-bottom: 8px;
 }
@@ -723,13 +827,13 @@
 }
 
 .rf-trait-title {
-  font-size: var(--text-label-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-label-color);
+  font-size: var(--label-font-size);
+  font-weight: 500;
+  color: var(--label-color);
 }
 
 .rf-trait-remove-btn {
-  color: var(--color-gray-500);
+  color: #6b7280;
   background: none;
   border: none;
   padding: 2px;
@@ -740,7 +844,7 @@
 }
 
 .rf-trait-remove-btn:hover {
-  color: var(--color-red-400);
+  color: #f87171;
 }
 
 .rf-trait-ports {
@@ -750,35 +854,35 @@
 }
 
 .rf-trait-port {
-  font-size: var(--text-label-size);
+  font-size: var(--label-font-size);
   padding: 2px 6px;
-  border-radius: var(--radius-default);
-  border: 1px solid var(--color-gray-600);
+  border-radius: var(--type-label-border-radius);
+  border: 1px solid #4b5563;
   background-color: rgba(75, 85, 99, 0.3);
-  color: var(--color-gray-400);
+  color: #9ca3af;
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s;
 }
 
 .rf-trait-port:hover {
-  border-color: var(--color-gray-500);
+  border-color: #6b7280;
 }
 
 .rf-trait-port-selected {
   background-color: rgba(37, 99, 235, 0.3);
-  border-color: var(--color-blue-500);
-  color: var(--color-blue-400);
+  border-color: #3b82f6;
+  color: #60a5fa;
 }
 
 .rf-trait-warning {
-  font-size: var(--text-label-size);
-  color: var(--color-amber-500);
+  font-size: var(--label-font-size);
+  color: #f59e0b;
   margin-top: 4px;
 }
 
 .rf-trait-add-btn {
-  font-size: var(--text-label-size);
-  color: var(--color-gray-500);
+  font-size: var(--label-font-size);
+  color: #6b7280;
   background: none;
   border: none;
   cursor: pointer;
@@ -788,6 +892,6 @@
 }
 
 .rf-trait-add-btn:hover {
-  color: var(--text-label-color);
+  color: var(--label-color);
 }
 

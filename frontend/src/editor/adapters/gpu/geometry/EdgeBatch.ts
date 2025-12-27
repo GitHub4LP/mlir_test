@@ -15,6 +15,11 @@ const EDGE_INSTANCE_FLOATS = 14;
  * 解析 CSS 颜色为 RGBA 数组
  */
 function parseColor(color: string): [number, number, number, number] {
+  // 处理 transparent
+  if (color === 'transparent') {
+    return [0, 0, 0, 0];
+  }
+  
   if (color.startsWith('#')) {
     const hex = color.slice(1);
     if (hex.length === 3) {

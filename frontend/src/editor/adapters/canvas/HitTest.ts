@@ -11,7 +11,7 @@
 
 import type { NodeLayout } from '../../core/LayoutEngine';
 import { isPointInRect, isPointInCircle } from '../../core/LayoutEngine';
-import { tokens, LAYOUT, TYPE_LABEL } from '../shared/styles';
+import { tokens, LAYOUT, TYPE_LABEL, getPinContentLayout } from '../shared/styles';
 
 // ============================================================
 // 命中测试结果类型
@@ -144,6 +144,17 @@ export interface HitTraitsToggle {
   canvasY: number;
 }
 
+/** 命中 Summary 展开/折叠按钮（Operation 节点） */
+export interface HitSummaryToggle {
+  kind: 'summary-toggle';
+  nodeId: string;
+  /** 当前是否展开 */
+  isExpanded: boolean;
+  /** 按钮在画布上的位置 */
+  canvasX: number;
+  canvasY: number;
+}
+
 /** 命中边 */
 export interface HitEdge {
   kind: 'edge';
@@ -165,6 +176,7 @@ export type HitResult =
   | HitReturnRemove
   | HitReturnName
   | HitTraitsToggle
+  | HitSummaryToggle
   | HitEdge;
 
 // ============================================================
@@ -173,10 +185,10 @@ export type HitResult =
 
 const style = {
   handleRadius: LAYOUT.handleRadius,
-  handleOffset: parseInt(tokens.node.handle.offset) || 0,
+  handleOffset: typeof tokens.node.handle.offset === 'string' ? parseInt(tokens.node.handle.offset) : tokens.node.handle.offset,
   headerHeight: LAYOUT.headerHeight,
   padding: LAYOUT.padding,
-  pinRowHeight: LAYOUT.pinRowHeight,
+  pinRowHeight: LAYOUT.actualPinRowHeight,  // 使用实际行高 40px（包含 padding）
 };
 
 /** 类型标签区域宽度 */
@@ -188,11 +200,7 @@ const TYPE_LABEL_HEIGHT = TYPE_LABEL.height;
  * 检测点是否命中类型标签区域
  * 位置与 RenderExtensions 中的渲染位置一致
  * 
- * RenderExtensions 中的布局：
- * - label 和 TypeSelector 垂直堆叠
- * - totalHeight = labelFontSize(12) + gap(2) + typeSelectorHeight(16) = 30px
- * - 整体垂直居中于端口
- * - TypeSelector 在 label 下方
+ * 使用统一的 getPinContentLayout 计算位置
  * 
  * @param x - 画布坐标 X
  * @param y - 画布坐标 Y
@@ -204,41 +212,40 @@ export function hitTestTypeLabel(
   y: number,
   layout: NodeLayout
 ): HitTypeLabel | null {
-  const labelOffsetX = TYPE_LABEL.offsetFromHandle;
-  
-  // 与 RenderExtensions 保持一致的布局参数
-  const labelFontSize = tokens.text.label.size; // 12px
-  const typeSelectorHeight = TYPE_LABEL.height; // 16px
-  const verticalGap = 2;
-  const totalHeight = labelFontSize + verticalGap + typeSelectorHeight;
-  
   for (const handle of layout.handles) {
     // 只检测数据端口（不检测执行端口）
     if (handle.kind !== 'data') continue;
     
     const handleX = layout.x + handle.x;
-    const handleY = layout.y + handle.y;
     
-    // 计算垂直居中的起始 Y
-    const startY = handleY - totalHeight / 2;
-    // TypeSelector Y 坐标（在 label 下方）
-    const typeSelectorY = startY + labelFontSize + verticalGap;
+    // 计算 pinIndex：需要考虑执行端口占用的行数
+    // ReactFlow 布局：exec 行在前，data 行在后
+    const sameHandles = layout.handles.filter(h => h.isOutput === handle.isOutput);
+    const execCount = sameHandles.filter(h => h.kind === 'exec').length;
+    const dataHandles = sameHandles.filter(h => h.kind === 'data');
+    const dataIndex = dataHandles.indexOf(handle);
+    // 数据端口的行索引 = 执行端口行数 + 数据端口在数据列表中的索引
+    const pinIndex = execCount + dataIndex;
+    
+    // 使用统一的布局计算
+    const pinLayout = getPinContentLayout(pinIndex);
+    const typeSelectorY = layout.y + pinLayout.typeSelectorY;
     
     // TypeSelector 背景矩形 X 坐标
     let typeBgX: number;
     if (handle.isOutput) {
-      typeBgX = handleX - labelOffsetX - TYPE_LABEL_WIDTH;
+      typeBgX = handleX - LAYOUT.pinContentMargin - TYPE_LABEL_WIDTH;
     } else {
-      typeBgX = handleX + labelOffsetX;
+      typeBgX = handleX + LAYOUT.pinContentMargin;
     }
     
-    if (isPointInRect(x, y, typeBgX, typeSelectorY, TYPE_LABEL_WIDTH, typeSelectorHeight)) {
+    if (isPointInRect(x, y, typeBgX, typeSelectorY, TYPE_LABEL_WIDTH, LAYOUT.pinTypeSelectorHeight)) {
       return {
         kind: 'type-label',
         nodeId: layout.nodeId,
         handleId: handle.handleId,
         canvasX: typeBgX,
-        canvasY: typeSelectorY + typeSelectorHeight + 4, // 类型选择器显示在下方
+        canvasY: typeSelectorY + LAYOUT.pinTypeSelectorHeight + 4, // 类型选择器显示在下方
       };
     }
   }
@@ -719,6 +726,39 @@ export function hitTestTraitsToggle(
   return null;
 }
 
+/**
+ * 检测 Operation 节点的 Summary 展开/折叠按钮
+ * 按钮位于 Summary 区域右侧
+ */
+export function hitTestSummaryToggle(
+  x: number,
+  y: number,
+  layout: NodeLayout,
+  isExpanded: boolean
+): HitSummaryToggle | null {
+  // Summary 区域位于节点底部
+  const summaryHeight = 20;
+  const summaryY = layout.y + layout.height - summaryHeight;
+  const summaryPadding = 8;
+  
+  // 按钮位于 Summary 区域右侧
+  const buttonSize = 16;
+  const buttonX = layout.x + layout.width - summaryPadding - buttonSize;
+  const buttonY = summaryY + (summaryHeight - buttonSize) / 2;
+  
+  if (isPointInRect(x, y, buttonX, buttonY, buttonSize, buttonSize)) {
+    return {
+      kind: 'summary-toggle',
+      nodeId: layout.nodeId,
+      isExpanded,
+      canvasX: buttonX,
+      canvasY: buttonY + buttonSize,
+    };
+  }
+  
+  return null;
+}
+
 // ============================================================
 // 扩展的完整命中测试
 // ============================================================
@@ -740,6 +780,10 @@ export interface ExtendedHitTestOptions {
   hoveredParamIndex?: number | null;
   /** 当前 hover 的返回值索引 */
   hoveredReturnIndex?: number | null;
+  /** Summary 是否展开（Operation 节点） */
+  summaryExpanded?: boolean;
+  /** 是否有 Summary（Operation 节点） */
+  hasSummary?: boolean;
 }
 
 /**
@@ -750,10 +794,11 @@ export interface ExtendedHitTestOptions {
  * 2. 参数/返回值添加按钮
  * 3. 参数/返回值名区域
  * 4. Traits 展开按钮
- * 5. 类型标签
- * 6. Variadic 按钮
- * 7. 端口
- * 8. 节点主体
+ * 5. Summary 展开按钮（Operation 节点）
+ * 6. 类型标签
+ * 7. Variadic 按钮
+ * 8. 端口
+ * 9. 节点主体
  */
 export function hitTestNodeExtended(
   x: number,
@@ -761,7 +806,7 @@ export function hitTestNodeExtended(
   layout: NodeLayout,
   options: ExtendedHitTestOptions
 ): HitResult {
-  const { nodeType, variadicGroups, entryData, returnData, hoveredParamIndex, hoveredReturnIndex } = options;
+  const { nodeType, variadicGroups, entryData, returnData, hoveredParamIndex, hoveredReturnIndex, summaryExpanded, hasSummary } = options;
   
   // Entry 节点特有的命中测试
   if (nodeType === 'function-entry' && entryData) {
@@ -797,22 +842,29 @@ export function hitTestNodeExtended(
     if (returnName) return returnName;
   }
   
+  // Operation 节点特有的命中测试
+  if (nodeType === 'operation' && hasSummary) {
+    // 5. Summary 展开按钮
+    const summaryToggle = hitTestSummaryToggle(x, y, layout, summaryExpanded ?? false);
+    if (summaryToggle) return summaryToggle;
+  }
+  
   // 通用命中测试
-  // 5. 类型标签
+  // 6. 类型标签
   const typeLabel = hitTestTypeLabel(x, y, layout);
   if (typeLabel) return typeLabel;
   
-  // 6. Variadic 按钮
+  // 7. Variadic 按钮
   if (variadicGroups && variadicGroups.length > 0) {
     const variadicButton = hitTestVariadicButton(x, y, layout, variadicGroups);
     if (variadicButton) return variadicButton;
   }
   
-  // 7. 端口
+  // 8. 端口
   const handle = hitTestHandle(x, y, layout);
   if (handle) return handle;
   
-  // 8. 节点主体
+  // 9. 节点主体
   const node = hitTestNode(x, y, layout);
   if (node) return node;
   
@@ -953,11 +1005,12 @@ export function getReturnNameArea(layout: NodeLayout, returnIndex: number): Inte
 
 /**
  * 获取 Traits 展开按钮位置
+ * 位置：节点底部，添加按钮下方
  */
 export function getTraitsToggleArea(layout: NodeLayout): InteractiveArea {
   return {
     x: layout.x + BUTTON_EDGE_OFFSET,
-    y: layout.y + layout.height - BUTTON_SIZE * 2 - BUTTON_EDGE_OFFSET * 2,
+    y: layout.y + layout.height - BUTTON_SIZE - BUTTON_EDGE_OFFSET,
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
   };
@@ -1026,3 +1079,5 @@ export function getTypeLabelArea(layout: NodeLayout, handleId: string): Interact
     height: TYPE_LABEL_HEIGHT,
   };
 }
+
+

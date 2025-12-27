@@ -17,7 +17,7 @@ import {
   getStoreSnapshot,
 } from '../../../../stores';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
-import { getContainerStyle, getHeaderStyle, getHandleTop, getDialectColor, getCSSVariables, EXEC_COLOR } from './nodeStyles';
+import { getContainerStyle, getHeaderStyle, getHandleTop, getNodeTypeColor, getCSSVariables, EXEC_COLOR } from './nodeStyles';
 import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
 import type { DataPin } from '../../../../types';
 
@@ -173,7 +173,7 @@ function handleTypeSelect(portId: string, type: string, _originalConstraint: str
 
 // 样式
 const containerStyle = computed(() => getContainerStyle(props.selected || false));
-const headerStyle = computed(() => getHeaderStyle(getDialectColor('scf')));
+const headerStyle = computed(() => getHeaderStyle(getNodeTypeColor('call')));
 const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value.length, 1));
 </script>
 

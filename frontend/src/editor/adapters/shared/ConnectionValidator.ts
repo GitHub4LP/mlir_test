@@ -133,7 +133,7 @@ export function createReactFlowValidator(
  */
 export function createVueFlowValidator(
   getPortType: GetPortTypeFn
-): (connection: { source: string; target: string; sourceHandle: string | null; targetHandle: string | null }) => boolean {
+): (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => boolean {
   return (connection) => {
     const { source, target, sourceHandle, targetHandle } = connection;
     

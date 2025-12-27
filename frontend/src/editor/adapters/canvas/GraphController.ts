@@ -32,7 +32,8 @@ import {
   EDGE_LAYOUT,
   type NodeLayout,
 } from './layout';
-import { tokens, TEXT, TYPE_LABEL } from '../shared/styles';
+// 新布局系统
+import { computeNodeLayoutBox, extractHandlePositions, type LayoutBox, type HandlePosition } from '../../core/layout';
 
 // ============================================================
 // 控制器状态类型
@@ -194,6 +195,9 @@ export class GraphController {
   /** 双击边删除回调 */
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
 
+  /** 双击节点回调 */
+  onNodeDoubleClick: ((nodeId: string) => void) | null = null;
+
   /** 拖放回调 */
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
 
@@ -210,6 +214,9 @@ export class GraphController {
   onPreMouseUp: ((screenX: number, screenY: number) => boolean) | null = null;
   onPreWheel: ((screenX: number, screenY: number, deltaX: number, deltaY: number) => boolean) | null = null;
   onPreKeyDown: ((key: string, code: string, ctrlKey: boolean, shiftKey: boolean, altKey: boolean) => boolean) | null = null;
+
+  /** Hover 状态变化回调（用于显示删除按钮等） */
+  onHoverChange: ((screenX: number, screenY: number) => void) | null = null;
 
   // 双击检测
   private lastClickTime: number = 0;
@@ -438,6 +445,12 @@ export class GraphController {
    * data.x/y 是屏幕坐标
    */
   private handlePointerInIdle(data: import('./input').PointerInput): void {
+    // 处理 move 事件 - 更新 hover 状态
+    if (data.type === 'move') {
+      this.onHoverChange?.(data.x, data.y);
+      return;
+    }
+
     if (data.type !== 'down') return;
 
     // 先尝试扩展命中测试（类型标签、按钮等）
@@ -454,13 +467,20 @@ export class GraphController {
     const now = Date.now();
     const isDoubleClick = now - this.lastClickTime < 300 && 
       this.lastClickTarget.kind === hit.kind &&
-      (hit.kind === 'edge' && this.lastClickTarget.kind === 'edge' && hit.edgeId === this.lastClickTarget.edgeId);
+      ((hit.kind === 'edge' && this.lastClickTarget.kind === 'edge' && hit.edgeId === this.lastClickTarget.edgeId) ||
+       (hit.kind === 'node' && this.lastClickTarget.kind === 'node' && hit.nodeId === this.lastClickTarget.nodeId));
     this.lastClickTime = now;
     this.lastClickTarget = hit;
 
     // 双击边 → 删除边
     if (isDoubleClick && hit.kind === 'edge') {
       this.onEdgeDoubleClick?.(hit.edgeId);
+      return;
+    }
+
+    // 双击节点
+    if (isDoubleClick && hit.kind === 'node') {
+      this.onNodeDoubleClick?.(hit.nodeId);
       return;
     }
 
@@ -579,8 +599,6 @@ export class GraphController {
           startPos.x + deltaX,
           startPos.y + deltaY
         );
-        // 清除布局缓存以便重新计算
-        this.nodeLayoutCache.delete(nodeId);
       }
       
       this.requestRender();
@@ -879,44 +897,80 @@ export class GraphController {
       return bSelected - aSelected;
     });
 
+    // 获取 LayoutBox 数据（如果有）
+    const layoutBoxes = this.cachedRenderData?.layoutBoxes;
+
     // 1. 首先检查端口（优先级最高）
     for (const node of sortedNodes) {
-      const layout = this.getNodeLayout(node);
+      const layoutBox = layoutBoxes?.get(node.id);
       
-      for (const handle of layout.handles) {
-        const handleX = layout.x + handle.x;
-        const handleY = layout.y + handle.y;
-        const hitRadius = NODE_LAYOUT.HANDLE_RADIUS + 4; // 增加点击容差
-        
-        if (isPointInCircle(x, y, handleX, handleY, hitRadius)) {
+      if (layoutBox) {
+        // 使用 LayoutBox 提取的 Handle 位置
+        const handles = extractHandlePositions(layoutBox);
+        for (const handle of handles) {
+          const hitRadius = NODE_LAYOUT.HANDLE_RADIUS + 4;
+          if (isPointInCircle(x, y, handle.x, handle.y, hitRadius)) {
+            return {
+              kind: 'handle',
+              nodeId: node.id,
+              handleId: handle.handleId,
+              isOutput: handle.isOutput,
+            };
+          }
+        }
+      } else {
+        // 回退到旧布局
+        const layout = this.getNodeLayout(node);
+        for (const handle of layout.handles) {
+          const handleX = layout.x + handle.x;
+          const handleY = layout.y + handle.y;
+          const hitRadius = NODE_LAYOUT.HANDLE_RADIUS + 4;
+          
+          if (isPointInCircle(x, y, handleX, handleY, hitRadius)) {
+            return {
+              kind: 'handle',
+              nodeId: node.id,
+              handleId: handle.handleId,
+              isOutput: handle.isOutput,
+            };
+          }
+        }
+      }
+    }
+
+    // 2. 然后检查节点（优先使用 LayoutBox 尺寸）
+    for (const node of sortedNodes) {
+      const layoutBox = layoutBoxes?.get(node.id);
+      
+      if (layoutBox) {
+        // 使用 LayoutBox 的尺寸（更准确）
+        if (isPointInRect(x, y, layoutBox.x, layoutBox.y, layoutBox.width, layoutBox.height)) {
           return {
-            kind: 'handle',
+            kind: 'node',
             nodeId: node.id,
-            handleId: handle.handleId,
-            isOutput: handle.isOutput,
+          };
+        }
+      } else {
+        // 回退到旧布局
+        const layout = this.getNodeLayout(node);
+        if (isPointInRect(x, y, layout.x, layout.y, layout.width, layout.height)) {
+          return {
+            kind: 'node',
+            nodeId: node.id,
           };
         }
       }
     }
 
-    // 2. 然后检查节点
-    for (const node of sortedNodes) {
-      const layout = this.getNodeLayout(node);
-      
-      if (isPointInRect(x, y, layout.x, layout.y, layout.width, layout.height)) {
-        return {
-          kind: 'node',
-          nodeId: node.id,
-        };
-      }
-    }
-
     // 3. 最后检查边
     for (const edge of graphData.edges) {
-      const sourceLayout = this.nodeLayoutCache.get(edge.source);
-      const targetLayout = this.nodeLayoutCache.get(edge.target);
+      const sourceNode = graphData.nodes.find(n => n.id === edge.source);
+      const targetNode = graphData.nodes.find(n => n.id === edge.target);
       
-      if (!sourceLayout || !targetLayout) continue;
+      if (!sourceNode || !targetNode) continue;
+
+      const sourceLayout = this.getNodeLayout(sourceNode);
+      const targetLayout = this.getNodeLayout(targetNode);
 
       const sourceHandle = sourceLayout.handles.find(h => h.handleId === edge.sourceHandle);
       const targetHandle = targetLayout.handles.find(h => h.handleId === edge.targetHandle);
@@ -967,30 +1021,19 @@ export class GraphController {
   // 节点布局缓存
   // ============================================================
 
-  /** 节点布局缓存 */
-  private nodeLayoutCache: Map<string, NodeLayout> = new Map();
-
   /**
-   * 获取或计算节点布局
+   * 获取节点布局
+   * 每次调用都重新计算，确保数据一致性
    */
   private getNodeLayout(node: GraphNode): NodeLayout {
-    const cached = this.nodeLayoutCache.get(node.id);
-    if (cached && cached.x === node.position.x && cached.y === node.position.y) {
-      // 位置未变，使用缓存
-      return { ...cached, selected: this.selectedNodeIds.has(node.id) };
-    }
-    
-    // 重新计算
-    const layout = computeNodeLayout(node, this.selectedNodeIds.has(node.id));
-    this.nodeLayoutCache.set(node.id, layout);
-    return layout;
+    return computeNodeLayout(node, this.selectedNodeIds.has(node.id));
   }
 
   /**
-   * 清除布局缓存
+   * 清除布局缓存（保留接口兼容性）
    */
   clearLayoutCache(): void {
-    this.nodeLayoutCache.clear();
+    // 不再使用缓存，此方法保留为空
   }
 
   // ============================================================
@@ -1016,35 +1059,39 @@ export class GraphController {
     const triangles: RenderTriangle[] = [];
     const overlays: OverlayInfo[] = [];
 
-    // 计算所有节点布局
+    // 计算所有节点布局（仅用于获取 selected、zIndex 等元信息，以及边的连接点）
     const nodeLayouts = new Map<string, NodeLayout>();
     for (const node of graphData.nodes) {
       const layout = this.getNodeLayout(node);
       nodeLayouts.set(node.id, layout);
       
-      // 生成节点矩形
+      // 注意：节点的矩形、文字、端口图元由新的 LayoutBox 系统生成
+      // 这里只生成 selected 和 zIndex 信息供新系统使用
+      // 以及 overlays 信息供 UI 层使用
+      
+      // 生成节点矩形（仅用于传递 selected/zIndex 信息给新系统）
       rects.push({
         id: `rect-${node.id}`,
         x: layout.x,
         y: layout.y,
         width: layout.width,
         height: layout.height,
-        fillColor: layout.backgroundColor,
-        borderColor: layout.selected ? NODE_LAYOUT.SELECTED_BORDER_COLOR : NODE_LAYOUT.DEFAULT_BORDER_COLOR,
-        borderWidth: layout.selected ? 2 : 1,
+        fillColor: 'transparent', // 不渲染背景，由新系统负责
+        borderColor: 'transparent',
+        borderWidth: 0,
         borderRadius: NODE_LAYOUT.BORDER_RADIUS,
         selected: layout.selected,
         zIndex: layout.zIndex,
       });
 
-      // 生成节点头部矩形（只有上方圆角）
+      // 生成节点头部矩形（仅用于传递 headerColor 信息给新系统）
       rects.push({
         id: `header-${node.id}`,
         x: layout.x,
         y: layout.y,
         width: layout.width,
         height: layout.headerHeight,
-        fillColor: layout.headerColor,
+        fillColor: layout.headerColor, // 传递颜色信息
         borderColor: 'transparent',
         borderWidth: 0,
         borderRadius: {
@@ -1057,161 +1104,18 @@ export class GraphController {
         zIndex: layout.zIndex + 1,
       });
 
-      // 生成节点标题文字 - 与 React Flow 一致
-      // Operation/FunctionCall: subtitle(uppercase) + title
-      // Entry/Return: title + subtitle (不 uppercase)
-      if (layout.subtitle) {
-        const isEntryOrReturn = node.type === 'function-entry' || node.type === 'function-return';
-        
-        if (isEntryOrReturn) {
-          // Entry/Return: title 在前，subtitle (main) 在后，不 uppercase
-          texts.push({
-            id: `title-${node.id}`,
-            text: layout.title,
-            x: layout.x + NODE_LAYOUT.PADDING,
-            y: layout.y + layout.headerHeight / 2,
-            fontSize: TEXT.titleSize,
-            fontFamily: TEXT.fontFamily,
-            color: TEXT.titleColor,
-            align: 'left',
-            baseline: 'middle',
-          });
-          // 计算 title 宽度（近似），subtitle 紧跟其后
-          const titleWidth = layout.title.length * 8; // 近似每字符 8px (14px font)
-          texts.push({
-            id: `subtitle-${node.id}`,
-            text: layout.subtitle, // 不 uppercase
-            x: layout.x + NODE_LAYOUT.PADDING + titleWidth + 4,
-            y: layout.y + layout.headerHeight / 2,
-            fontSize: TEXT.subtitleSize,
-            fontFamily: TEXT.fontFamily,
-            color: TEXT.subtitleColor,
-            align: 'left',
-            baseline: 'middle',
-          });
-        } else {
-          // Operation/FunctionCall: subtitle(uppercase) 在前，title 在后
-          texts.push({
-            id: `subtitle-${node.id}`,
-            text: layout.subtitle.toUpperCase(),
-            x: layout.x + NODE_LAYOUT.PADDING,
-            y: layout.y + layout.headerHeight / 2,
-            fontSize: TEXT.subtitleSize,
-            fontFamily: TEXT.fontFamily,
-            color: TEXT.subtitleColor,
-            align: 'left',
-            baseline: 'middle',
-          });
-          // 计算 subtitle 宽度（近似），title 紧跟其后
-          const subtitleWidth = layout.subtitle.length * 8; // 近似每字符 8px (12px font)
-          texts.push({
-            id: `title-${node.id}`,
-            text: layout.title,
-            x: layout.x + NODE_LAYOUT.PADDING + subtitleWidth + 4,
-            y: layout.y + layout.headerHeight / 2,
-            fontSize: TEXT.titleSize,
-            fontFamily: TEXT.fontFamily,
-            color: TEXT.titleColor,
-            align: 'left',
-            baseline: 'middle',
-          });
-        }
-      } else {
-        // 无副标题时：只有标题
-        texts.push({
-          id: `title-${node.id}`,
-          text: layout.title,
-          x: layout.x + NODE_LAYOUT.PADDING,
-          y: layout.y + layout.headerHeight / 2,
-          fontSize: TEXT.titleSize,
-          fontFamily: TEXT.fontFamily,
-          color: TEXT.titleColor,
-          align: 'left',
-          baseline: 'middle',
-        });
-      }
-
-      // 生成端口圆形/三角形和标签
-      // 与 ReactFlow NodePins 布局一致：
-      // - 数据端口：label 和 TypeSelector 垂直堆叠（flex-col），整体居中于端口
-      // - 执行端口：只有 label，居中于端口
-      const labelOffsetX = TYPE_LABEL.offsetFromHandle;
-      
-      // ReactFlow 布局参数
-      const labelFontSize = TEXT.labelSize; // 12px
-      const typeSelectorHeight = TYPE_LABEL.height; // 16px
-      const verticalGap = 2; // label 和 TypeSelector 之间的间距
-      const totalHeight = labelFontSize + verticalGap + typeSelectorHeight; // 约 30px
-      
+      // 生成端口颜色信息（供新系统使用）
       for (const handle of layout.handles) {
-        const handleX = layout.x + handle.x;
-        const handleY = layout.y + handle.y;
-        
-        if (handle.kind === 'exec') {
-          // 执行引脚使用三角形，统一向右
-          triangles.push({
-            id: `handle-${node.id}-${handle.handleId}`,
-            x: handleX,
-            y: handleY,
-            size: NODE_LAYOUT.HANDLE_RADIUS * 1.5,
-            fillColor: '#ffffff',
-            borderColor: '#ffffff',
-            borderWidth: 0,
-            direction: 'right',
-          });
-          
-          // 执行端口标签：居中于端口
-          if (handle.label) {
-            const labelX = handle.isOutput 
-              ? handleX - labelOffsetX
-              : handleX + labelOffsetX;
-            texts.push({
-              id: `handle-label-${node.id}-${handle.handleId}`,
-              text: handle.label,
-              x: labelX,
-              y: handleY,
-              fontSize: TEXT.labelSize,
-              fontFamily: TEXT.fontFamily,
-              color: TEXT.labelColor,
-              align: handle.isOutput ? 'right' : 'left',
-              baseline: 'middle',
-            });
-          }
-        } else {
-          // 数据引脚使用圆形
+        if (handle.kind === 'data') {
           circles.push({
             id: `handle-${node.id}-${handle.handleId}`,
-            x: handleX,
-            y: handleY,
+            x: layout.x + handle.x,
+            y: layout.y + handle.y,
             radius: NODE_LAYOUT.HANDLE_RADIUS,
             fillColor: handle.color,
             borderColor: handle.color,
             borderWidth: 1,
           });
-          
-          // 数据端口标签：label 在上，TypeSelector 在下，整体垂直居中于端口
-          if (handle.label) {
-            // 计算垂直居中的起始 Y（label 顶部）
-            const startY = handleY - totalHeight / 2;
-            // label Y 坐标（label 中心）
-            const labelY = startY + labelFontSize / 2;
-            
-            const labelX = handle.isOutput 
-              ? handleX - labelOffsetX
-              : handleX + labelOffsetX;
-            
-            texts.push({
-              id: `handle-label-${node.id}-${handle.handleId}`,
-              text: handle.label,
-              x: labelX,
-              y: labelY,
-              fontSize: TEXT.labelSize,
-              fontFamily: TEXT.fontFamily,
-              color: TEXT.labelColor,
-              align: handle.isOutput ? 'right' : 'left',
-              baseline: 'middle',
-            });
-          }
         }
       }
 
@@ -1228,35 +1132,80 @@ export class GraphController {
       }
     }
 
+    // 计算新布局系统的 LayoutBox 和 Handle 位置
+    const layoutBoxes = new Map<string, LayoutBox>();
+    const layoutBoxHandles = new Map<string, HandlePosition[]>();
+    for (const node of graphData.nodes) {
+      try {
+        const layoutBox = computeNodeLayoutBox(node, node.position.x, node.position.y);
+        layoutBoxes.set(node.id, layoutBox);
+        // 提取 Handle 位置
+        const handles = extractHandlePositions(layoutBox);
+        layoutBoxHandles.set(node.id, handles);
+      } catch (e) {
+        console.warn(`Failed to compute LayoutBox for node ${node.id}:`, e);
+      }
+    }
+
     // 计算所有边
     for (const edge of graphData.edges) {
-      const sourceLayout = nodeLayouts.get(edge.source);
-      const targetLayout = nodeLayouts.get(edge.target);
+      // 优先使用新系统的 Handle 位置
+      const sourceHandles = layoutBoxHandles.get(edge.source);
+      const targetHandles = layoutBoxHandles.get(edge.target);
       
-      if (!sourceLayout || !targetLayout) continue;
+      let sourceX: number, sourceY: number, targetX: number, targetY: number;
+      let sourceColor: string | undefined;
+      let isExec = false;
+      
+      if (sourceHandles && targetHandles) {
+        // 新系统：从 LayoutBox 获取 Handle 位置
+        const sourceHandle = sourceHandles.find(h => h.handleId === edge.sourceHandle);
+        const targetHandle = targetHandles.find(h => h.handleId === edge.targetHandle);
+        
+        const sourceBox = layoutBoxes.get(edge.source);
+        const targetBox = layoutBoxes.get(edge.target);
+        
+        sourceX = sourceHandle?.x ?? (sourceBox?.x ?? 0) + (sourceBox?.width ?? 0);
+        sourceY = sourceHandle?.y ?? (sourceBox?.y ?? 0) + (sourceBox?.height ?? 0) / 2;
+        targetX = targetHandle?.x ?? (targetBox?.x ?? 0);
+        targetY = targetHandle?.y ?? (targetBox?.y ?? 0) + (targetBox?.height ?? 0) / 2;
+        
+        // 判断是否为执行流边
+        isExec = edge.sourceHandle?.includes('exec') || edge.targetHandle?.includes('exec') || false;
+        
+        // 从旧系统获取颜色（暂时）
+        const oldSourceLayout = nodeLayouts.get(edge.source);
+        const oldSourceHandle = oldSourceLayout?.handles.find(h => h.handleId === edge.sourceHandle);
+        sourceColor = oldSourceHandle?.color;
+      } else {
+        // 回退到旧系统
+        const sourceLayout = nodeLayouts.get(edge.source);
+        const targetLayout = nodeLayouts.get(edge.target);
+        
+        if (!sourceLayout || !targetLayout) continue;
 
-      // 查找源端口和目标端口
-      const sourceHandle = sourceLayout.handles.find(h => h.handleId === edge.sourceHandle);
-      const targetHandle = targetLayout.handles.find(h => h.handleId === edge.targetHandle);
+        const sourceHandle = sourceLayout.handles.find(h => h.handleId === edge.sourceHandle);
+        const targetHandle = targetLayout.handles.find(h => h.handleId === edge.targetHandle);
 
-      // 计算端口绝对坐标
-      const sourceX = sourceLayout.x + (sourceHandle?.x ?? sourceLayout.width);
-      const sourceY = sourceLayout.y + (sourceHandle?.y ?? sourceLayout.height / 2);
-      const targetX = targetLayout.x + (targetHandle?.x ?? 0);
-      const targetY = targetLayout.y + (targetHandle?.y ?? targetLayout.height / 2);
+        sourceX = sourceLayout.x + (sourceHandle?.x ?? sourceLayout.width);
+        sourceY = sourceLayout.y + (sourceHandle?.y ?? sourceLayout.height / 2);
+        targetX = targetLayout.x + (targetHandle?.x ?? 0);
+        targetY = targetLayout.y + (targetHandle?.y ?? targetLayout.height / 2);
+        
+        isExec = sourceHandle?.kind === 'exec' || targetHandle?.kind === 'exec';
+        sourceColor = sourceHandle?.color;
+      }
 
       // 计算贝塞尔曲线路径
       const points = computeEdgePath(sourceX, sourceY, targetX, targetY);
 
-      // 判断是否为执行流边
-      const isExec = sourceHandle?.kind === 'exec' || targetHandle?.kind === 'exec';
       const edgeId = `${edge.source}-${edge.sourceHandle}-${edge.target}-${edge.targetHandle}`;
       const selected = this.selectedEdgeIds.has(edgeId);
 
       paths.push({
         id: `edge-${edgeId}`,
         points,
-        color: isExec ? EDGE_LAYOUT.EXEC_COLOR : (sourceHandle?.color ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR),
+        color: isExec ? EDGE_LAYOUT.EXEC_COLOR : (sourceColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR),
         width: selected ? EDGE_LAYOUT.SELECTED_WIDTH : EDGE_LAYOUT.WIDTH,
         dashed: false,
         animated: false,
@@ -1276,6 +1225,7 @@ export class GraphController {
       triangles,
       hint,
       overlays,
+      layoutBoxes,
     };
 
     // 调用扩展回调，允许外部添加额外的渲染元素
@@ -1307,8 +1257,10 @@ export class GraphController {
         hint.cursor = 'crosshair';
         // 添加连接预览线
         const connectingState = this.state;
-        const sourceLayout = this.nodeLayoutCache.get(connectingState.sourceNodeId);
-        if (sourceLayout) {
+        const graphData = this.getGraphData();
+        const sourceNode = graphData?.nodes.find(n => n.id === connectingState.sourceNodeId);
+        if (sourceNode) {
+          const sourceLayout = this.getNodeLayout(sourceNode);
           const sourceHandle = sourceLayout.handles.find(h => h.handleId === connectingState.sourceHandleId);
           if (sourceHandle) {
             const sourceX = sourceLayout.x + sourceHandle.x;

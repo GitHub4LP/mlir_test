@@ -1,15 +1,19 @@
 /**
  * Vue Flow 节点共享样式
  * 
- * 从 Design Tokens 和 HandleStyles 获取样式常量，确保与 Canvas/GPU/React Flow 一致
+ * 从 shared/styles.ts 获取样式常量，确保与 Canvas/GPU/React Flow 一致
  * 
  * 设计原则：
  * - 所有数值来自 Design Tokens，不硬编码
- * - Handle 样式从 HandleStyles 获取，与 React Flow 保持一致
+ * - 样式函数从 shared/styles.ts 获取，保持统一
  */
 
-import { tokens, LAYOUT as SHARED_LAYOUT, TEXT as SHARED_TEXT, getDialectColor as sharedGetDialectColor } from '../../shared/styles';
 import {
+  tokens,
+  LAYOUT as SHARED_LAYOUT,
+  TEXT as SHARED_TEXT,
+  getDialectColor as sharedGetDialectColor,
+  getNodeTypeColor as sharedGetNodeTypeColor,
   getExecHandleStyle,
   getExecHandleStyleRight,
   getDataHandleStyle,
@@ -19,7 +23,8 @@ import {
   EXEC_COLOR,
   HANDLE_RADIUS,
   HANDLE_SIZE,
-} from '../../shared/HandleStyles';
+  getPinContentLayout,
+} from '../../shared/styles';
 
 // ============================================================
 // 布局常量 - 从 tokens 获取
@@ -80,10 +85,10 @@ export function getPinRowStyle() {
 // Handle 位置计算
 // ============================================================
 
-/** 计算 Handle 的 top 位置 */
+/** 计算 Handle 的 top 位置（使用统一的布局计算） */
 export function getHandleTop(idx: number): string {
-  const y = tokens.node.header.height + tokens.node.padding + idx * tokens.node.pin.rowHeight + tokens.node.pin.rowHeight / 2;
-  return `${y}px`;
+  const pinLayout = getPinContentLayout(idx);
+  return `${pinLayout.handleY}px`;
 }
 
 // ============================================================
@@ -98,6 +103,11 @@ export function getDialectColor(dialect: string): string {
 /** 获取执行引脚颜色 */
 export function getExecColor(): string {
   return tokens.edge.exec.color;
+}
+
+/** 获取节点类型颜色 */
+export function getNodeTypeColor(type: 'entry' | 'entryMain' | 'return' | 'returnMain' | 'call' | 'operation'): string {
+  return sharedGetNodeTypeColor(type);
 }
 
 // ============================================================

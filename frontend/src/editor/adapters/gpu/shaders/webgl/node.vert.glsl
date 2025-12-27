@@ -1,6 +1,7 @@
 #version 300 es
 /**
  * 节点顶点着色器
+ * 支持四角独立圆角
  */
 
 in vec2 a_position;
@@ -8,7 +9,7 @@ in vec2 a_position;
 in vec2 a_instancePosition;
 in vec2 a_instanceSize;
 in float a_headerHeight;
-in float a_borderRadius;
+in vec4 a_borderRadius;  // topLeft, topRight, bottomRight, bottomLeft
 in vec4 a_bodyColor;
 in vec4 a_headerColor;
 in float a_selected;
@@ -19,7 +20,7 @@ uniform vec2 u_resolution;
 out vec2 v_localPos;
 out vec2 v_size;
 out float v_headerHeight;
-out float v_borderRadius;
+flat out vec4 v_borderRadius;
 out vec4 v_bodyColor;
 out vec4 v_headerColor;
 out float v_selected;

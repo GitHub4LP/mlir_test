@@ -6,6 +6,7 @@
  */
 
 import type { RenderText } from '../../../core/RenderData';
+import { tokens } from '../../shared/styles';
 
 /** 缓存条目 */
 interface CacheEntry {
@@ -149,10 +150,10 @@ export class TextCache {
     const ctx = this.offscreenCtx;
     ctx.clearRect(0, 0, width, height);
 
-    // 渲染文字
+    // 渲染文字（使用 tokens 中定义的字体）
     for (const text of texts) {
-      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? 'system-ui, sans-serif'}`;
-      ctx.fillStyle = text.color ?? '#ffffff';
+      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? tokens.text.fontFamily}`;
+      ctx.fillStyle = text.color ?? tokens.text.title.color;
       ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
       ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
       ctx.fillText(

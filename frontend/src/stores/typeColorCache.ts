@@ -13,12 +13,16 @@
  */
 
 import { getTypeColor as computeTypeColor } from '../services/typeColorMapping';
+import { layoutConfig } from '../editor/adapters/shared/styles';
 
 // ============================================================================
 // 缓存实现
 // ============================================================================
 
 const colorCache = new Map<string, string>();
+
+/** 默认颜色 */
+const DEFAULT_COLOR = layoutConfig.type.default;
 
 // 延迟绑定的约束解析函数
 let constraintResolver: ((constraint: string) => string[]) | null = null;
@@ -42,7 +46,7 @@ export function setConstraintResolver(resolver: (constraint: string) => string[]
  */
 export function getTypeColor(typeConstraint: string): string {
   if (!typeConstraint) {
-    return '#95A5A6'; // 默认灰色
+    return DEFAULT_COLOR;
   }
 
   // 检查缓存
@@ -53,7 +57,7 @@ export function getTypeColor(typeConstraint: string): string {
 
   // 如果解析器未设置，返回默认颜色
   if (!constraintResolver) {
-    return '#95A5A6';
+    return DEFAULT_COLOR;
   }
 
   // 计算颜色

@@ -18,6 +18,10 @@
 
 import type { ExecPin, DataPin, PinRow } from '../types';
 import type { RegionPinConfig } from './operationClassifier';
+import { layoutConfig } from '../editor/adapters/shared/styles';
+
+/** inferred 类型的颜色 */
+const INFERRED_COLOR = layoutConfig.text.muted.fill;
 
 /**
  * 展开 variadic 端口为多个实例
@@ -107,7 +111,7 @@ export function buildPinRows(config: {
           label: `${formatRegionLabel(regionPin.regionName)}_yield`,
           typeConstraint: 'inferred',
           displayName: 'inferred',
-          color: '#9e9e9e',
+          color: INFERRED_COLOR,
         });
       }
     }

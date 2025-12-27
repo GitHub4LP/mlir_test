@@ -20,8 +20,7 @@ import type {
 } from '../types';
 import { getPortTypeInfo } from './shared/PortTypeInfo';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
-import { computeTypeSelectorData, computeTypeGroups } from '../../services/typeSelectorService';
-import type { TypeOption } from './canvas/ui/TypeSelector';
+import { usePortStateStore } from '../../stores/portStateStore';
 
 export interface GPUEditorWrapperProps {
   nodes: EditorNode[];
@@ -162,6 +161,13 @@ export function GPUEditorWrapper({
     
     // 类型标签点击回调 - 使用原生 Canvas TypeSelector
     editor.onTypeLabelClick = (nodeId, handleId, canvasX, canvasY) => {
+      // 先检查端口是否可编辑
+      const portState = usePortStateStore.getState().getPortState(nodeId, handleId);
+      if (portState && !portState.canEdit) {
+        // 不可编辑，不弹出选择器
+        return;
+      }
+      
       const typeInfo = getPortTypeInfo(nodesRef.current, nodeId, handleId);
       if (!typeInfo) return;
       
@@ -169,8 +175,8 @@ export function GPUEditorWrapper({
       const state = useTypeConstraintStore.getState();
       const { buildableTypes, constraintDefs, getConstraintElements, isShapedConstraint, getAllowedContainers } = state;
       
-      // 计算类型选项
-      const selectorData = computeTypeSelectorData({
+      // 构建 ConstraintData
+      const constraintData = {
         constraint: typeInfo.constraint,
         allowedTypes: typeInfo.allowedTypes,
         buildableTypes,
@@ -178,37 +184,15 @@ export function GPUEditorWrapper({
         getConstraintElements,
         isShapedConstraint,
         getAllowedContainers,
-      });
-      
-      // 计算类型分组
-      const typeGroups = computeTypeGroups(
-        selectorData,
-        { searchText: '', showConstraints: true, showTypes: true, useRegex: false },
-        typeInfo.constraint,
-        buildableTypes,
-        constraintDefs,
-        getConstraintElements
-      );
-      
-      // 转换为 TypeOption 格式
-      const options: TypeOption[] = [];
-      for (const group of typeGroups) {
-        for (const item of group.items) {
-          options.push({
-            name: item,
-            label: item,
-            group: group.label,
-          });
-        }
-      }
+      };
       
       // 转换画布坐标到屏幕坐标
       const viewport = editor.getViewport();
       const screenX = canvasX * viewport.zoom + viewport.x;
       const screenY = canvasY * viewport.zoom + viewport.y;
       
-      // 显示原生 Canvas TypeSelector
-      editor.showTypeSelector(nodeId, handleId, screenX, screenY, options, typeInfo.currentType);
+      // 显示原生 Canvas TypeSelector（使用新 API）
+      editor.showTypeSelector(nodeId, handleId, screenX, screenY, [], typeInfo.currentType, constraintData);
     };
     
     // 设置类型选择回调

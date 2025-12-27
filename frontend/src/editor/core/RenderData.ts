@@ -49,6 +49,10 @@ export interface RenderText {
   color: string;
   align: 'left' | 'center' | 'right';
   baseline: 'top' | 'middle' | 'bottom';
+  /** 是否单行省略 */
+  ellipsis?: boolean;
+  /** 最大宽度（ellipsis 时使用） */
+  maxWidth?: number;
 }
 
 /** 路径图元（边、连接预览线等） */
@@ -158,6 +162,12 @@ export interface RenderData {
   hint: InteractionHint;
   /** 覆盖层列表（属性编辑器等） */
   overlays: OverlayInfo[];
+  /** 
+   * 新布局系统：节点 LayoutBox 映射
+   * key: nodeId, value: 计算后的 LayoutBox
+   * 当此字段存在时，渲染器应使用 renderLayoutBox() 渲染节点
+   */
+  layoutBoxes?: Map<string, import('./layout/types').LayoutBox>;
 }
 
 // ============================================================

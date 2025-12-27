@@ -7,23 +7,21 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
+import { type NodeProps, type Node } from '@xyflow/react';
 import type { FunctionCallData, DataPin } from '../../../../types';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { NodePins } from '../../../../components/NodePins';
 import { buildPinRows, buildCallDataPins } from '../../../../services/pinUtils';
-import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
-import { computeTypeSelectionState } from '../../../../services/typeSelection';
+import { useReactStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { useTypeChangeHandler } from '../../../../hooks';
-import { toEditorNodes, toEditorEdges } from '../typeConversions';
 import { getPortType } from '../../../../services/portTypeService';
 import {
   getNodeContainerStyle,
-  getNodeHeaderStyle,
-  getDialectColor,
-  tokens,
-} from '../../shared/styles';
+  getHeaderContentStyle,
+  getNodeTypeColor,
+  NODE_MIN_WIDTH,
+} from '../../shared/figmaStyles';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -34,9 +32,10 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   selected,
 }: FunctionCallNodeProps) {
   const { functionName, inputs, outputs, execIn, execOuts, pinnedTypes = {} } = data;
-  const edges = useEdges();
-  const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
   const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
+  
+  // 从 portStateStore 获取端口状态
+  const getPortState = usePortStateStore(state => state.getPortState);
 
   const { inputTypes = {}, outputTypes = {} } = data;
 
@@ -54,16 +53,15 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   }, [inputs, outputs, inputTypes, outputTypes, execIn, execOuts]);
 
   // Render type selector
-  const nodes = useNodes();
   const renderTypeSelector = useCallback((pin: DataPin) => {
     const displayType = getDisplayType(pin, data);
-
-    const currentFunction = getCurrentFunction();
-    const editorNodes = toEditorNodes(nodes);
-    const editorEdges = toEditorEdges(edges);
-    const { options, canEdit } = computeTypeSelectionState(
-      id, pin.id, editorNodes, editorEdges, currentFunction ?? undefined, getConstraintElements
-    );
+    
+    // 从 portStateStore 读取端口状态
+    const portState = getPortState(id, pin.id);
+    // 如果 portState 不存在，默认不可编辑（等待类型传播完成）
+    const canEdit = portState?.canEdit ?? false;
+    const constraint = portState?.constraint ?? pin.typeConstraint;
+    const options = getConstraintElements(constraint);
 
     return (
       <UnifiedTypeSelector
@@ -74,25 +72,25 @@ export const FunctionCallNode = memo(function FunctionCallNode({
         disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
+  }, [handleTypeChange, id, data, getPortState, getConstraintElements]);
 
   // Get port type (使用公用服务)
   const getPortTypeWrapper = useCallback((pinId: string) => {
     return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
   }, [pinnedTypes, inputTypes, outputTypes]);
 
-  const headerColor = getDialectColor('scf');
+  const headerColor = getNodeTypeColor('call');
 
   return (
     <div
       className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: tokens.node.minWidth,
+        minWidth: NODE_MIN_WIDTH,
       }}
     >
       {/* Header */}
-      <div style={getNodeHeaderStyle(headerColor)}>
+      <div style={getHeaderContentStyle(headerColor)}>
         <div className="rf-node-header">
           <div className="rf-node-header-left">
             <span className="rf-node-dialect">call</span>

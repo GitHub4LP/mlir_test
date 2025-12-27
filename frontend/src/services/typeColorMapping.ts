@@ -4,6 +4,7 @@
  * 设计原则：
  * 1. 使用规则匹配（正则表达式）而不是逐个配置，自动覆盖所有类型
  * 2. 复合类型（约束）通过展开到基本类型集合，然后对颜色进行平均
+ * 3. 颜色值从 Design Tokens 读取，确保全局一致
  * 
  * 颜色方案：
  * - Bool (I1): 红色
@@ -11,15 +12,17 @@
  * - UnsignedInteger (UI*) + Index: 纯绿（Index 看作无符号整型）
  * - SignedInteger (SI*): 暗绿
  * - Float (F*, BF*, TF*): 蓝色系
- * - AnyType: 比纯白稍灰（#F5F5F5），表示任意类型
+ * - AnyType: 比纯白稍灰，表示任意类型
  * 
  * 注意：
  * - NoneType 不应该出现在类型约束系统中（没有可展开的集合元素）
- * - 执行线使用纯白色（#FFFFFF），在 CustomEdge.tsx 中处理
+ * - 执行线使用纯白色，在 CustomEdge.tsx 中处理
  */
 
+import { layoutConfig } from '../editor/adapters/shared/styles';
+
 // ============================================================================
-// 颜色配置（基于规则）
+// 颜色配置（基于规则，颜色值从 layoutConfig 读取）
 // ============================================================================
 
 /**
@@ -39,7 +42,7 @@ const COLOR_RULES: ColorRule[] = [
   // ===== Boolean =====
   {
     pattern: /^I1$/,
-    color: '#E74C3C',  // 红色
+    color: layoutConfig.type.I1,
     description: 'Boolean (I1)',
   },
 
@@ -47,12 +50,12 @@ const COLOR_RULES: ColorRule[] = [
   // Index 看作无符号整型，使用纯绿
   {
     pattern: /^UI\d+$/,
-    color: '#50C878',  // 纯绿
+    color: layoutConfig.type.unsignedInteger,
     description: 'UnsignedInteger (UI*)',
   },
   {
     pattern: /^Index$/,
-    color: '#50C878',  // 纯绿（与无符号整型相同）
+    color: layoutConfig.type.Index,
     description: 'Index (看作无符号整型)',
   },
 
@@ -60,7 +63,7 @@ const COLOR_RULES: ColorRule[] = [
   // 绿色系，中间色调（介于纯绿和暗绿之间）
   {
     pattern: /^I\d+$/,
-    color: '#52C878',  // 中等绿色
+    color: layoutConfig.type.signlessInteger,
     description: 'SignlessInteger (I*)',
   },
 
@@ -68,7 +71,7 @@ const COLOR_RULES: ColorRule[] = [
   // 暗绿（偏暗）
   {
     pattern: /^SI\d+$/,
-    color: '#2D8659',  // 暗绿
+    color: layoutConfig.type.signedInteger,
     description: 'SignedInteger (SI*)',
   },
 
@@ -76,7 +79,7 @@ const COLOR_RULES: ColorRule[] = [
   // 蓝色系，中间色调
   {
     pattern: /^F\d+$/,
-    color: '#4A90D9',  // 中等蓝色
+    color: layoutConfig.type.float,
     description: 'Float (F*)',
   },
 
@@ -84,7 +87,7 @@ const COLOR_RULES: ColorRule[] = [
   // 蓝色系，稍暗
   {
     pattern: /^BF16$/,
-    color: '#3498DB',  // 稍暗的蓝色
+    color: layoutConfig.type.BF16,
     description: 'BFloat16',
   },
 
@@ -92,7 +95,7 @@ const COLOR_RULES: ColorRule[] = [
   // 蓝色系，稍亮
   {
     pattern: /^TF\d+$/,
-    color: '#5BA3E8',  // 稍亮的蓝色
+    color: layoutConfig.type.tensorFloat,
     description: 'TensorFloat (TF*)',
   },
 
@@ -100,10 +103,13 @@ const COLOR_RULES: ColorRule[] = [
   // 比纯白稍灰，表示任意类型（包含所有类型）
   {
     pattern: /^AnyType$/,
-    color: '#F5F5F5',  // 比纯白稍灰
+    color: layoutConfig.type.AnyType,
     description: 'AnyType (任意类型)',
   },
 ];
+
+/** 默认颜色（未匹配时使用） */
+const DEFAULT_COLOR = layoutConfig.type.default;
 
 // ============================================================================
 // 颜色工具函数
@@ -140,7 +146,7 @@ function rgbToHex(rgb: { r: number; g: number; b: number }): string {
  */
 function averageColors(colors: string[]): string {
   if (colors.length === 0) {
-    return '#95A5A6'; // 默认灰色
+    return DEFAULT_COLOR;
   }
   if (colors.length === 1) {
     return colors[0];
@@ -209,7 +215,7 @@ export function getTypeColor(
   getConstraintElements: (constraint: string) => string[]
 ): string {
   if (!displayType) {
-    return '#95A5A6'; // 默认灰色
+    return DEFAULT_COLOR;
   }
 
   // 1. 如果是 BuildableType，直接返回配置的颜色
@@ -224,7 +230,7 @@ export function getTypeColor(
   // 3. 单一元素 → 直接返回该元素颜色
   if (elements.length === 1) {
     const color = getBuildableTypeColor(elements[0]);
-    return color || '#95A5A6';
+    return color || DEFAULT_COLOR;
   }
 
   // 4. 多个元素 → 对颜色进行 RGB 平均
@@ -234,7 +240,7 @@ export function getTypeColor(
       .filter((c): c is string => c !== null); // 过滤未定义的颜色
 
     if (colors.length === 0) {
-      return '#95A5A6'; // 默认灰色
+      return DEFAULT_COLOR;
     }
     if (colors.length === 1) {
       return colors[0];
@@ -243,8 +249,8 @@ export function getTypeColor(
     return averageColors(colors);
   }
 
-  // 5. 无法展开或未知类型 → 默认灰色
-  return '#95A5A6';
+  // 5. 无法展开或未知类型 → 默认颜色
+  return DEFAULT_COLOR;
 }
 
 /**

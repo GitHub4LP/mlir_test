@@ -12,7 +12,6 @@
 
 import { useEffect } from 'react';
 import '@xyflow/react/dist/style.css';
-import './styles/tokens.css';
 import './editor/adapters/reactflow/styles/nodes.css';
 import { MainLayout } from './app/MainLayout';
 import { useTypeConstraintStore } from './stores/typeConstraintStore';

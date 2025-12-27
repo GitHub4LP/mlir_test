@@ -11,6 +11,7 @@
 
 import type { TextBatch } from '../backends/IGPUBackend';
 import type { RenderText } from '../../canvas/types';
+import { tokens } from '../../shared/styles';
 
 /** 文字实例数据布局（每实例 floats 数量） */
 const TEXT_INSTANCE_FLOATS = 16;
@@ -34,7 +35,7 @@ interface TextEntry {
  * 解析 CSS 颜色为 RGBA 数组
  */
 function parseColor(color: string | undefined): [number, number, number, number] {
-  if (!color) return [1, 1, 1, 1];
+  if (!color || color === 'transparent') return [1, 1, 1, 1];
   
   if (color.startsWith('#')) {
     const hex = color.slice(1);
@@ -156,11 +157,17 @@ export class TextBatchManager {
     
     // 设置字体（物理像素大小）
     this.atlasCtx.font = `${physicalFontSize}px ${fontFamily}`;
+    // 使用 top baseline，这样 y 坐标就是文字顶部
+    this.atlasCtx.textBaseline = 'top';
     
     // 测量文字尺寸（物理像素）
     const metrics = this.atlasCtx.measureText(text);
     const physicalWidth = Math.ceil(metrics.width) + ATLAS_PADDING * 2;
-    const physicalHeight = Math.ceil(physicalFontSize * 1.2) + ATLAS_PADDING * 2;
+    // 使用 fontBoundingBox 获取更精确的高度（如果可用）
+    const actualHeight = metrics.fontBoundingBoxAscent !== undefined
+      ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
+      : physicalFontSize * 1.2;
+    const physicalHeight = Math.ceil(actualHeight) + ATLAS_PADDING * 2;
     
     // 检查是否需要换行
     if (this.currentX + physicalWidth > this.atlasSize) {
@@ -176,6 +183,7 @@ export class TextBatchManager {
     }
     
     // 渲染文字（白色，颜色在着色器中应用）
+    // 使用 textBaseline: 'top'，所以 y 是文字顶部
     this.atlasCtx.fillStyle = 'white';
     this.atlasCtx.fillText(text, this.currentX + ATLAS_PADDING, this.currentY + ATLAS_PADDING);
     
@@ -228,10 +236,16 @@ export class TextBatchManager {
       const offset = i * TEXT_INSTANCE_FLOATS;
       
       const fontSize = text.fontSize ?? 12;
-      const fontFamily = text.fontFamily ?? 'system-ui, sans-serif';
+      const fontFamily = text.fontFamily ?? tokens.text.fontFamily;
+      
+      // 处理 ellipsis 文本截断
+      let displayText = text.text;
+      if (text.ellipsis && text.maxWidth !== undefined && text.maxWidth > 0) {
+        displayText = this.truncateTextWithEllipsis(text.text, fontSize, fontFamily, text.maxWidth);
+      }
       
       // 渲染文字到图集并获取位置
-      const entry = this.renderTextToAtlas(text.text, fontSize, fontFamily);
+      const entry = this.renderTextToAtlas(displayText, fontSize, fontFamily);
       
       // 逻辑尺寸（用于渲染定位）
       const logicalWidth = entry.physicalWidth / this.dpr;
@@ -239,13 +253,25 @@ export class TextBatchManager {
       
       // 计算实际渲染位置（考虑对齐）
       let x = text.x;
-      const y = text.y;
+      let y = text.y;
       
+      // 水平对齐
       if (text.align === 'center') {
         x -= logicalWidth / 2;
       } else if (text.align === 'right') {
         x -= logicalWidth;
       }
+      
+      // 垂直对齐（与 Canvas textBaseline 一致）
+      // Canvas textBaseline: 'top' | 'middle' | 'bottom' | 'alphabetic' | 'hanging' | 'ideographic'
+      // 我们主要支持 'top', 'middle', 'bottom'
+      const baseline = text.baseline ?? 'top';
+      if (baseline === 'middle') {
+        y -= logicalHeight / 2;
+      } else if (baseline === 'bottom') {
+        y -= logicalHeight;
+      }
+      // 'top' 不需要调整，y 就是顶部位置
       
       // position (vec2)
       data[offset + 0] = x;
@@ -279,6 +305,53 @@ export class TextBatchManager {
     
     this.batch.count = texts.length;
     this.batch.dirty = true;
+  }
+  
+  /**
+   * 截断文本并添加省略号
+   */
+  private truncateTextWithEllipsis(text: string, fontSize: number, fontFamily: string, maxWidth: number): string {
+    const physicalFontSize = fontSize * this.dpr;
+    const physicalMaxWidth = maxWidth * this.dpr;
+    
+    this.atlasCtx.font = `${physicalFontSize}px ${fontFamily}`;
+    
+    // 测量完整文本宽度
+    const fullWidth = this.atlasCtx.measureText(text).width;
+    if (fullWidth <= physicalMaxWidth) {
+      return text;
+    }
+    
+    // 测量省略号宽度
+    const ellipsis = '…';
+    const ellipsisWidth = this.atlasCtx.measureText(ellipsis).width;
+    const availableWidth = physicalMaxWidth - ellipsisWidth;
+    
+    if (availableWidth <= 0) {
+      return ellipsis;
+    }
+    
+    // 二分查找合适的截断位置
+    let low = 0;
+    let high = text.length;
+    
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const truncated = text.slice(0, mid);
+      const width = this.atlasCtx.measureText(truncated).width;
+      
+      if (width <= availableWidth) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    
+    if (low === 0) {
+      return ellipsis;
+    }
+    
+    return text.slice(0, low) + ellipsis;
   }
   
   private resize(newCapacity: number): void {

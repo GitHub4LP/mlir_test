@@ -2,6 +2,26 @@
 
 MLIR 蓝图编辑器前端架构说明。
 
+## 常用命令
+
+```bash
+# 安装依赖
+npm install
+
+# 开发模式
+npm run dev
+
+# 构建生产版本
+npm run build
+
+# 运行测试
+npm run test        # 单次运行
+npm run test:watch  # 监听模式
+
+# 代码检查
+npm run lint
+```
+
 ## 目录结构
 
 ```
@@ -20,7 +40,7 @@ frontend/src/
 │       ├── vueflow/        # Vue Flow 适配器
 │       ├── canvas/         # Canvas 2D 渲染器
 │       ├── gpu/            # GPU 渲染器（WebGL/WebGPU）
-│       └── shared/         # 共享组件（Viewport, ConnectionValidator 等）
+│       └── shared/         # 共享样式和组件
 │
 ├── components/             # UI 组件
 │   ├── layout/             # 布局组件（ProjectToolbar, PropertiesPanel）
@@ -32,6 +52,7 @@ frontend/src/
 ├── services/               # 业务服务
 │   ├── typePropagation/    # 类型传播系统
 │   ├── typeSystem.ts       # 类型系统
+│   ├── typeColorMapping.ts # 类型颜色映射
 │   ├── connectionValidator.ts
 │   └── ...
 │
@@ -39,11 +60,104 @@ frontend/src/
 │   ├── dialectStore.ts     # 方言数据
 │   ├── projectStore.ts     # 项目状态
 │   ├── typeConstraintStore.ts
+│   ├── typeColorCache.ts   # 类型颜色缓存
 │   └── core/editorStore.ts # 编辑器状态（节点/边）
 │
 ├── types/                  # TypeScript 类型定义
 └── utils/                  # 工具函数
 ```
+
+## 样式系统
+
+### Design Tokens
+
+所有样式值统一通过 `layoutTokens.json` 管理：
+
+```
+frontend/src/editor/core/layout/
+├── layoutTokens.json    # 唯一数据源
+├── types.ts             # TypeScript 类型定义
+└── LayoutConfig.ts      # 配置解析和导出
+```
+
+### 样式架构
+
+```
+layoutTokens.json (唯一数据源)
+    ↓ LayoutConfig.ts
+layoutConfig 对象 (类型化配置)
+    ↓
+editor/adapters/shared/styles.ts (样式工具函数)
+    ↓
+各渲染器适配器
+```
+
+### 样式来源
+
+| 场景 | 使用方式 | 说明 |
+|------|----------|------|
+| React 组件 | `shared/styles.ts` 函数 | `getNodeContainerStyle()` 等 |
+| Vue 组件 | `nodeStyles.ts` 转发 | 从 `shared/styles.ts` 重导出 |
+| Canvas 渲染器 | `layoutConfig` 常量 | 直接使用 `layoutConfig.pinRowContent.fill` |
+| GPU 渲染器 | `RenderData` | 由 `LayoutEngine` 计算颜色 |
+
+### 共享样式模块
+
+`editor/adapters/shared/` 目录包含：
+
+| 文件 | 职责 |
+|------|------|
+| `styles.ts` | 样式工具函数（唯一权威来源） |
+| `ComponentStyles.ts` | UI 组件样式常量 |
+| `HandleStyles.ts` | 向后兼容，重导出 `styles.ts` |
+
+### 样式工具函数
+
+`editor/adapters/shared/styles.ts` 提供：
+
+```typescript
+import { tokens, getTypeColor, getDialectColor, LAYOUT, TEXT } from '../shared/styles';
+
+// 获取类型颜色
+const color = getTypeColor('I32');  // '#52C878'
+
+// 获取方言颜色
+const dialectColor = getDialectColor('arith');  // '#4A90D9'
+
+// 布局常量
+const headerHeight = LAYOUT.headerHeight;  // 32
+const headerPaddingX = LAYOUT.headerPaddingX;  // 12 (与 ReactFlow CSS 一致)
+
+// 文字样式
+const fontSize = TEXT.titleSize;  // 14
+```
+
+### 布局常量 (LAYOUT)
+
+所有渲染器共享的布局常量，确保视觉一致性：
+
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| `headerHeight` | 32 | 节点头部高度 |
+| `headerPaddingX` | 12 | 头部水平内边距 |
+| `headerPaddingY` | 4 | 头部垂直内边距 |
+| `pinRowHeight` | 28 | 引脚行高度 |
+| `padding` | 4 | 节点内边距 |
+| `handleRadius` | 6 | 端口半径 |
+| `minWidth` | 200 | 节点最小宽度 |
+| `borderRadius` | 8 | 节点圆角 |
+| `pinLabelOffset` | 16 | 引脚标签距离 handle 的偏移 |
+| `titleSubtitleGap` | 4 | 标题和副标题之间的间距 |
+
+### 类型颜色系统
+
+类型颜色由 `typeColorMapping.ts` 计算，支持：
+
+1. **基础类型匹配**：`I32` → 绿色，`F32` → 蓝色
+2. **复合类型展开**：`SignlessIntegerLike` → 展开为 `{I1, I8, I16, ...}` 后颜色平均
+3. **颜色缓存**：`typeColorCache.ts` 提供带缓存的 `getTypeColor()`
+
+颜色值从 `tokens.type.*` 读取，确保全局一致。
 
 ## 类型系统
 

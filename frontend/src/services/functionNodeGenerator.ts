@@ -7,6 +7,7 @@
 import type { FunctionDef, FunctionCallData, FunctionReturnData, PortConfig, GraphNode, ExecPin } from '../types';
 import { getTypeColor } from '../stores/typeColorCache';
 import { dataInHandle, dataOutHandle } from './port';
+import { tokens } from '../editor/adapters/shared/styles';
 
 /**
  * 从 FunctionDef 获取参数的签名类型
@@ -107,6 +108,8 @@ export function generateFunctionCallData(func: FunctionDef): FunctionCallData {
     outputs: createOutputPortsFromReturns(func),
     execIn: { id: 'exec-in', label: '' },
     execOuts: getExecOutputsFromFunction(func),
+    // 节点头部颜色（创建时确定，不会变化）
+    headerColor: tokens.nodeType.call,
   };
 }
 

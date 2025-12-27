@@ -16,7 +16,6 @@ import {
   findCommonType,
   hasSameOperandsAndResultTypeTrait,
   hasAllTypesMatchTrait,
-  getTypeColor,
   normalizeType,
 } from './typeSystem';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
@@ -272,50 +271,5 @@ describe('hasAllTypesMatchTrait', () => {
   it('should return false when trait is not present', () => {
     const op = createMockOperation(['Commutative']);
     expect(hasAllTypesMatchTrait(op)).toBe(false);
-  });
-});
-
-// ============================================================================
-// Type Color Tests
-// ============================================================================
-
-describe('getTypeColor', () => {
-  it('should return green for signless integer types', () => {
-    // SignlessInteger (I*) 使用中等绿色
-    expect(getTypeColor('I32')).toBe('#52C878');
-    // SignlessIntegerLike 展开为多个类型，颜色会被平均
-    // 实际颜色取决于展开的类型集合，这里只验证它是绿色系
-    const signlessColor = getTypeColor('SignlessIntegerLike');
-    expect(signlessColor).toMatch(/^#[0-9A-F]{6}$/i);
-    // 验证是绿色系（G 值较高）
-    const rgb = parseInt(signlessColor.slice(3, 5), 16);
-    expect(rgb).toBeGreaterThan(150); // 绿色分量应该较高
-  });
-
-  it('should return blue for float types', () => {
-    // Float (F*) 使用中等蓝色
-    expect(getTypeColor('F32')).toBe('#4A90D9');
-    // AnyFloat 展开为多个类型，颜色会被平均
-    // 实际颜色取决于展开的类型集合，这里只验证它是蓝色系
-    const floatColor = getTypeColor('AnyFloat');
-    expect(floatColor).toMatch(/^#[0-9A-F]{6}$/i);
-    // 验证是蓝色系（B 值较高）
-    const rgb = parseInt(floatColor.slice(5, 7), 16);
-    expect(rgb).toBeGreaterThan(150); // 蓝色分量应该较高
-  });
-
-  it('should return green for Index type (treated as unsigned integer)', () => {
-    // Index 看作无符号整型，使用纯绿色
-    expect(getTypeColor('Index')).toBe('#50C878');
-  });
-
-  it('should return red for boolean types', () => {
-    // Boolean (I1) 使用红色
-    expect(getTypeColor('BoolLike')).toBe('#E74C3C');
-    expect(getTypeColor('I1')).toBe('#E74C3C');
-  });
-
-  it('should return gray for unknown types', () => {
-    expect(getTypeColor('UnknownType')).toBe('#95A5A6');
   });
 });

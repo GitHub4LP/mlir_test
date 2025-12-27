@@ -84,6 +84,6 @@ const rowStyle = VariadicControlStyles.controlRow;
 }
 
 .variadic-btn:hover {
-  background-color: #4b5563;
+  background-color: var(--ui-buttonHoverBg, #4b5563);
 }
 </style>

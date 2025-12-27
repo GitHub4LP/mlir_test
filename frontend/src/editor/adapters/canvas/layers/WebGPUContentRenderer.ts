@@ -13,6 +13,7 @@ import type {
 import type { IContentRenderer } from './IContentRenderer';
 import { WebGPUGraphics } from './WebGPUGraphics';
 import { TextLODManager, type TextStrategy } from './TextLOD';
+import { tokens } from '../../shared/styles';
 
 /**
  * WebGPU 内容层渲染器
@@ -252,8 +253,8 @@ export class WebGPUContentRenderer implements IContentRenderer {
     ctx.imageSmoothingQuality = 'high';
 
     const fontSize = (text.fontSize ?? 12) * strategy.fontScale;
-    ctx.font = `${fontSize}px ${text.fontFamily ?? 'system-ui, sans-serif'}`;
-    ctx.fillStyle = text.color ?? '#ffffff';
+    ctx.font = `${fontSize}px ${text.fontFamily ?? tokens.text.fontFamily}`;
+    ctx.fillStyle = text.color ?? tokens.text.title.color;
     ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
     ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
     ctx.fillText(text.text, text.x, text.y);

@@ -1,0 +1,116 @@
+/**
+ * ReactFlow 布局变量
+ * 从 Figma Design Tokens 生成
+ * 
+ * 这些变量与 tokens/figma/node.json 保持同步
+ * 使用 Flexbox 实现 Figma Auto Layout 模型
+ */
+
+:root {
+  /* ============================================================
+     Node
+     ============================================================ */
+  --node-min-width: 200px;
+  --node-padding: 4px 0px 4px 0px;
+  --node-bg: #2d2d3d;
+  --node-border-color: #3d3d4d;
+  --node-border-width: 1px;
+  --node-border-radius: 8px;
+  --node-selected-border-color: #60a5fa;
+  --node-selected-border-width: 2px;
+
+  /* ============================================================
+     Header
+     ============================================================ */
+  --header-height: 32px;
+  --header-padding: 4px 12px 4px 12px;
+
+  /* ============================================================
+     Title Group
+     ============================================================ */
+  --title-group-spacing: 4px;
+
+  /* ============================================================
+     Pin Area
+     ============================================================ */
+  --pin-area-padding: 0px;
+  --pin-area-spacing: 0px;
+
+  /* ============================================================
+     Pin Row
+     ============================================================ */
+  --pin-row-min-height: 28px;
+  --pin-row-padding: 6px 0px 6px 0px;
+
+  /* ============================================================
+     Pin Content
+     ============================================================ */
+  --pin-content-spacing: 2px;
+  --pin-content-margin-left: 16px;
+  --pin-content-margin-right: 16px;
+
+  /* ============================================================
+     Handle
+     ============================================================ */
+  --handle-size: 12px;
+  --handle-stroke-width: 2px;
+
+  /* ============================================================
+     Type Label
+     ============================================================ */
+  --type-label-padding: 2px 6px 2px 6px;
+  --type-label-min-width: 40px;
+  --type-label-border-radius: 3px;
+  --type-label-bg: rgba(55, 65, 81, 1);
+
+  /* ============================================================
+     Attr Area
+     ============================================================ */
+  --attr-area-padding: 4px 12px 4px 12px;
+  --attr-area-spacing: 4px;
+
+  /* ============================================================
+     Attr Row
+     ============================================================ */
+  --attr-row-height: 20px;
+  --attr-row-spacing: 8px;
+
+  /* ============================================================
+     Attr Label
+     ============================================================ */
+  --attr-label-width: 60px;
+
+  /* ============================================================
+     Text
+     ============================================================ */
+  --font-family: system-ui, -apple-system, sans-serif;
+  --title-font-size: 14px;
+  --title-font-weight: 600;
+  --title-color: #ffffff;
+  --subtitle-font-size: 10px;
+  --subtitle-font-weight: 500;
+  --subtitle-color: rgba(255, 255, 255, 0.7);
+  --label-font-size: 12px;
+  --label-color: #d1d5db;
+  --muted-color: #6b7280;
+
+  /* ============================================================
+     Edge
+     ============================================================ */
+  --edge-exec-color: #ffffff;
+  --edge-exec-width: 2px;
+  --edge-data-width: 2px;
+  --edge-data-default-color: #888888;
+  --edge-selected-width: 3px;
+  --edge-bezier-offset: 100;
+
+  /* ============================================================
+     Node Types (Handle Colors)
+     ============================================================ */
+  --node-type-entry: #22c55e;
+  --node-type-entry-main: #f59e0b;
+  --node-type-return: #ef4444;
+  --node-type-return-main: #dc2626;
+  --node-type-call: #a855f7;
+  --node-type-operation: #3b82f6;
+}

@@ -4,7 +4,7 @@
  */
 
 import { BaseUIComponent, type UIMouseEvent, type UIWheelEvent } from './UIComponent';
-import { tokens, TEXT, UI, OVERLAY, LAYOUT } from '../../shared/styles';
+import { tokens, TEXT, UI, OVERLAY } from '../../shared/styles';
 
 export interface ListItem {
   id: string;

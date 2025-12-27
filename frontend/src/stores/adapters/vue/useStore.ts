@@ -9,7 +9,7 @@
  * - 正确处理组件生命周期
  */
 
-import { shallowRef, onMounted, onUnmounted, type Ref } from 'vue';
+import { shallowRef, onScopeDispose, getCurrentScope, type Ref } from 'vue';
 import type { IStore, Selector, EqualityFn } from '../../core/IStore';
 import { defaultEqualityFn } from '../../core/IStore';
 
@@ -43,8 +43,8 @@ export function useStore<T, S>(
   equalityFn: EqualityFn<S> = defaultEqualityFn as EqualityFn<S>
 ): Ref<S> {
   // 使用 shallowRef 避免深层响应式转换
+  // 立即初始化状态（不等到 onMounted）
   const state = shallowRef(selector(store.getState())) as Ref<S>;
-  let unsubscribe: (() => void) | null = null;
   
   const updateState = () => {
     const nextState = selector(store.getState());
@@ -53,16 +53,16 @@ export function useStore<T, S>(
     }
   };
   
-  onMounted(() => {
-    // 确保初始状态正确（可能在 setup 和 mounted 之间有变化）
-    updateState();
-    // 订阅 store 变化
-    unsubscribe = store.subscribe(updateState);
-  });
+  // 立即订阅 store 变化（不等到 onMounted）
+  const unsubscribe = store.subscribe(updateState);
   
-  onUnmounted(() => {
-    unsubscribe?.();
-  });
+  // 使用 onScopeDispose 确保在 effect scope 销毁时取消订阅
+  // 这比 onUnmounted 更可靠，因为它在任何 effect scope 中都能工作
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      unsubscribe();
+    });
+  }
   
   return state;
 }

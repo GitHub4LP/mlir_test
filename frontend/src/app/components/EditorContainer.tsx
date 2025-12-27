@@ -24,6 +24,7 @@ import type {
 import { EditorOverlay } from '../../editor/adapters/shared/EditorOverlay';
 import { overlayReducer, type OverlayState } from '../../editor/adapters/shared/overlayTypes';
 import { getPortTypeInfo } from '../../editor/adapters/shared/PortTypeInfo';
+import { usePortStateStore } from '../../stores/portStateStore';
 import { UnifiedTypeSelector } from '../../components/UnifiedTypeSelector';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import { computeTypeSelectorData, computeTypeGroups } from '../../services/typeSelectorService';
@@ -144,6 +145,13 @@ export function EditorContainer({
   // 对于 Canvas/GPU 渲染器，使用原生 Canvas TypeSelector
   // 对于 ReactFlow/VueFlow，使用 DOM overlay
   const handleTypeLabelClick = useCallback((nodeId: string, handleId: string, canvasX: number, canvasY: number) => {
+    // 先检查端口是否可编辑
+    const portState = usePortStateStore.getState().getPortState(nodeId, handleId);
+    if (portState && !portState.canEdit) {
+      // 不可编辑，不弹出选择器
+      return;
+    }
+    
     const state = useEditorStore.getState();
     const typeInfo = getPortTypeInfo(state.nodes, nodeId, handleId);
     if (!typeInfo) return;

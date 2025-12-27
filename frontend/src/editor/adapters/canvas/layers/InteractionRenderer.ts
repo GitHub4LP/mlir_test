@@ -163,7 +163,7 @@ export class InteractionRenderer {
     if (path.points.length < 2) return;
 
     ctx.save();
-    ctx.strokeStyle = path.color ?? '#ffffff';
+    ctx.strokeStyle = path.color ?? tokens.edge.exec.color;
     ctx.lineWidth = path.width ?? 2;
 
     if (path.dashed && path.dashPattern) {
@@ -193,7 +193,7 @@ export class InteractionRenderer {
       const lastIdx = path.points.length - 1;
       const end = path.points[lastIdx];
       const prev = path.points[lastIdx - 1];
-      this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? '#ffffff');
+      this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? tokens.edge.exec.color);
     }
 
     ctx.restore();

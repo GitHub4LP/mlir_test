@@ -213,11 +213,11 @@ const labelStyle = computed(() => ({
 }
 
 .option-item:hover {
-  background-color: #374151;
+  background-color: var(--ui-buttonBg, #374151);
 }
 
 .option-item.selected {
-  background-color: #374151;
+  background-color: var(--ui-buttonBg, #374151);
 }
 
 .no-results {

@@ -54,7 +54,7 @@ export {
   toReactFlowViewport,
 } from './Viewport';
 
-// Handle 样式
+// Handle 样式（从 styles.ts 导入）
 export {
   getExecHandleStyle,
   getExecHandleStyleRight,
@@ -65,7 +65,7 @@ export {
   EXEC_COLOR,
   HANDLE_RADIUS,
   HANDLE_SIZE,
-} from './HandleStyles';
+} from './styles';
 
 // 连线验证适配器
 export {

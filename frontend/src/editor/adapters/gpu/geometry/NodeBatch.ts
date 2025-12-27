@@ -8,16 +8,27 @@
 import type { NodeBatch } from '../backends/IGPUBackend';
 import type { RenderRect } from '../../canvas/types';
 
-/** 节点实例数据布局（每实例 floats 数量） */
-const NODE_INSTANCE_FLOATS = 16;
-
-/** 默认标题高度 */
-const DEFAULT_HEADER_HEIGHT = 28;
+/** 节点实例数据布局（每实例 floats 数量）
+ * position: vec2 (2)
+ * size: vec2 (2)
+ * headerHeight: float (1)
+ * borderRadius: vec4 (4) - topLeft, topRight, bottomRight, bottomLeft
+ * bodyColor: vec4 (4)
+ * headerColor: vec4 (4)
+ * selected: float (1)
+ * Total: 18
+ */
+const NODE_INSTANCE_FLOATS = 18;
 
 /**
  * 解析 CSS 颜色为 RGBA 数组
  */
 function parseColor(color: string): [number, number, number, number] {
+  // 处理 transparent
+  if (color === 'transparent') {
+    return [0, 0, 0, 0];
+  }
+  
   // 处理 hex 颜色
   if (color.startsWith('#')) {
     const hex = color.slice(1);
@@ -81,37 +92,25 @@ export class NodeBatchManager {
   
   /**
    * 从 RenderRect 数组更新批次
-   * 注意：处理节点主体矩形（id 以 'rect-' 开头）和对应的 header 矩形
+   * 支持任意矩形渲染，不依赖特定 ID 格式
    */
   updateFromRects(rects: RenderRect[]): void {
-    // 分离节点主体矩形和 header 矩形
-    const nodeRects = rects.filter(r => r.id.startsWith('rect-'));
-    const headerRects = new Map<string, RenderRect>();
-    for (const r of rects) {
-      if (r.id.startsWith('header-')) {
-        // header-{nodeId} -> nodeId
-        const nodeId = r.id.slice(7);
-        headerRects.set(nodeId, r);
-      }
-    }
+    // 按 zIndex 排序
+    const sortedRects = [...rects].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
     
     // 检查是否需要扩容
-    if (nodeRects.length > this.capacity) {
-      this.resize(Math.max(nodeRects.length, this.capacity * 2));
+    if (sortedRects.length > this.capacity) {
+      this.resize(Math.max(sortedRects.length, this.capacity * 2));
     }
     
-    // 重建节点映射
+    // 重建映射
     this.nodeMap.clear();
     
     // 填充实例数据
     const data = this.batch.instanceData;
-    for (let i = 0; i < nodeRects.length; i++) {
-      const rect = nodeRects[i];
+    for (let i = 0; i < sortedRects.length; i++) {
+      const rect = sortedRects[i];
       const offset = i * NODE_INSTANCE_FLOATS;
-      
-      // rect-{nodeId} -> nodeId
-      const nodeId = rect.id.slice(5);
-      const header = headerRects.get(nodeId);
       
       this.nodeMap.set(rect.id, i);
       
@@ -123,35 +122,46 @@ export class NodeBatchManager {
       data[offset + 2] = rect.width;
       data[offset + 3] = rect.height;
       
-      // headerHeight (float) - 从 header 矩形获取，或使用默认值
-      data[offset + 4] = header?.height ?? DEFAULT_HEADER_HEIGHT;
+      // headerHeight (float) - 通用矩形设为 0（无 header 概念）
+      data[offset + 4] = 0;
       
-      // borderRadius (float) - 如果是对象则取平均值
+      // borderRadius (vec4) - topLeft, topRight, bottomRight, bottomLeft
       const br = rect.borderRadius;
-      data[offset + 5] = typeof br === 'number' ? br : (br.topLeft + br.topRight + br.bottomLeft + br.bottomRight) / 4;
+      if (typeof br === 'number') {
+        data[offset + 5] = br;
+        data[offset + 6] = br;
+        data[offset + 7] = br;
+        data[offset + 8] = br;
+      } else if (br) {
+        data[offset + 5] = br.topLeft;
+        data[offset + 6] = br.topRight;
+        data[offset + 7] = br.bottomRight;
+        data[offset + 8] = br.bottomLeft;
+      } else {
+        data[offset + 5] = 0;
+        data[offset + 6] = 0;
+        data[offset + 7] = 0;
+        data[offset + 8] = 0;
+      }
       
       // bodyColor (vec4)
       const bodyColor = parseColor(rect.fillColor);
-      data[offset + 6] = bodyColor[0];
-      data[offset + 7] = bodyColor[1];
-      data[offset + 8] = bodyColor[2];
-      data[offset + 9] = bodyColor[3];
+      data[offset + 9] = bodyColor[0];
+      data[offset + 10] = bodyColor[1];
+      data[offset + 11] = bodyColor[2];
+      data[offset + 12] = bodyColor[3];
       
-      // headerColor (vec4) - 从 header 矩形获取颜色
-      const headerColor = header ? parseColor(header.fillColor) : bodyColor;
-      data[offset + 10] = headerColor[0];
-      data[offset + 11] = headerColor[1];
-      data[offset + 12] = headerColor[2];
-      data[offset + 13] = headerColor[3];
+      // headerColor (vec4) - 与 bodyColor 相同
+      data[offset + 13] = bodyColor[0];
+      data[offset + 14] = bodyColor[1];
+      data[offset + 15] = bodyColor[2];
+      data[offset + 16] = bodyColor[3];
       
       // selected (float)
-      data[offset + 14] = rect.selected ? 1.0 : 0.0;
-      
-      // padding (float)
-      data[offset + 15] = 0;
+      data[offset + 17] = rect.selected ? 1.0 : 0.0;
     }
     
-    this.batch.count = nodeRects.length;
+    this.batch.count = sortedRects.length;
     this.batch.dirty = true;
   }
   

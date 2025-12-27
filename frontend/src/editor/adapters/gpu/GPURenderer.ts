@@ -22,6 +22,9 @@ import { EdgeBatchManager } from './geometry/EdgeBatch';
 import { CircleBatchManager } from './geometry/CircleBatch';
 import { TriangleBatchManager } from './geometry/TriangleBatch';
 import { TextBatchManager } from './geometry/TextBatch';
+import { tokens } from '../shared/styles';
+import type { LayoutBox, CornerRadius } from '../../core/layout/types';
+import { layoutConfig } from '../../core/layout/LayoutConfig';
 
 /** 渲染模式（GPU 或 Canvas 2D） */
 export type RenderMode = 'gpu' | 'canvas';
@@ -56,6 +59,9 @@ export class GPURenderer implements IRenderer {
   
   // 边渲染模式
   private edgeRenderMode: EdgeRenderMode = 'gpu';
+  
+  // 是否使用新布局系统渲染节点
+  private useLayoutBoxRendering: boolean = true;
   
   // 批次管理器
   private nodeBatch: NodeBatchManager = new NodeBatchManager();
@@ -236,10 +242,8 @@ export class GPURenderer implements IRenderer {
       // 确保 backend 尺寸与 canvas 同步
       if (this.backend && this.canvas) {
         this.backend.resize(this.canvas.width, this.canvas.height);
-        console.log('GPURenderer: backend initialized, size:', this.canvas.width, 'x', this.canvas.height);
       }
       this.ready = true;
-      console.log('GPURenderer: ready, calling', this.readyCallbacks.length, 'callbacks');
       for (const cb of this.readyCallbacks) {
         cb();
       }
@@ -308,12 +312,25 @@ export class GPURenderer implements IRenderer {
 
   render(data: RenderData): void {
     if (!this.backend) {
-      console.warn('GPURenderer.render: backend is null, skipping render');
+      // backend 未就绪时静默跳过（初始化是异步的）
       return;
     }
     
     // 缓存渲染数据（用于模式切换后重新渲染）
     this.lastRenderData = data;
+    
+    // 判断是否需要 Canvas 层
+    const needsCanvasLayer = this.textRenderMode === 'canvas' || this.edgeRenderMode === 'canvas';
+    
+    // 管理 textCanvas 可见性
+    if (this.textCanvas) {
+      this.textCanvas.style.display = needsCanvasLayer ? 'block' : 'none';
+    }
+    
+    // 清空 Canvas 层（如果需要）
+    if (needsCanvasLayer && this.textCtx && this.textCanvas) {
+      this.textCtx.clearRect(0, 0, this.textCanvas.width, this.textCanvas.height);
+    }
     
     this.backend.beginFrame();
     
@@ -321,44 +338,33 @@ export class GPURenderer implements IRenderer {
     const matrix = this.createViewMatrix(data.viewport);
     this.backend.setViewTransform(matrix);
     
-    // 根据模式渲染边（先渲染边，节点在上层）
+    // 渲染边（总是先渲染，节点在上层）
     if (this.edgeRenderMode === 'gpu') {
       this.edgeBatch.updateFromPaths(data.paths);
       this.backend.renderEdges(this.edgeBatch.getBatch());
     }
     
-    // 更新并渲染节点
-    this.nodeBatch.updateFromRects(data.rects);
-    this.backend.renderNodes(this.nodeBatch.getBatch());
-    
-    // 根据模式渲染文字
-    if (this.textRenderMode === 'gpu') {
-      // GPU 模式：通过纹理图集渲染
-      this.textBatch.updateFromTexts(data.texts);
-      if (this.textBatch.needsTextureUpdate()) {
-        this.backend.updateTextTexture(this.textBatch.getAtlasCanvas());
-        this.textBatch.clearTextureUpdateFlag();
-      }
-      this.backend.renderText(this.textBatch.getBatch());
-    }
-    
-    // 更新并渲染圆形（数据端口）
-    this.circleBatch.updateFromCircles(data.circles);
-    this.backend.renderCircles(this.circleBatch.getBatch());
-    
-    // 更新并渲染三角形（执行引脚）
-    if (data.triangles && data.triangles.length > 0) {
-      this.triangleBatch.updateFromTriangles(data.triangles);
-      this.backend.renderTriangles(this.triangleBatch.getBatch());
+    // 选择节点渲染系统
+    if (this.useLayoutBoxRendering && data.layoutBoxes && data.layoutBoxes.size > 0) {
+      // 新布局系统：从 LayoutBox 提取图元，用 GPU 渲染
+      this.renderNodesFromLayoutBoxes(data);
+    } else {
+      // 旧系统：直接用 data 中的图元
+      this.renderNodesFromPrimitives(data);
     }
     
     this.backend.endFrame();
     this._viewport = { ...data.viewport };
     
-    // Canvas 模式渲染（边和文字共用 textCanvas）
-    const needCanvasRender = this.edgeRenderMode === 'canvas' || this.textRenderMode === 'canvas';
-    if (needCanvasRender && this.textCtx && this.textCanvas) {
-      this.renderToCanvas(data);
+    // Canvas 模式渲染边（在 GPU 渲染之后）
+    if (this.edgeRenderMode === 'canvas' && this.textCtx && this.textCanvas) {
+      const ctx = this.textCtx;
+      ctx.save();
+      ctx.scale(this.dpr, this.dpr);
+      ctx.translate(data.viewport.x, data.viewport.y);
+      ctx.scale(data.viewport.zoom, data.viewport.zoom);
+      this.renderEdgesToCanvas(ctx, data);
+      ctx.restore();
     }
     
     // 渲染 UI 层
@@ -372,33 +378,289 @@ export class GPURenderer implements IRenderer {
   }
 
   /**
-   * 使用 Canvas 2D 渲染边和/或文字（混合模式）
+   * 使用旧图元系统渲染节点
    */
-  private renderToCanvas(data: RenderData): void {
-    if (!this.textCtx || !this.textCanvas) return;
+  private renderNodesFromPrimitives(data: RenderData): void {
+    // 渲染节点矩形
+    this.nodeBatch.updateFromRects(data.rects);
+    this.backend!.renderNodes(this.nodeBatch.getBatch());
     
-    const ctx = this.textCtx;
-    const viewport = data.viewport;
-    
-    ctx.clearRect(0, 0, this.textCanvas.width, this.textCanvas.height);
-    ctx.save();
-    
-    // 应用 DPR 和视口变换
-    ctx.scale(this.dpr, this.dpr);
-    ctx.translate(viewport.x, viewport.y);
-    ctx.scale(viewport.zoom, viewport.zoom);
-    
-    // Canvas 模式渲染边
-    if (this.edgeRenderMode === 'canvas') {
-      this.renderEdgesToCanvas(ctx, data);
-    }
-    
-    // Canvas 模式渲染文字
-    if (this.textRenderMode === 'canvas') {
+    // 渲染文字
+    if (this.textRenderMode === 'gpu') {
+      this.textBatch.updateFromTexts(data.texts);
+      if (this.textBatch.needsTextureUpdate()) {
+        this.backend!.updateTextTexture(this.textBatch.getAtlasCanvas());
+        this.textBatch.clearTextureUpdateFlag();
+      }
+      this.backend!.renderText(this.textBatch.getBatch());
+    } else if (this.textCtx) {
+      // Canvas 模式渲染文字（textCanvas 已在 render() 中清空）
+      const ctx = this.textCtx;
+      ctx.save();
+      ctx.scale(this.dpr, this.dpr);
+      ctx.translate(data.viewport.x, data.viewport.y);
+      ctx.scale(data.viewport.zoom, data.viewport.zoom);
       this.renderTextToCanvas(ctx, data);
+      ctx.restore();
     }
     
-    ctx.restore();
+    // 渲染圆形（数据端口）
+    this.circleBatch.updateFromCircles(data.circles);
+    this.backend!.renderCircles(this.circleBatch.getBatch());
+    
+    // 渲染三角形（执行引脚）
+    if (data.triangles && data.triangles.length > 0) {
+      this.triangleBatch.updateFromTriangles(data.triangles);
+      this.backend!.renderTriangles(this.triangleBatch.getBatch());
+    }
+  }
+
+  /**
+   * 从 LayoutBox 提取图元渲染节点（GPU 渲染）
+   */
+  private renderNodesFromLayoutBoxes(data: RenderData): void {
+    if (!data.layoutBoxes || !this.backend) return;
+    
+    // 构建节点信息映射
+    // 从旧系统的 rects 中提取 headerColor、selected、zIndex
+    const nodeInfoMap = new Map<string, {
+      selected: boolean;
+      headerColor: string;
+      zIndex: number;
+    }>();
+    
+    // 第一遍：从 rect-{nodeId} 获取 selected 和 zIndex
+    for (const rect of data.rects) {
+      if (rect.id.startsWith('rect-')) {
+        const nodeId = rect.id.slice(5);
+        nodeInfoMap.set(nodeId, {
+          selected: rect.selected,
+          headerColor: tokens.node.bg, // 默认值，后面会被 header 覆盖
+          zIndex: rect.zIndex,
+        });
+      }
+    }
+    
+    // 第二遍：从 header-{nodeId} 获取 headerColor
+    for (const rect of data.rects) {
+      if (rect.id.startsWith('header-')) {
+        const nodeId = rect.id.slice(7);
+        const existing = nodeInfoMap.get(nodeId);
+        if (existing) {
+          existing.headerColor = rect.fillColor;
+        } else {
+          // 如果没有 rect-{nodeId}，也要创建条目
+          nodeInfoMap.set(nodeId, {
+            selected: false,
+            headerColor: rect.fillColor,
+            zIndex: 0,
+          });
+        }
+      }
+    }
+    
+    // 构建 Handle 颜色映射
+    const handleColorMap = new Map<string, string>();
+    for (const circle of data.circles) {
+      if (circle.id.startsWith('handle-')) {
+        handleColorMap.set(circle.id, circle.fillColor);
+      }
+    }
+    
+    // 收集图元
+    const rects: import('../../core/RenderData').RenderRect[] = [];
+    const texts: import('../../core/RenderData').RenderText[] = [];
+    const circles: import('../../core/RenderData').RenderCircle[] = [];
+    const triangles: import('../../core/RenderData').RenderTriangle[] = [];
+    
+    // 按 zIndex 排序
+    const sortedEntries = [...data.layoutBoxes.entries()].sort((a, b) => {
+      const aInfo = nodeInfoMap.get(a[0]);
+      const bInfo = nodeInfoMap.get(b[0]);
+      return (aInfo?.zIndex ?? 0) - (bInfo?.zIndex ?? 0);
+    });
+    
+    // 从 LayoutBox 提取图元
+    for (const [nodeId, layoutBox] of sortedEntries) {
+      const nodeInfo = nodeInfoMap.get(nodeId);
+      const zIndex = nodeInfo?.zIndex ?? 0;
+      
+      // LayoutBox 的 x, y 已经是画布坐标（computeNodeLayoutBox 设置的）
+      // 所以 offsetX, offsetY 应该是 0
+      this.extractPrimitivesFromLayoutBox(
+        layoutBox, 0, 0, nodeId, handleColorMap, zIndex,
+        rects, texts, circles, triangles
+      );
+    }
+    
+    // 使用 GPU batch 渲染
+    this.nodeBatch.updateFromRects(rects);
+    this.backend.renderNodes(this.nodeBatch.getBatch());
+    
+    // 渲染文字
+    if (this.textRenderMode === 'gpu') {
+      this.textBatch.updateFromTexts(texts);
+      if (this.textBatch.needsTextureUpdate()) {
+        this.backend.updateTextTexture(this.textBatch.getAtlasCanvas());
+        this.textBatch.clearTextureUpdateFlag();
+      }
+      this.backend.renderText(this.textBatch.getBatch());
+    } else if (this.textCtx) {
+      // Canvas 模式渲染文字（textCanvas 已在 render() 中清空）
+      const ctx = this.textCtx;
+      ctx.save();
+      ctx.scale(this.dpr, this.dpr);
+      ctx.translate(data.viewport.x, data.viewport.y);
+      ctx.scale(data.viewport.zoom, data.viewport.zoom);
+      this.renderTextToCanvas(ctx, { ...data, texts });
+      ctx.restore();
+    }
+    
+    // 渲染圆形（数据端口）
+    this.circleBatch.updateFromCircles(circles);
+    this.backend.renderCircles(this.circleBatch.getBatch());
+    
+    // 渲染三角形（执行引脚）
+    if (triangles.length > 0) {
+      this.triangleBatch.updateFromTriangles(triangles);
+      this.backend.renderTriangles(this.triangleBatch.getBatch());
+    }
+  }
+  
+  /**
+   * 从 LayoutBox 树提取图元
+   */
+  private extractPrimitivesFromLayoutBox(
+    box: LayoutBox,
+    offsetX: number,
+    offsetY: number,
+    nodeId: string,
+    handleColorMap: Map<string, string>,
+    zIndex: number,
+    rects: import('../../core/RenderData').RenderRect[],
+    texts: import('../../core/RenderData').RenderText[],
+    circles: import('../../core/RenderData').RenderCircle[],
+    triangles: import('../../core/RenderData').RenderTriangle[]
+  ): void {
+    const absX = offsetX + box.x;
+    const absY = offsetY + box.y;
+    
+    // 提取矩形（背景）- 通用逻辑：只看 style.fill
+    if (box.style?.fill && box.style.fill !== 'transparent') {
+      const style = box.style;
+      const radius = this.normalizeCornerRadius(style.cornerRadius);
+      
+      // typeLabel 特殊处理：使用 handle 颜色的半透明版本
+      let fillColor: string = style.fill!;
+      if (box.type === 'typeLabel' && box.interactive?.id) {
+        const id = box.interactive.id;
+        const handleId = id.replace('type-label-', '');
+        const lookupKey = `handle-${nodeId}-${handleId}`;
+        const handleColor = handleColorMap.get(lookupKey);
+        if (handleColor) {
+          fillColor = this.colorWithAlpha(handleColor, 0.3);
+        }
+      }
+      
+      rects.push({
+        id: `lb-${box.type}-${nodeId}-${absX}-${absY}`,
+        x: absX,
+        y: absY,
+        width: box.width,
+        height: box.height,
+        fillColor: fillColor,
+        borderColor: style.stroke ?? 'transparent',
+        borderWidth: style.strokeWidth ?? 0,
+        borderRadius: radius,
+        selected: false,
+        zIndex: zIndex,
+      });
+    }
+    
+    // 提取 Handle
+    if (box.type === 'handle' && box.interactive?.id) {
+      const id = box.interactive.id;
+      const handleConfig = layoutConfig.handle;
+      const size = typeof handleConfig.width === 'number' ? handleConfig.width : 12;
+      const centerX = absX + box.width / 2;
+      const centerY = absY + box.height / 2;
+      
+      const isExec = id.includes('exec');
+      const isOutput = id.includes('-out') || id.startsWith('handle-exec-out');
+      
+      if (isExec) {
+        // 执行端口：三角形
+        triangles.push({
+          id: `lb-${id}-${nodeId}`,
+          x: centerX,
+          y: centerY,
+          size: size,
+          fillColor: '#ffffff',
+          borderColor: '#ffffff',
+          borderWidth: 1,
+          direction: isOutput ? 'right' : 'left',
+        });
+      } else {
+        // 数据端口：圆形
+        const handleId = id.replace('handle-', '');
+        const lookupKey = `handle-${nodeId}-${handleId}`;
+        const color = handleColorMap.get(lookupKey) ?? layoutConfig.nodeType.operation;
+        
+        circles.push({
+          id: `lb-${id}-${nodeId}`,
+          x: centerX,
+          y: centerY,
+          radius: size / 2,
+          fillColor: color,
+          borderColor: tokens.node.bg,
+          borderWidth: 2,
+        });
+      }
+    }
+    
+    // 提取文本 - 直接使用布局引擎计算的位置
+    if (box.text) {
+      const text = box.text;
+      const hasEllipsis = box.style?.textOverflow === 'ellipsis';
+      texts.push({
+        id: `lb-text-${nodeId}-${absX}-${absY}`,
+        text: text.content,
+        x: absX,
+        y: absY,
+        fontSize: text.fontSize,
+        fontFamily: text.fontFamily ?? layoutConfig.text.fontFamily,
+        color: text.fill,
+        align: 'left',
+        baseline: 'top',
+        ellipsis: hasEllipsis,
+        maxWidth: hasEllipsis ? box.width : undefined,
+      });
+    }
+    
+    // 递归处理子节点
+    for (const child of box.children) {
+      this.extractPrimitivesFromLayoutBox(
+        child, absX, absY, nodeId, handleColorMap, zIndex,
+        rects, texts, circles, triangles
+      );
+    }
+  }
+
+  /**
+   * 设置是否使用新布局系统渲染
+   */
+  setUseLayoutBoxRendering(enabled: boolean): void {
+    this.useLayoutBoxRendering = enabled;
+    if (this.lastRenderData) {
+      this.render(this.lastRenderData);
+    }
+  }
+
+  /**
+   * 获取是否使用新布局系统渲染
+   */
+  getUseLayoutBoxRendering(): boolean {
+    return this.useLayoutBoxRendering;
   }
 
   /**
@@ -415,7 +677,6 @@ export class GPURenderer implements IRenderer {
       ctx.lineJoin = 'round';
       
       if (path.points.length === 4) {
-        // 贝塞尔曲线
         ctx.moveTo(path.points[0].x, path.points[0].y);
         ctx.bezierCurveTo(
           path.points[1].x, path.points[1].y,
@@ -423,7 +684,6 @@ export class GPURenderer implements IRenderer {
           path.points[3].x, path.points[3].y
         );
       } else {
-        // 折线
         ctx.moveTo(path.points[0].x, path.points[0].y);
         for (let i = 1; i < path.points.length; i++) {
           ctx.lineTo(path.points[i].x, path.points[i].y);
@@ -442,16 +702,58 @@ export class GPURenderer implements IRenderer {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     
-    // 渲染所有文字（与 CanvasRenderer.renderText 保持一致）
+    // 渲染所有文字
     for (const text of data.texts) {
       ctx.save();
-      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? 'system-ui, sans-serif'}`;
+      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? tokens.text.fontFamily}`;
       ctx.fillStyle = text.color ?? '#ffffff';
       ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
       ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
-      ctx.fillText(text.text, text.x, text.y);
+      
+      // 处理 ellipsis 截断
+      let displayText = text.text;
+      if (text.ellipsis && text.maxWidth !== undefined && text.maxWidth > 0) {
+        displayText = this.truncateTextForCanvas(ctx, text.text, text.maxWidth);
+      }
+      
+      ctx.fillText(displayText, text.x, text.y);
       ctx.restore();
     }
+  }
+  
+  /**
+   * Canvas 模式下截断文本并添加省略号
+   */
+  private truncateTextForCanvas(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+    const fullWidth = ctx.measureText(text).width;
+    if (fullWidth <= maxWidth) {
+      return text;
+    }
+    
+    const ellipsis = '…';
+    const ellipsisWidth = ctx.measureText(ellipsis).width;
+    const availableWidth = maxWidth - ellipsisWidth;
+    
+    if (availableWidth <= 0) {
+      return ellipsis;
+    }
+    
+    // 二分查找截断位置
+    let low = 0;
+    let high = text.length;
+    
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const width = ctx.measureText(text.slice(0, mid)).width;
+      
+      if (width <= availableWidth) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    
+    return low === 0 ? ellipsis : text.slice(0, low) + ellipsis;
   }
 
   // ============================================================
@@ -470,7 +772,6 @@ export class GPURenderer implements IRenderer {
         const backend = new module.WebGPUBackend() as IGPUBackend;
         await backend.init(canvas);
         this.backend = backend;
-        console.log('GPU Renderer: Using WebGPU backend');
         return;
       } catch (e) {
         console.warn('WebGPU initialization failed, falling back to WebGL:', e);
@@ -483,7 +784,6 @@ export class GPURenderer implements IRenderer {
         const { WebGLBackend } = await import('./backends/WebGLBackend');
         this.backend = new WebGLBackend();
         await this.backend.init(canvas);
-        console.log('GPU Renderer: Using WebGL 2.0 backend');
         return;
       } catch (e) {
         console.error('WebGL initialization failed:', e);
@@ -696,6 +996,47 @@ export class GPURenderer implements IRenderer {
     
     this.dropCallback?.(canvasX, canvasY, e.dataTransfer);
   }
+
+  // ============================================================================
+  // LayoutBox 辅助方法
+  // ============================================================================
+
+  /**
+   * 规范化圆角配置
+   */
+  private normalizeCornerRadius(
+    radius: CornerRadius | undefined
+  ): number | { topLeft: number; topRight: number; bottomLeft: number; bottomRight: number } {
+    if (radius === undefined) return 0;
+    if (typeof radius === 'number') return radius;
+    return {
+      topLeft: radius[0],
+      topRight: radius[1],
+      bottomRight: radius[2],
+      bottomLeft: radius[3],
+    };
+  }
+
+  /**
+   * 将颜色转换为带透明度的版本
+   */
+  private colorWithAlpha(color: string, alpha: number): string {
+    if (color.startsWith('#')) {
+      const hex = color.slice(1);
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    if (color.startsWith('rgb')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (match) {
+        return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+      }
+    }
+    return color;
+  }
+
 }
 
 

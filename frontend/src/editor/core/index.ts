@@ -4,9 +4,9 @@
  * 包含所有渲染器共享的类型定义、接口和工具。
  */
 
-// 样式系统 - 已迁移到 Design Tokens
-// 使用 frontend/src/editor/adapters/shared/styles.ts 代替
-// 使用 frontend/src/generated/tokens.ts 获取 token 值
+// 样式系统 - 已迁移到 layoutTokens.json
+// 使用 frontend/src/editor/adapters/shared/styles.ts 获取样式
+// 使用 frontend/src/editor/core/layout/LayoutConfig.ts 获取布局配置
 
 // 渲染数据模型
 export type {

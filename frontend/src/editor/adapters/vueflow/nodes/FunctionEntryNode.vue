@@ -20,7 +20,7 @@ import {
 } from '../../../../stores';
 import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
 import { dataOutHandle } from '../../../../services/port';
-import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, EXEC_COLOR } from './nodeStyles';
+import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, EXEC_COLOR, getNodeTypeColor } from './nodeStyles';
 import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
 import EditableName from '../components/EditableName.vue';
 import FunctionTraitsEditor from '../components/FunctionTraitsEditor.vue';
@@ -187,7 +187,7 @@ function handleTraitsChange(newTraits: FunctionTrait[]) {
 
 // 样式
 const containerStyle = computed(() => getContainerStyle(props.selected || false));
-const headerColor = computed(() => isMain.value ? '#f59e0b' : '#22c55e');
+const headerColor = computed(() => isMain.value ? getNodeTypeColor('entryMain') : getNodeTypeColor('entry'));
 const headerStyle = computed(() => getHeaderStyle(headerColor.value));
 </script>
 

@@ -4,7 +4,7 @@
  */
 
 import { BaseUIComponent, type UIMouseEvent } from './UIComponent';
-import { tokens, TEXT, BUTTON, OVERLAY } from '../../shared/styles';
+import { TEXT, BUTTON, OVERLAY } from '../../shared/styles';
 
 export interface ButtonStyle {
   backgroundColor: string;

@@ -11,7 +11,7 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node, useEdges, useNodes } from '@xyflow/react';
+import { type NodeProps, type Node } from '@xyflow/react';
 import type { BlueprintNodeData, DataPin } from '../../../../types';
 import { getOperands, getAttributes } from '../../../../services/dialectParser';
 import { getDisplayType } from '../../../../services/typeSelectorRenderer';
@@ -19,11 +19,14 @@ import { AttributeEditor } from '../../../../components/AttributeEditor';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { NodePins } from '../../../../components/NodePins';
 import { buildPinRows, buildOperationDataPins } from '../../../../services/pinUtils';
-import { useReactStore, projectStore, typeConstraintStore } from '../../../../stores';
-import { computeTypeSelectionState } from '../../../../services/typeSelection';
+import { useReactStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { useTypeChangeHandler } from '../../../../hooks';
-import { getNodeContainerStyle, getNodeHeaderStyle, getDialectColor, tokens } from '../../shared/styles';
-import { toEditorNodes, toEditorEdges } from '../typeConversions';
+import {
+  getNodeContainerStyle,
+  getHeaderContentStyle,
+  getDialectColor,
+  NODE_MIN_WIDTH,
+} from '../../shared/figmaStyles';
 import { getPortType } from '../../../../services/portTypeService';
 import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
@@ -38,9 +41,10 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<BlueprintNodeData>(id);
   
-  const edges = useEdges();
-  const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
   const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
+  
+  // 从 portStateStore 获取端口状态
+  const getPortState = usePortStateStore(state => state.getPortState);
 
   // 使用统一的 hook
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -84,16 +88,18 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   }, [operands, results, inputTypes, outputTypes, execIn, execOuts, regionPins, variadicCounts]);
 
   // Render type selector for data pins
-  const nodes = useNodes();
   const renderTypeSelector = useCallback((pin: DataPin) => {
     const displayType = getDisplayType(pin, data);
     
-    const currentFunction = getCurrentFunction();
-    const editorNodes = toEditorNodes(nodes);
-    const editorEdges = toEditorEdges(edges);
-    const { options, canEdit } = computeTypeSelectionState(
-      id, pin.id, editorNodes, editorEdges, currentFunction ?? undefined, getConstraintElements
-    );
+    // 从 portStateStore 读取端口状态
+    const portState = getPortState(id, pin.id);
+    // 如果 portState 不存在，默认不可编辑（等待类型传播完成）
+    const canEdit = portState?.canEdit ?? false;
+    
+    // 如果 portState 存在，使用其 constraint 计算 options
+    // 否则回退到 pin.typeConstraint
+    const constraint = portState?.constraint ?? pin.typeConstraint;
+    const options = getConstraintElements(constraint);
 
     return (
       <UnifiedTypeSelector
@@ -104,7 +110,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, data, edges, nodes, getCurrentFunction, getConstraintElements]);
+  }, [handleTypeChange, id, data, getPortState, getConstraintElements]);
 
   // Get port type from node data (使用公用服务)
   const getPortTypeWrapper = useCallback((pinId: string) => {
@@ -132,12 +138,12 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
       className="rf-node"
       style={{
         ...getNodeContainerStyle(selected),
-        minWidth: tokens.node.minWidth,
+        minWidth: NODE_MIN_WIDTH,
       }}
     >
       {/* Header */}
       <div
-        style={getNodeHeaderStyle(dialectColor)}
+        style={getHeaderContentStyle(dialectColor)}
         title={operation.description || undefined}
       >
         <div className="rf-node-header">

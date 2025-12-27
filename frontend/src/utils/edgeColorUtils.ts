@@ -6,6 +6,7 @@
  * 设计原则：
  * - 使用框架无关的 EditorNode/EditorEdge 类型
  * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
+ * - 颜色值从 Design Tokens 读取
  */
 
 import type { EditorNode, EditorEdge } from '../editor/types';
@@ -13,6 +14,10 @@ import type { BlueprintNodeData, FunctionEntryData, FunctionCallData, DataPin } 
 import { getTypeColor } from '../stores/typeColorCache';
 import { getDisplayType } from '../services/typeSelectorRenderer';
 import { PortRef, PortKind } from '../services/port';
+import { layoutConfig } from '../editor/adapters/shared/styles';
+
+/** 默认颜色 */
+const DEFAULT_COLOR = layoutConfig.type.default;
 
 /**
  * Gets the display type for a source port
@@ -74,13 +79,13 @@ export function getEdgeColor(
   sourceNodeId: string,
   sourceHandleId: string | null | undefined
 ): string {
-  if (!sourceHandleId) return '#95A5A6'; // 默认灰色
+  if (!sourceHandleId) return DEFAULT_COLOR;
 
   const sourceNode = nodes.find(n => n.id === sourceNodeId);
-  if (!sourceNode) return '#95A5A6';
+  if (!sourceNode) return DEFAULT_COLOR;
 
   const displayType = getSourcePortDisplayType(sourceNode, sourceHandleId);
-  return displayType ? getTypeColor(displayType) : '#95A5A6';
+  return displayType ? getTypeColor(displayType) : DEFAULT_COLOR;
 }
 
 /**
@@ -96,7 +101,7 @@ export function updateEdgeColors(nodes: EditorNode[], edges: EditorEdge[]): Edit
     if (!sourceNode) return edge;
 
     const displayType = getSourcePortDisplayType(sourceNode, edge.sourceHandle);
-    const newColor = displayType ? getTypeColor(displayType) : '#95A5A6';
+    const newColor = displayType ? getTypeColor(displayType) : DEFAULT_COLOR;
 
     if (edge.data?.color !== newColor) {
       return { ...edge, data: { ...edge.data, color: newColor } };

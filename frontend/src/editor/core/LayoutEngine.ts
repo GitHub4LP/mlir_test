@@ -5,7 +5,7 @@
  * 所有渲染器共享同一套布局计算逻辑，确保视觉一致性。
  */
 
-import { tokens, LAYOUT, getDialectColor, getTypeColor } from '../adapters/shared/styles';
+import { tokens, LAYOUT, getDialectColor, getTypeColor, getPinContentLayout, measureTextWidth } from '../adapters/shared/styles';
 import type { GraphNode } from '../../types';
 
 // ============================================================
@@ -82,8 +82,8 @@ export interface EdgeLayout {
 // 布局常量（从 tokens 获取）
 // ============================================================
 
-const HANDLE_OFFSET = parseInt(tokens.node.handle.offset) || 0;
-const BEZIER_OFFSET = parseInt(tokens.edge.bezierOffset) || 100;
+const HANDLE_OFFSET = typeof tokens.node.handle.offset === 'string' ? parseInt(tokens.node.handle.offset) : tokens.node.handle.offset;
+const BEZIER_OFFSET = typeof tokens.edge.bezierOffset === 'string' ? parseInt(tokens.edge.bezierOffset) : tokens.edge.bezierOffset;
 const EXEC_COLOR = tokens.edge.exec.color;
 const DEFAULT_DATA_COLOR = tokens.edge.data.defaultColor;
 
@@ -151,26 +151,31 @@ function getNodeSubtitle(node: GraphNode): string | undefined {
 
 /**
  * 获取节点头部颜色
- * 与 ReactFlow 节点组件保持完全一致
+ * 直接从 node.data.headerColor 读取（hydration 时设置）
  */
 function getNodeHeaderColor(node: GraphNode): string {
+  const data = node.data as Record<string, unknown>;
+  if (data.headerColor && typeof data.headerColor === 'string') {
+    return data.headerColor;
+  }
+  
+  // Fallback: 根据节点类型计算颜色
   switch (node.type) {
     case 'operation': {
-      const data = node.data as import('../../types').BlueprintNodeData;
-      return getDialectColor(data.operation.dialect);
+      const opData = data as { operation?: { dialect?: string } };
+      if (opData.operation?.dialect) {
+        return getDialectColor(opData.operation.dialect);
+      }
+      return tokens.node.bg;
     }
-    case 'function-entry': {
-      const data = node.data as import('../../types').FunctionEntryData;
+    case 'function-entry':
       return data.isMain ? tokens.nodeType.entryMain : tokens.nodeType.entry;
-    }
-    case 'function-return': {
-      const data = node.data as import('../../types').FunctionReturnData;
+    case 'function-return':
       return data.isMain ? tokens.nodeType.returnMain : tokens.nodeType.return;
-    }
     case 'function-call':
       return tokens.nodeType.call;
     default:
-      return getDialectColor('builtin');
+      return tokens.node.bg;
   }
 }
 
@@ -182,9 +187,10 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
   let inputIndex = 0;
   let outputIndex = 0;
 
-  // 计算端口 Y 坐标的辅助函数
+  // 计算端口 Y 坐标的辅助函数（使用统一的布局计算）
   const getHandleY = (index: number): number => {
-    return LAYOUT.headerHeight + LAYOUT.padding + index * LAYOUT.pinRowHeight + LAYOUT.pinRowHeight / 2;
+    const pinLayout = getPinContentLayout(index);
+    return pinLayout.handleY;
   };
 
   switch (node.type) {
@@ -387,6 +393,76 @@ function buildNodeHandles(node: GraphNode): HandleLayout[] {
 
 
 /**
+ * 计算节点宽度（基于内容自适应）
+ * 
+ * 考虑因素：
+ * 1. 标题 + 副标题宽度
+ * 2. 左侧端口：标签 + 类型标签
+ * 3. 右侧端口：标签 + 类型标签
+ * 4. 左右两侧需要足够空间，中间有间隙
+ */
+function computeNodeWidth(
+  node: GraphNode,
+  title: string,
+  subtitle: string | undefined,
+  handles: HandleLayout[]
+): number {
+  const data = node.data as Record<string, unknown>;
+  const inputTypes = (data.inputTypes as Record<string, string>) || {};
+  const outputTypes = (data.outputTypes as Record<string, string>) || {};
+  
+  // 1. 标题宽度
+  const titleWidth = measureTextWidth(title, tokens.text.title.size, tokens.text.fontFamily, tokens.text.title.weight);
+  const subtitleWidth = subtitle 
+    ? measureTextWidth(subtitle.toUpperCase(), tokens.text.subtitle.size, tokens.text.fontFamily, tokens.text.subtitle.weight)
+    : 0;
+  const headerWidth = LAYOUT.headerPaddingX * 2 + titleWidth + (subtitle ? LAYOUT.titleSubtitleGap + subtitleWidth : 0) + 40; // 40 for badges
+  
+  // 2. 计算左右两侧端口内容宽度
+  const inputHandles = handles.filter(h => !h.isOutput && h.kind === 'data');
+  const outputHandles = handles.filter(h => h.isOutput && h.kind === 'data');
+  
+  // 端口内容宽度 = handle offset + margin + label + gap + type label
+  const handleOffset = typeof tokens.node.handle.offset === 'string' ? parseInt(tokens.node.handle.offset) : tokens.node.handle.offset;
+  const pinContentMargin = LAYOUT.pinContentMargin;
+  const labelTypeGap = 8; // 标签和类型之间的间隙
+  const typeLabelPadding = 12; // 类型标签内边距
+  const minTypeLabelWidth = 40; // 类型标签最小宽度
+  
+  // 计算单侧端口宽度
+  const computeSideWidth = (sideHandles: HandleLayout[], types: Record<string, string>): number => {
+    let maxWidth = 0;
+    for (const handle of sideHandles) {
+      const labelWidth = handle.label ? measureTextWidth(handle.label, LAYOUT.pinLabelFontSize, tokens.text.fontFamily) : 0;
+      
+      // 获取类型文本
+      const portName = handle.handleId.replace(/^data-(in|out)-/, '');
+      const typeText = types[portName] || 'AnyType';
+      const typeWidth = Math.max(
+        measureTextWidth(typeText, tokens.typeLabel.fontSize, tokens.text.fontFamily) + typeLabelPadding,
+        minTypeLabelWidth
+      );
+      
+      const totalWidth = handleOffset + pinContentMargin + labelWidth + labelTypeGap + typeWidth;
+      maxWidth = Math.max(maxWidth, totalWidth);
+    }
+    return maxWidth;
+  };
+  
+  const leftWidth = computeSideWidth(inputHandles, inputTypes);
+  const rightWidth = computeSideWidth(outputHandles, outputTypes);
+  
+  // 3. 中间间隙
+  const centerGap = 20;
+  
+  // 4. 计算总宽度
+  const contentWidth = leftWidth + centerGap + rightWidth;
+  
+  // 返回最大值，但不小于最小宽度
+  return Math.max(LAYOUT.minWidth, headerWidth, contentWidth);
+}
+
+/**
  * 计算节点布局
  */
 export function computeNodeLayout(node: GraphNode, selected: boolean = false): NodeLayout {
@@ -397,19 +473,50 @@ export function computeNodeLayout(node: GraphNode, selected: boolean = false): N
   // 构建端口
   const handles = buildNodeHandles(node);
   
+  // 计算节点宽度（自适应内容）
+  const width = computeNodeWidth(node, title, subtitle, handles);
+  
+  // 更新输出端口的 X 坐标（因为宽度变了）
+  const handleOffset2 = typeof tokens.node.handle.offset === 'string' ? parseInt(tokens.node.handle.offset) : tokens.node.handle.offset;
+  for (const handle of handles) {
+    if (handle.isOutput) {
+      handle.x = width - handleOffset2;
+    }
+  }
+  
   // 计算输入和输出端口数量
   const inputCount = handles.filter(h => !h.isOutput).length;
   const outputCount = handles.filter(h => h.isOutput).length;
   const pinRows = Math.max(inputCount, outputCount);
   
   // 计算节点高度
-  const height = LAYOUT.headerHeight + pinRows * LAYOUT.pinRowHeight + LAYOUT.padding * 2;
+  // 实际行高 = pinRowHeight + pinRowPadding * 2 = 28 + 12 = 40px
+  const actualRowHeight = LAYOUT.pinRowHeight + LAYOUT.pinRowPadding * 2;
+  let height = LAYOUT.headerHeight + pinRows * actualRowHeight + LAYOUT.padding * 2;
+  
+  // Operation 节点：添加属性区域和 Summary 的高度
+  if (node.type === 'operation') {
+    const data = node.data as import('../../types').BlueprintNodeData;
+    const op = data.operation;
+    
+    // 属性区域高度
+    const attrs = op.arguments.filter(a => a.kind === 'attribute');
+    if (attrs.length > 0) {
+      const attrRowHeight = 24; // 属性行高度
+      height += attrs.length * attrRowHeight + LAYOUT.padding;
+    }
+    
+    // Summary 高度
+    if (op.summary) {
+      height += 20; // Summary 区域高度
+    }
+  }
   
   return {
     nodeId: node.id,
     x: node.position.x,
     y: node.position.y,
-    width: LAYOUT.minWidth,
+    width,
     height,
     headerHeight: LAYOUT.headerHeight,
     headerColor,

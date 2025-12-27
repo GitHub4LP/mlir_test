@@ -24,11 +24,13 @@ export { defaultEqualityFn, shallowEqual } from './core/IStore';
 export { useProjectStore } from './projectStore';
 export { useTypeConstraintStore } from './typeConstraintStore';
 export { useDialectStore } from './dialectStore';
+export { usePortStateStore, makePortKey, parsePortKey } from './portStateStore';
 
 // 重新导出类型
 export type { ProjectStore } from './projectStore';
 export type { TypeConstraintState, ConstraintDef, TypeDefinition } from './typeConstraintStore';
 export type { DialectState } from './dialectStore';
+export type { PortState } from './portStateStore';
 
 // ============================================================
 // 包装后的 Store 实例

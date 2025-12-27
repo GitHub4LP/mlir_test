@@ -14,7 +14,7 @@ import { ContainerComponent, type UIMouseEvent } from './UIComponent';
 import { TextInput } from './TextInput';
 import { Button } from './Button';
 import { ScrollableList, type ListItem } from './ScrollableList';
-import { tokens, TEXT, UI, OVERLAY, LAYOUT } from '../../shared/styles';
+import { TEXT, UI, OVERLAY, LAYOUT } from '../../shared/styles';
 
 /** 属性类型 */
 export type AttributeType = 'integer' | 'float' | 'boolean' | 'string' | 'enum';

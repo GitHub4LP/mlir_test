@@ -22,20 +22,10 @@ import type { TextRenderMode, EdgeRenderMode } from './GPURenderer';
 import { GPURenderer } from './GPURenderer';
 import { GraphController } from '../canvas/GraphController';
 import { UIManager, type TypeSelectorState } from '../canvas/UIManager';
-import type { TypeOption } from '../canvas/ui/TypeSelector';
-import { 
-  hitTestTypeLabel, 
-  hitTestVariadicButton, 
-  hitTestNodeExtended,
-  computeHoveredIndex,
-  type HitResult,
-  type EntryNodeHitData,
-  type ReturnNodeHitData,
-  type NodeType,
-} from '../canvas/HitTest';
-import { computeNodeLayout } from '../canvas/layout';
+import type { TypeOption, ConstraintData } from '../canvas/ui/TypeSelector';
 import { extendRenderData, type RenderExtensionConfig } from '../canvas/RenderExtensions';
-import type { GraphState, GraphNode, GraphEdge, BlueprintNodeData, FunctionEntryData, FunctionReturnData } from '../../../types';
+import type { GraphState, GraphNode, GraphEdge, FunctionEntryData, FunctionReturnData } from '../../../types';
+import { hitTestLayoutBox, parseInteractiveId } from '../../core/layout';
 
 /**
  * 将 EditorNode 转换为 GraphNode
@@ -116,6 +106,9 @@ export class GPUNodeEditor implements INodeEditor {
   // Traits 展开状态
   private traitsExpandedMap: Map<string, boolean> = new Map();
 
+  // Summary 展开状态
+  private summaryExpandedMap: Map<string, boolean> = new Map();
+
   
   constructor(preferWebGPU: boolean = true) {
     this.renderer = new GPURenderer(preferWebGPU);
@@ -154,10 +147,12 @@ export class GPUNodeEditor implements INodeEditor {
       const config: RenderExtensionConfig = {
         nodes: nodesMap,
         nodeList: this.nodes,
+        edgeList: this.edges,
         hoveredNodeId: this.hoveredNodeId,
         hoveredParamIndex: this.hoveredParamIndex,
         hoveredReturnIndex: this.hoveredReturnIndex,
         traitsExpandedMap: this.traitsExpandedMap,
+        summaryExpandedMap: this.summaryExpandedMap,
       };
       
       extendRenderData(data, nodeLayouts, config);
@@ -206,9 +201,19 @@ export class GPUNodeEditor implements INodeEditor {
       this.onEdgeDoubleClick?.(edgeId);
     };
     
+    // 节点双击
+    this.controller.onNodeDoubleClick = (nodeId) => {
+      this.onNodeDoubleClick?.(nodeId);
+    };
+    
     // 视口变化
     this.controller.onViewportChange = (viewport) => {
       this.onViewportChange?.(viewport);
+    };
+    
+    // Hover 状态更新回调
+    this.controller.onHoverChange = (screenX, screenY) => {
+      this.updateHoverState(screenX, screenY);
     };
     
     // 扩展命中测试回调（类型标签、按钮等）
@@ -230,7 +235,12 @@ export class GPUNodeEditor implements INodeEditor {
     };
     
     this.controller.onPreWheel = (screenX, screenY, deltaX, deltaY) => {
-      return this.uiManager.handleWheel({ x: screenX, y: screenY, deltaX, deltaY });
+      const handled = this.uiManager.handleWheel({ x: screenX, y: screenY, deltaX, deltaY });
+      if (handled) {
+        // UI 组件处理了滚轮事件，需要触发重新渲染
+        this.controller.requestRender();
+      }
+      return handled;
     };
     
     this.controller.onPreKeyDown = (key, code, ctrlKey, shiftKey, altKey) => {
@@ -295,7 +305,7 @@ export class GPUNodeEditor implements INodeEditor {
     this.edges = edges;
     this.requestRender();
   }
-  
+
   setSelection(selection: EditorSelection): void {
     this.selection = selection;
     this.controller.syncSelectionFromExternal(selection.nodeIds);
@@ -377,18 +387,13 @@ export class GPUNodeEditor implements INodeEditor {
   private requestRender(): void {
     if (!this.renderer.isReady()) {
       // 渲染器还没准备好，等待就绪后再渲染
-      console.log('GPUNodeEditor.requestRender: renderer not ready, waiting...');
       this.renderer.waitForReady().then(() => {
-        console.log('GPUNodeEditor.requestRender: renderer ready, rendering with', this.nodes.length, 'nodes');
         const renderData = this.controller.computeRenderData();
-        console.log('GPUNodeEditor.requestRender: renderData has', renderData.rects.length, 'rects');
         this.renderer.render(renderData);
       });
       return;
     }
-    console.log('GPUNodeEditor.requestRender: rendering with', this.nodes.length, 'nodes');
     const renderData = this.controller.computeRenderData();
-    console.log('GPUNodeEditor.requestRender: renderData has', renderData.rects.length, 'rects');
     this.renderer.render(renderData);
   }
 
@@ -405,9 +410,10 @@ export class GPUNodeEditor implements INodeEditor {
     screenX: number,
     screenY: number,
     options: TypeOption[],
-    currentType?: string
+    currentType?: string,
+    constraintData?: ConstraintData
   ): void {
-    this.uiManager.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType);
+    this.uiManager.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType, constraintData);
     this.onTypeSelectorChange?.(this.uiManager.getTypeSelectorState());
     this.requestRender();
   }
@@ -445,89 +451,14 @@ export class GPUNodeEditor implements INodeEditor {
    * 处理类型标签点击（供外部调用）
    */
   handleTypeLabelClick(screenX: number, screenY: number): boolean {
-    // 转换为画布坐标
-    const canvasPos = this.controller.screenToCanvas(screenX, screenY);
-    
-    // 遍历节点进行命中测试
-    for (const node of this.nodes) {
-      const graphNode: GraphNode = {
-        id: node.id,
-        type: node.type as GraphNode['type'],
-        position: node.position,
-        data: node.data as GraphNode['data'],
-      };
-      const layout = computeNodeLayout(graphNode, false);
-      const hit = hitTestTypeLabel(canvasPos.x, canvasPos.y, layout);
-      
-      if (hit) {
-        this.onTypeLabelClick?.(hit.nodeId, hit.handleId, hit.canvasX, hit.canvasY);
-        return true;
-      }
-    }
-    
-    return false;
+    return this.handleExtendedHitTest(screenX, screenY);
   }
 
   /**
    * 处理 Variadic 按钮点击（供外部调用）
    */
   handleVariadicButtonClick(screenX: number, screenY: number): boolean {
-    // 转换为画布坐标
-    const canvasPos = this.controller.screenToCanvas(screenX, screenY);
-    
-    // 遍历节点进行命中测试
-    for (const node of this.nodes) {
-      // 只有 operation 节点有 Variadic 端口
-      if (node.type !== 'operation') continue;
-      
-      const data = node.data as BlueprintNodeData;
-      const variadicGroups = this.getVariadicGroups(data);
-      if (variadicGroups.length === 0) continue;
-      
-      const graphNode: GraphNode = {
-        id: node.id,
-        type: node.type as GraphNode['type'],
-        position: node.position,
-        data: node.data as GraphNode['data'],
-      };
-      const layout = computeNodeLayout(graphNode, false);
-      const hit = hitTestVariadicButton(canvasPos.x, canvasPos.y, layout, variadicGroups);
-      
-      if (hit) {
-        if (hit.action === 'add') {
-          this.onVariadicAdd?.(hit.nodeId, hit.groupName);
-        } else {
-          this.onVariadicRemove?.(hit.nodeId, hit.groupName);
-        }
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
-  /**
-   * 获取节点的 Variadic 组名列表
-   */
-  private getVariadicGroups(data: BlueprintNodeData): string[] {
-    const groups: string[] = [];
-    const op = data.operation;
-    
-    // 检查 operands
-    for (const arg of op.arguments) {
-      if (arg.kind === 'operand' && arg.isVariadic && !groups.includes(arg.name)) {
-        groups.push(arg.name);
-      }
-    }
-    
-    // 检查 results
-    for (const result of op.results) {
-      if (result.isVariadic && !groups.includes(result.name)) {
-        groups.push(result.name);
-      }
-    }
-    
-    return groups;
+    return this.handleExtendedHitTest(screenX, screenY);
   }
 
   // ============================================================
@@ -535,26 +466,44 @@ export class GPUNodeEditor implements INodeEditor {
   // ============================================================
 
   /**
-   * 处理扩展命中测试（支持所有交互区域）
+   * 处理扩展命中测试（基于 LayoutBox）
    * 返回是否命中了交互区域
    */
   handleExtendedHitTest(screenX: number, screenY: number): boolean {
+    // 获取缓存的渲染数据中的 layoutBoxes
+    const renderData = this.controller.getCachedRenderData();
+    if (!renderData.layoutBoxes || renderData.layoutBoxes.size === 0) {
+      return false;
+    }
+    
     const canvasPos = this.controller.screenToCanvas(screenX, screenY);
     
-    for (const node of this.nodes) {
-      const graphNode: GraphNode = {
-        id: node.id,
-        type: node.type as GraphNode['type'],
-        position: node.position,
-        data: node.data as GraphNode['data'],
-      };
-      const layout = computeNodeLayout(graphNode, false);
+    // 遍历所有节点的 LayoutBox 进行命中测试
+    for (const [nodeId, layoutBox] of renderData.layoutBoxes) {
+      // 计算相对于节点的坐标
+      const localX = canvasPos.x - layoutBox.x;
+      const localY = canvasPos.y - layoutBox.y;
       
-      // 构建命中测试选项
-      const options = this.buildHitTestOptions(node);
-      const hit = hitTestNodeExtended(canvasPos.x, canvasPos.y, layout, options);
+      // 检查是否在节点范围内
+      if (localX < 0 || localX > layoutBox.width || localY < 0 || localY > layoutBox.height) {
+        continue;
+      }
       
-      if (this.handleHitResult(hit, node)) {
+      // 使用 LayoutBox 命中测试
+      const hit = hitTestLayoutBox(layoutBox, localX, localY);
+      if (!hit || !hit.box.interactive?.id) {
+        continue;
+      }
+      
+      // 解析 interactive.id
+      const parsed = parseInteractiveId(hit.box.interactive.id);
+      
+      // 找到对应的节点
+      const node = this.nodes.find(n => n.id === nodeId);
+      if (!node) continue;
+      
+      // 处理命中结果
+      if (this.handleParsedHitResult(parsed, nodeId, node, canvasPos.x, canvasPos.y)) {
         return true;
       }
     }
@@ -563,156 +512,142 @@ export class GPUNodeEditor implements INodeEditor {
   }
 
   /**
-   * 构建命中测试选项
+   * 处理解析后的命中结果
    */
-  private buildHitTestOptions(node: EditorNode): {
-    nodeType: NodeType;
-    variadicGroups?: string[];
-    entryData?: EntryNodeHitData;
-    returnData?: ReturnNodeHitData;
-    hoveredParamIndex?: number | null;
-    hoveredReturnIndex?: number | null;
-  } {
-    const nodeType = node.type as NodeType;
-    
-    switch (nodeType) {
-      case 'operation': {
-        const data = node.data as BlueprintNodeData;
-        return {
-          nodeType,
-          variadicGroups: this.getVariadicGroups(data),
-        };
-      }
-      case 'function-entry': {
-        const data = node.data as FunctionEntryData;
-        return {
-          nodeType,
-          entryData: {
-            isMain: data.isMain,
-            parameters: data.outputs?.map(o => ({ name: o.name })) ?? [],
-            traitsExpanded: this.traitsExpandedMap.get(node.id) ?? false,
-          },
-          hoveredParamIndex: this.hoveredNodeId === node.id ? this.hoveredParamIndex : null,
-        };
-      }
-      case 'function-return': {
-        const data = node.data as FunctionReturnData;
-        return {
-          nodeType,
-          returnData: {
-            isMain: data.isMain,
-            returnTypes: data.inputs?.map(i => ({ name: i.name })) ?? [],
-          },
-          hoveredReturnIndex: this.hoveredNodeId === node.id ? this.hoveredReturnIndex : null,
-        };
-      }
-      case 'function-call':
-        return { nodeType };
-      default:
-        return { nodeType: 'operation' };
+  private handleParsedHitResult(
+    parsed: ReturnType<typeof parseInteractiveId>,
+    nodeId: string,
+    node: EditorNode,
+    canvasX: number,
+    canvasY: number
+  ): boolean {
+    switch (parsed.type) {
+      case 'type-label':
+        if (parsed.handleId) {
+          this.onTypeLabelClick?.(nodeId, parsed.handleId, canvasX, canvasY);
+          return true;
+        }
+        break;
+        
+      case 'variadic':
+        if (parsed.group && parsed.action) {
+          if (parsed.action === 'add') {
+            this.onVariadicAdd?.(nodeId, parsed.group);
+          } else {
+            this.onVariadicRemove?.(nodeId, parsed.group);
+          }
+          return true;
+        }
+        break;
+        
+      case 'param-add':
+        this.onParameterAdd?.(nodeId);
+        return true;
+        
+      case 'param-remove':
+        if (parsed.index !== undefined) {
+          const entryData = node.data as FunctionEntryData;
+          const paramName = entryData.outputs?.[parsed.index]?.name;
+          if (paramName) {
+            this.onParameterRemove?.(nodeId, paramName);
+          }
+          return true;
+        }
+        break;
+        
+      case 'param-name':
+        if (parsed.index !== undefined) {
+          const entryData = node.data as FunctionEntryData;
+          const paramName = entryData.outputs?.[parsed.index]?.name ?? '';
+          this.onParamNameClick?.(nodeId, parsed.index, paramName, canvasX, canvasY);
+          return true;
+        }
+        break;
+        
+      case 'return-add':
+        this.onReturnTypeAdd?.(nodeId);
+        return true;
+        
+      case 'return-remove':
+        if (parsed.index !== undefined) {
+          const returnData = node.data as FunctionReturnData;
+          const returnName = returnData.inputs?.[parsed.index]?.name;
+          if (returnName) {
+            this.onReturnTypeRemove?.(nodeId, returnName);
+          }
+          return true;
+        }
+        break;
+        
+      case 'return-name':
+        if (parsed.index !== undefined) {
+          const returnData = node.data as FunctionReturnData;
+          const returnName = returnData.inputs?.[parsed.index]?.name ?? '';
+          this.onReturnNameClick?.(nodeId, parsed.index, returnName, canvasX, canvasY);
+          return true;
+        }
+        break;
+        
+      case 'traits-toggle':
+        this.onTraitsToggleClick?.(nodeId, canvasX, canvasY);
+        return true;
+        
+      case 'summary-toggle':
+        this.toggleSummaryExpanded(nodeId);
+        return true;
     }
+    
+    return false;
   }
 
   /**
-   * 处理命中结果
+   * 切换 Summary 展开状态
    */
-  private handleHitResult(hit: HitResult, node: EditorNode): boolean {
-    switch (hit.kind) {
-      case 'type-label':
-        this.onTypeLabelClick?.(hit.nodeId, hit.handleId, hit.canvasX, hit.canvasY);
-        return true;
-        
-      case 'variadic-button':
-        if (hit.action === 'add') {
-          this.onVariadicAdd?.(hit.nodeId, hit.groupName);
-        } else {
-          this.onVariadicRemove?.(hit.nodeId, hit.groupName);
-        }
-        return true;
-        
-      case 'param-add':
-        this.onParameterAdd?.(hit.nodeId);
-        return true;
-        
-      case 'param-remove': {
-        const entryData = node.data as FunctionEntryData;
-        const paramName = entryData.outputs?.[hit.paramIndex]?.name;
-        if (paramName) {
-          this.onParameterRemove?.(hit.nodeId, paramName);
-        }
-        return true;
-      }
-        
-      case 'param-name':
-        this.onParamNameClick?.(hit.nodeId, hit.paramIndex, hit.currentName, hit.canvasX, hit.canvasY);
-        return true;
-        
-      case 'return-add':
-        this.onReturnTypeAdd?.(hit.nodeId);
-        return true;
-        
-      case 'return-remove': {
-        const returnData = node.data as FunctionReturnData;
-        const returnName = returnData.inputs?.[hit.returnIndex]?.name;
-        if (returnName) {
-          this.onReturnTypeRemove?.(hit.nodeId, returnName);
-        }
-        return true;
-      }
-        
-      case 'return-name':
-        this.onReturnNameClick?.(hit.nodeId, hit.returnIndex, hit.currentName, hit.canvasX, hit.canvasY);
-        return true;
-        
-      case 'traits-toggle':
-        this.onTraitsToggleClick?.(hit.nodeId, hit.canvasX, hit.canvasY);
-        return true;
-        
-      default:
-        return false;
-    }
+  private toggleSummaryExpanded(nodeId: string): void {
+    const current = this.summaryExpandedMap.get(nodeId) ?? false;
+    this.summaryExpandedMap.set(nodeId, !current);
+    this.requestRender();
   }
 
   /**
    * 更新 hover 状态（用于显示删除按钮）
+   * 基于 LayoutBox 命中测试
    */
   updateHoverState(screenX: number, screenY: number): void {
+    const renderData = this.controller.getCachedRenderData();
+    if (!renderData.layoutBoxes || renderData.layoutBoxes.size === 0) {
+      return;
+    }
+    
     const canvasPos = this.controller.screenToCanvas(screenX, screenY);
     let newHoveredNodeId: string | null = null;
     let newHoveredParamIndex: number | null = null;
     let newHoveredReturnIndex: number | null = null;
     
-    for (const node of this.nodes) {
-      const graphNode: GraphNode = {
-        id: node.id,
-        type: node.type as GraphNode['type'],
-        position: node.position,
-        data: node.data as GraphNode['data'],
-      };
-      const layout = computeNodeLayout(graphNode, false);
+    for (const [nodeId, layoutBox] of renderData.layoutBoxes) {
+      const localX = canvasPos.x - layoutBox.x;
+      const localY = canvasPos.y - layoutBox.y;
       
-      if (node.type === 'function-entry') {
-        const data = node.data as FunctionEntryData;
-        if (!data.isMain) {
-          const paramCount = data.outputs?.length ?? 0;
-          const index = computeHoveredIndex(canvasPos.x, canvasPos.y, layout, 'function-entry', paramCount);
-          if (index !== null) {
-            newHoveredNodeId = node.id;
-            newHoveredParamIndex = index;
-            break;
-          }
-        }
-      } else if (node.type === 'function-return') {
-        const data = node.data as FunctionReturnData;
-        if (!data.isMain) {
-          const returnCount = data.inputs?.length ?? 0;
-          const index = computeHoveredIndex(canvasPos.x, canvasPos.y, layout, 'function-return', returnCount);
-          if (index !== null) {
-            newHoveredNodeId = node.id;
-            newHoveredReturnIndex = index;
-            break;
-          }
-        }
+      if (localX < 0 || localX > layoutBox.width || localY < 0 || localY > layoutBox.height) {
+        continue;
+      }
+      
+      const hit = hitTestLayoutBox(layoutBox, localX, localY);
+      if (!hit || !hit.box.interactive?.id) {
+        continue;
+      }
+      
+      const parsed = parseInteractiveId(hit.box.interactive.id);
+      
+      // 检查是否命中参数或返回值区域
+      if (parsed.type === 'param-name' || parsed.type === 'param-remove') {
+        newHoveredNodeId = nodeId;
+        newHoveredParamIndex = parsed.index ?? null;
+        break;
+      } else if (parsed.type === 'return-name' || parsed.type === 'return-remove') {
+        newHoveredNodeId = nodeId;
+        newHoveredReturnIndex = parsed.index ?? null;
+        break;
       }
     }
     
@@ -723,7 +658,6 @@ export class GPUNodeEditor implements INodeEditor {
       this.hoveredNodeId = newHoveredNodeId;
       this.hoveredParamIndex = newHoveredParamIndex;
       this.hoveredReturnIndex = newHoveredReturnIndex;
-      // 触发重渲染以显示/隐藏删除按钮
       this.requestRender();
     }
   }
