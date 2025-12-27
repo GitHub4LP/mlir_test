@@ -22,7 +22,7 @@
   border: var(--node-border-width) solid var(--node-border-color);
   border-radius: var(--node-border-radius);
   font-family: var(--font-family);
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
@@ -34,6 +34,7 @@
 /* ============================================================
    节点头部 - Figma: header
    direction: horizontal, spacing: auto (space-between)
+   注意：外层容器已通过 getHeaderContentStyle() 设置 padding
    ============================================================ */
 
 .rf-node-header {
@@ -41,8 +42,8 @@
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  height: var(--header-height);
-  padding: var(--header-padding);
+  width: 100%;
+  /* 不设置 height 和 padding，由外层 figmaStyles 控制 */
 }
 
 /* ============================================================
@@ -55,6 +56,7 @@
   flex-direction: row;
   align-items: baseline;
   gap: var(--title-group-spacing);
+  flex-shrink: 0;
 }
 
 .rf-node-dialect {
@@ -80,6 +82,8 @@
   flex-direction: row;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+  margin-left: 8px;  /* headerSpacer minWidth */
 }
 
 .rf-node-badge {
@@ -112,6 +116,7 @@
   align-items: center;
   min-height: var(--pin-row-min-height);
   padding: var(--pin-row-padding);
+  gap: var(--pin-row-spacer-min-width, 4px);
 }
 
 /* ============================================================
@@ -185,7 +190,7 @@
 
 /* ============================================================
    属性区域 - Figma: attrArea
-   direction: vertical, spacing: 4px
+   使用两列布局：labelColumn (右对齐) + valueColumn (flex-grow)
    ============================================================ */
 
 .rf-node-attrs {
@@ -199,35 +204,48 @@
 /* ============================================================
    属性行 - Figma: attrRow
    direction: horizontal, spacing: 8px
+   左侧 label 右对齐，右侧 value 撑满
    ============================================================ */
 
 .rf-node-attr-row {
   display: flex;
   flex-direction: row;
   align-items: center;
-  height: var(--attr-row-height);
+  min-height: var(--attr-row-height);
   gap: var(--attr-row-spacing);
 }
 
 .rf-node-attr-label {
-  width: var(--attr-label-width);
   font-size: var(--label-font-size);
   color: var(--muted-color);
   cursor: help;
   flex-shrink: 0;
+  text-align: right;
+  /* 不设置固定宽度，由内容决定 */
+}
+
+/* 属性值容器 - 撑满剩余空间 */
+.rf-node-attr-value {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ============================================================
    Summary 区域
+   使用 width: 0 + min-width: 100% 技巧，让文本不撑开父容器
    ============================================================ */
 
 .rf-node-summary {
   padding: var(--attr-area-padding);
   border-top: 1px solid var(--node-border-color);
   background-color: rgba(31, 41, 55, 0.5);
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
 }
 
 .rf-node-summary-text {
+  display: block;
   font-size: var(--subtitle-font-size);
   color: var(--muted-color);
   overflow: hidden;
@@ -248,6 +266,8 @@
   padding: 4px 8px;
   border: 1px solid #4b5563;
   outline: none;
+  flex: 1;
+  min-width: 0;
 }
 
 .rf-input:focus {
@@ -259,15 +279,18 @@
 }
 
 .rf-input-number {
+  /* 数字输入框不需要撑满，保持较小宽度 */
+  flex: 0 0 auto;
   width: 80px;
 }
 
 .rf-input-text {
-  width: 96px;
+  /* 文本输入框撑满 */
+  flex: 1;
+  min-width: 60px;
 }
 
 .rf-select {
-  width: 96px;
   font-size: var(--label-font-size);
   font-family: var(--font-family);
   background-color: #374151;
@@ -276,12 +299,15 @@
   padding: 4px 8px;
   border: 1px solid #4b5563;
   outline: none;
+  flex: 1;
+  min-width: 0;
 }
 
 .rf-checkbox {
   width: 16px;
   height: 16px;
   accent-color: #3b82f6;
+  flex: 0 0 auto;
 }
 
 /* ============================================================

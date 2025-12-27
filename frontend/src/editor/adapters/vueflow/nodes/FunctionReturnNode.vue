@@ -286,27 +286,27 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
 }
 
 .fn-name {
-  font-size: var(--text-title-size, 14px);
-  color: var(--text-title-color, #ffffff);
-  font-weight: var(--text-title-weight, 600);
+  font-size: var(--text-title-size);
+  color: var(--text-title-color);
+  font-weight: var(--text-title-weight);
 }
 
 .main-tag {
-  font-size: var(--text-subtitle-size, 12px);
-  color: var(--text-subtitle-color, rgba(255, 255, 255, 0.7));
+  font-size: var(--text-subtitle-size);
+  color: var(--text-subtitle-color);
   margin-left: 4px;
 }
 
 .node-body {
-  padding: 4px;
+  padding: var(--body-padding);
 }
 
 .pin-row {
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  padding: 6px 0;
-  min-height: 28px;
+  padding: var(--pin-row-padding-y) 0;
+  min-height: var(--pin-row-min-height);
   position: relative;
 }
 
@@ -323,16 +323,17 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
 .pin-content {
   display: flex;
   flex-direction: column;
+  gap: var(--pin-content-spacing);
 }
 
 .pin-content.left {
   align-items: flex-start;
-  margin-left: 16px;
+  margin-left: var(--pin-content-margin-left);
 }
 
 .pin-label {
-  font-size: var(--text-label-size, 12px);
-  color: var(--text-label-color, #d1d5db);
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
   line-height: 1;
 }
 
@@ -340,13 +341,13 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
 .delete-btn {
   opacity: 0;
   padding: 2px;
-  color: var(--text-muted-color, #6b7280);
+  color: var(--text-muted-color);
   margin-left: 4px;
   transition: opacity 0.15s;
 }
 
 .delete-btn:hover {
-  color: var(--btn-danger-hover-color, #f87171);
+  color: var(--btn-danger-hover-color);
 }
 
 .group:hover .delete-btn {
@@ -355,12 +356,12 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
 
 /* 添加按钮 */
 .add-btn {
-  margin-left: 16px;
-  color: var(--text-muted-color, #6b7280);
+  margin-left: var(--pin-content-margin-left);
+  color: var(--text-muted-color);
 }
 
 .add-btn:hover {
-  color: var(--text-title-color, #ffffff);
+  color: var(--text-title-color);
 }
 
 /* Handle 样式 */
@@ -373,14 +374,14 @@ const headerStyle = computed(() => getHeaderStyle(headerColor.value));
   border: none !important;
   border-style: solid !important;
   border-width: 5px 0 5px 8px !important;
-  border-color: transparent transparent transparent var(--exec-color, #ffffff) !important;
+  border-color: transparent transparent transparent var(--exec-color) !important;
   border-radius: 0 !important;
 }
 
 :deep(.handle-data) {
-  width: var(--handle-size, 12px) !important;
-  height: var(--handle-size, 12px) !important;
-  border: 2px solid var(--node-bg-color, #2d2d3d) !important;
+  width: var(--handle-size) !important;
+  height: var(--handle-size) !important;
+  border: 2px solid var(--node-bg-color) !important;
   border-radius: 50% !important;
 }
 </style>

@@ -25,7 +25,6 @@ import {
   getNodeContainerStyle,
   getHeaderContentStyle,
   getDialectColor,
-  NODE_MIN_WIDTH,
 } from '../../shared/figmaStyles';
 import { getPortType } from '../../../../services/portTypeService';
 import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
@@ -136,10 +135,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
   return (
     <div
       className="rf-node"
-      style={{
-        ...getNodeContainerStyle(selected),
-        minWidth: NODE_MIN_WIDTH,
-      }}
+      style={getNodeContainerStyle(selected)}
     >
       {/* Header */}
       <div

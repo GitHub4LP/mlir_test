@@ -438,7 +438,7 @@ export function getTypeColor(typeConstraint: string): string {
 // ============================================================================
 
 /** 节点最小宽度 */
-export const NODE_MIN_WIDTH = layoutConfig.node.minWidth ?? 200;
+export const NODE_MIN_WIDTH = layoutConfig.node.minWidth ?? 0;
 
 // ============================================================================
 // 导出 layoutConfig 供直接访问

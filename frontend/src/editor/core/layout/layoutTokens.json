@@ -146,7 +146,7 @@
     "layoutGrow": 1,
     "primaryAxisSizingMode": "AUTO",
     "counterAxisSizingMode": "AUTO",
-    "minWidth": 40
+    "minWidth": 4
   },
   "pinContent": {
     "layoutMode": "VERTICAL",

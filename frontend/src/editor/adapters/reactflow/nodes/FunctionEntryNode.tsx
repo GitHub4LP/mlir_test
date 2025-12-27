@@ -24,7 +24,6 @@ import {
   getExecHandleStyleRight,
   getDataHandleStyle,
   getNodeTypeColor,
-  NODE_MIN_WIDTH,
 } from '../../shared/figmaStyles';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
@@ -104,10 +103,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   return (
     <div
       className="rf-node"
-      style={{
-        ...getNodeContainerStyle(selected),
-        minWidth: NODE_MIN_WIDTH,
-      }}
+      style={getNodeContainerStyle(selected)}
     >
       {/* Header */}
       <div style={getHeaderContentStyle(headerColor)}>

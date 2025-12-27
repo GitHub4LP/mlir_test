@@ -20,7 +20,6 @@ import {
   getNodeContainerStyle,
   getHeaderContentStyle,
   getNodeTypeColor,
-  NODE_MIN_WIDTH,
 } from '../../shared/figmaStyles';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
@@ -84,10 +83,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   return (
     <div
       className="rf-node"
-      style={{
-        ...getNodeContainerStyle(selected),
-        minWidth: NODE_MIN_WIDTH,
-      }}
+      style={getNodeContainerStyle(selected)}
     >
       {/* Header */}
       <div style={getHeaderContentStyle(headerColor)}>

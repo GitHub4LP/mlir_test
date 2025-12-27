@@ -23,7 +23,6 @@ import {
   getExecHandleStyle,
   getDataHandleStyle,
   getNodeTypeColor,
-  NODE_MIN_WIDTH,
 } from '../../shared/figmaStyles';
 
 export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>;
@@ -100,10 +99,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   return (
     <div
       className="rf-node"
-      style={{
-        ...getNodeContainerStyle(selected),
-        minWidth: NODE_MIN_WIDTH,
-      }}
+      style={getNodeContainerStyle(selected)}
     >
       {/* Header */}
       <div style={getHeaderContentStyle(headerColor)}>

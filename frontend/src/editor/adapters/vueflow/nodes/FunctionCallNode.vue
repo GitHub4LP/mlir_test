@@ -292,29 +292,29 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
 }
 
 .call-label {
-  font-size: var(--text-subtitle-size, 12px);
-  color: var(--text-subtitle-color, rgba(255, 255, 255, 0.7));
+  font-size: var(--text-subtitle-size);
+  color: var(--text-subtitle-color);
   text-transform: uppercase;
-  font-weight: var(--text-subtitle-weight, 500);
+  font-weight: var(--text-subtitle-weight);
 }
 
 .fn-name {
-  font-size: var(--text-title-size, 14px);
-  color: var(--text-title-color, #ffffff);
-  font-weight: var(--text-title-weight, 600);
+  font-size: var(--text-title-size);
+  color: var(--text-title-color);
+  font-weight: var(--text-title-weight);
   margin-left: 4px;
 }
 
 .node-body {
-  padding: 4px;
+  padding: var(--body-padding);
 }
 
 .pin-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
-  min-height: 28px;
+  padding: var(--pin-row-padding-y) 0;
+  min-height: var(--pin-row-min-height);
 }
 
 .pin-cell {
@@ -334,21 +334,22 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
 .pin-content {
   display: flex;
   flex-direction: column;
+  gap: var(--pin-content-spacing);
 }
 
 .pin-content.left {
   align-items: flex-start;
-  margin-left: 16px;
+  margin-left: var(--pin-content-margin-left);
 }
 
 .pin-content.right {
   align-items: flex-end;
-  margin-right: 16px;
+  margin-right: var(--pin-content-margin-right);
 }
 
 .pin-label {
-  font-size: var(--text-label-size, 12px);
-  color: var(--text-label-color, #d1d5db);
+  font-size: var(--text-label-size);
+  color: var(--text-label-color);
   line-height: 1;
 }
 
@@ -362,19 +363,19 @@ const maxRows = computed(() => Math.max(inputPins.value.length, outputPins.value
   border: none !important;
   border-style: solid !important;
   border-width: 5px 0 5px 8px !important;
-  border-color: transparent transparent transparent var(--exec-color, #ffffff) !important;
+  border-color: transparent transparent transparent var(--exec-color) !important;
   border-radius: 0 !important;
 }
 
 :deep(.vue-flow__handle-right.handle-exec) {
   border-width: 5px 8px 5px 0 !important;
-  border-color: transparent var(--exec-color, #ffffff) transparent transparent !important;
+  border-color: transparent var(--exec-color) transparent transparent !important;
 }
 
 :deep(.handle-data) {
-  width: var(--handle-size, 12px) !important;
-  height: var(--handle-size, 12px) !important;
-  border: 2px solid var(--node-bg-color, #2d2d3d) !important;
+  width: var(--handle-size) !important;
+  height: var(--handle-size) !important;
+  border: 2px solid var(--node-bg-color) !important;
   border-radius: 50% !important;
 }
 </style>
