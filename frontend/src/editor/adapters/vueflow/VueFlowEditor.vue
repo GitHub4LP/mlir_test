@@ -376,4 +376,17 @@ function handleKeyDown(event: KeyboardEvent) {
   left: auto !important;
   transform: translateX(50%) translateY(-50%) !important;
 }
+
+/* VueFlow 节点样式 */
+.vue-flow__node {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+/* 节点根容器 */
+.vf-node {
+  font-family: system-ui, -apple-system, sans-serif;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
 </style>

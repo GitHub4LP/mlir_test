@@ -279,6 +279,12 @@ export const PIN_ROW = {
 
 /** 获取 CSS 变量对象 - 可用于 :style 绑定到根元素 */
 export function getCSSVariables(): Record<string, string> {
+  // 从 layoutConfig 获取 pinRowContent 的背景色
+  const pinRowContentFill = layoutConfig.pinRowContent.fills?.[0];
+  const pinRowContentBg = pinRowContentFill && 'color' in pinRowContentFill && pinRowContentFill.color
+    ? `rgb(${Math.round(pinRowContentFill.color.r * 255)}, ${Math.round(pinRowContentFill.color.g * 255)}, ${Math.round(pinRowContentFill.color.b * 255)})`
+    : '#2d2d3d';
+
   return {
     // Handle
     '--handle-radius': `${HANDLE_RADIUS}px`,
@@ -288,6 +294,8 @@ export function getCSSVariables(): Record<string, string> {
     '--node-bg-color': '#2d2d3d',
     '--node-border-color': '#3d3d4d',
     '--node-border-radius': `${layoutConfig.headerContent.topLeftRadius ?? 8}px`,
+    // Pin Row Content 背景色（与 Canvas 一致）
+    '--pin-row-content-bg': pinRowContentBg,
     // Text
     '--text-title-size': `${layoutConfig.text.title.fontSize}px`,
     '--text-title-color': layoutConfig.text.title.fill,
@@ -304,8 +312,15 @@ export function getCSSVariables(): Record<string, string> {
     '--pin-content-margin-left': `${PIN_ROW.contentMarginLeft}px`,
     '--pin-content-margin-right': `${PIN_ROW.contentMarginRight}px`,
     '--pin-content-spacing': `${PIN_ROW.contentSpacing}px`,
+    // Pin Row Spacer（左右引脚最小间距）
+    '--pin-row-spacer-min-width': `${layoutConfig.pinRowSpacer.minWidth ?? 4}px`,
     // Body
     '--body-padding': getBodyPadding(),
+    // Header padding
+    '--header-padding-x': `${layoutConfig.headerContent.paddingLeft ?? 6}px`,
+    '--header-padding-y': `${layoutConfig.headerContent.paddingTop ?? 8}px`,
+    // Title group spacing
+    '--title-group-spacing': `${layoutConfig.titleGroup.itemSpacing ?? 4}px`,
     // Button
     '--btn-danger-hover-color': layoutConfig.button?.danger?.hoverColor ?? '#f87171',
   };

@@ -48,6 +48,10 @@ export {
   getContainerConfig,
   normalizePadding,
   formatPadding,
+  // 颜色工具函数
+  getDialectColor,
+  getNodeTypeColor,
+  getTypeColor,
 } from './LayoutConfig';
 
 // LayoutEngine 导出
@@ -65,6 +69,24 @@ export {
   supportsParamEdit,
   supportsReturnEdit,
 } from './buildNodeLayoutTree';
+
+// DOMRenderer 导出
+export {
+  DOMRenderer,
+} from './DOMRenderer';
+
+export type {
+  DOMRendererProps,
+  HandleRenderConfig,
+  TypeSelectorRenderConfig,
+  EditableNameRenderConfig,
+  ButtonRenderConfig,
+  InteractiveRenderers,
+  CallbackMap,
+} from './DOMRenderer';
+
+// figmaToCSS 导出
+export { figmaToCSS, figmaColorToCSS, figmaFillsToCSS, figmaPaintToCSS } from './figmaToCSS';
 
 // 便捷函数：GraphNode → LayoutBox
 import { buildNodeLayoutTree as _buildNodeLayoutTree } from './buildNodeLayoutTree';

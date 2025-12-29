@@ -106,13 +106,13 @@ export const tokens = {
     minWidth: layoutConfig.node.minWidth ?? DEFAULTS.nodeMinWidth,
     padding: getFigmaPadding(layoutConfig.node).top,
     border: {
-      color: '#3d3d4d',
-      width: 1,
+      color: (layoutConfig.node as unknown as { border?: { color?: string } }).border?.color ?? '#3d3d4d',
+      width: (layoutConfig.node as unknown as { border?: { width?: number } }).border?.width ?? 1,
       radius: getCornerRadius(layoutConfig.headerContent),
     },
     selected: {
-      borderColor: '#60a5fa',
-      borderWidth: 2,
+      borderColor: (layoutConfig.node as unknown as { selected?: { borderColor?: string } }).selected?.borderColor ?? '#60a5fa',
+      borderWidth: (layoutConfig.node as unknown as { selected?: { borderWidth?: number } }).selected?.borderWidth ?? 2,
     },
     header: {
       height: (() => {
@@ -255,7 +255,7 @@ export function getPinRowStyle(): React.CSSProperties {
 // Handle 样式（React 组件用）
 // ============================================================
 
-/** 获取执行引脚样式（左侧输入，三角形朝右） */
+/** 获取执行引脚样式（左侧输入，三角形朝右 ▶） */
 export function getExecHandleStyle(): React.CSSProperties {
   return {
     width: 0,
@@ -271,7 +271,7 @@ export function getExecHandleStyle(): React.CSSProperties {
   };
 }
 
-/** 获取执行引脚样式（右侧输出，三角形朝右） */
+/** 获取执行引脚样式（右侧输出，三角形朝右 ▶） */
 export function getExecHandleStyleRight(): React.CSSProperties {
   return {
     width: 0,
@@ -280,8 +280,9 @@ export function getExecHandleStyleRight(): React.CSSProperties {
     minHeight: 0,
     padding: 0,
     borderStyle: 'solid',
-    borderWidth: '5px 8px 5px 0',
-    borderColor: `transparent ${tokens.edge.exec.color} transparent transparent`,
+    // 三角形朝右：左边框有颜色
+    borderWidth: '5px 0 5px 8px',
+    borderColor: `transparent transparent transparent ${tokens.edge.exec.color}`,
     backgroundColor: 'transparent',
     borderRadius: 0,
   };
@@ -346,57 +347,24 @@ export function getDataHandleCSS(): string {
 }
 
 // ============================================================
-// 颜色获取
+// 颜色获取（从 LayoutConfig 重导出）
 // ============================================================
 
+// 从 LayoutConfig 导入统一实现
+import {
+  getDialectColor as _getDialectColor,
+  getNodeTypeColor as _getNodeTypeColor,
+  getTypeColor as _getTypeColor,
+} from '../../core/layout/LayoutConfig';
+
 /** 获取方言颜色 */
-export function getDialectColor(dialectName: string): string {
-  return layoutConfig.dialect[dialectName] ?? layoutConfig.dialect.default;
-}
+export const getDialectColor = _getDialectColor;
 
 /** 获取节点类型颜色 */
-export function getNodeTypeColor(type: 'entry' | 'entryMain' | 'return' | 'returnMain' | 'call' | 'operation'): string {
-  return layoutConfig.nodeType[type];
-}
+export const getNodeTypeColor = _getNodeTypeColor;
 
-/**
- * 获取类型颜色
- */
-export function getTypeColor(typeConstraint: string): string {
-  if (!typeConstraint) return layoutConfig.type.default;
-  
-  // 1. 精确匹配
-  if (layoutConfig.type[typeConstraint]) {
-    return layoutConfig.type[typeConstraint];
-  }
-  
-  // 2. 前缀模式匹配
-  if (/^UI\d+$/.test(typeConstraint)) return layoutConfig.type.unsignedInteger;
-  if (/^I\d+$/.test(typeConstraint)) return layoutConfig.type.signlessInteger;
-  if (/^SI\d+$/.test(typeConstraint)) return layoutConfig.type.signedInteger;
-  if (/^F\d+/.test(typeConstraint)) return layoutConfig.type.float;
-  if (/^TF\d+/.test(typeConstraint)) return layoutConfig.type.tensorFloat;
-  
-  // 3. 关键词匹配
-  if (typeConstraint.includes('Integer') || typeConstraint.includes('Signless')) {
-    return layoutConfig.type.signlessInteger;
-  }
-  if (typeConstraint.includes('Signed') && !typeConstraint.includes('Signless')) {
-    return layoutConfig.type.signedInteger;
-  }
-  if (typeConstraint.includes('Unsigned')) {
-    return layoutConfig.type.unsignedInteger;
-  }
-  if (typeConstraint.includes('Float')) {
-    return layoutConfig.type.float;
-  }
-  if (typeConstraint.includes('Bool')) {
-    return layoutConfig.type.I1;
-  }
-  
-  // 4. 默认颜色
-  return layoutConfig.type.default;
-}
+/** 获取类型颜色（简化版，仅模式匹配，不支持约束展开） */
+export const getTypeColor = _getTypeColor;
 
 
 // ============================================================

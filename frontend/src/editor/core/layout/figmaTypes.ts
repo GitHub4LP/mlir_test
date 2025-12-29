@@ -107,6 +107,9 @@ export interface FigmaLayoutConfig {
   fontSize?: number;
   fontWeight?: number;
   lineHeight?: number | string;
+
+  // === 文本溢出 ===
+  textOverflow?: 'visible' | 'clip' | 'ellipsis';
 }
 
 

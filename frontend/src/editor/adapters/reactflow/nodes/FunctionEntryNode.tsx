@@ -2,35 +2,42 @@
  * FunctionEntryNode 组件
  * 
  * 函数入口节点（UE5 风格）：右侧显示 exec-out + 参数输出
+ * 
+ * 使用 DOMRenderer 渲染节点主体，Traits 编辑器作为额外的 DOM 元素。
  */
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
-import type { FunctionEntryData, FunctionTrait } from '../../../../types';
+import type { FunctionEntryData, FunctionTrait, GraphNode } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
 import { useReactStore, projectStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { FunctionTraitsEditor } from '../../../../components/FunctionTraitsEditor';
-import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { EditableName } from '../../../../components/shared';
 import { dataOutHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
 import { generateParameterName } from '../../../../services/parameterService';
-import { buildEntryDataPins } from '../../../../services/pinUtils';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
 import {
-  getNodeContainerStyle,
-  getHeaderContentStyle,
+  buildNodeLayoutTree,
+  DOMRenderer,
+  type HandleRenderConfig,
+  type TypeSelectorRenderConfig,
+  type InteractiveRenderers,
+} from '../../../core/layout';
+import type { CallbackMap } from '../../../core/layout/DOMRenderer';
+import {
   getExecHandleStyleRight,
   getDataHandleStyle,
   getNodeTypeColor,
 } from '../../shared/figmaStyles';
+import '../styles/nodes.css';
 
 export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
 
 export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, selected }: FunctionEntryNodeProps) {
-  const { functionId, functionName, execOut, isMain, pinnedTypes = {}, outputTypes = {} } = data;
+  const { functionId, isMain, outputTypes = {} } = data;
   
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<FunctionEntryData>(id);
@@ -63,8 +70,10 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     addParameter(functionId, { name: newName, constraint: 'AnyType' });
   }, [functionId, addParameter, getCurrentFunction]);
 
-  const handleRemoveParameter = useCallback((paramName: string) => {
-    removeParameter(functionId, paramName);
+  const handleRemoveParameter = useCallback((paramName: unknown) => {
+    if (typeof paramName === 'string') {
+      removeParameter(functionId, paramName);
+    }
   }, [functionId, removeParameter]);
 
   const handleRenameParameter = useCallback((oldName: string, newName: string) => {
@@ -93,112 +102,165 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     }
   }, [id, isMain, parameters, data.outputs, updateNodeData]);
 
-  // Build DataPin list from FunctionDef.parameters (使用公用服务)
-  const dataPins = useMemo(() => {
-    return buildEntryDataPins(parameters, { pinnedTypes, outputTypes }, isMain);
-  }, [isMain, parameters, outputTypes, pinnedTypes]);
+  // 将 ReactFlow Node 转换为 GraphNode 格式
+  const graphNode: GraphNode = useMemo(() => ({
+    id,
+    type: 'function-entry',
+    position: { x: 0, y: 0 }, // 位置由 ReactFlow 管理
+    data,
+  }), [id, data]);
 
-  const headerColor = isMain ? getNodeTypeColor('entryMain') : getNodeTypeColor('entry');
+  // 构建布局树
+  const layoutTree = useMemo(() => {
+    const tree = buildNodeLayoutTree(graphNode);
+    // 设置 header 颜色
+    const headerColor = isMain ? getNodeTypeColor('entryMain') : getNodeTypeColor('entry');
+    const headerWrapper = tree.children.find(c => c.type === 'headerWrapper');
+    if (headerWrapper) {
+      const headerContent = headerWrapper.children.find(c => c.type === 'headerContent');
+      if (headerContent) {
+        headerContent.style = { ...headerContent.style, fill: headerColor };
+      }
+    }
+    return tree;
+  }, [graphNode, isMain]);
+
+  // Handle 渲染回调
+  const renderHandle = useCallback((config: HandleRenderConfig) => {
+    const position = config.position === 'left' ? Position.Left : Position.Right;
+    
+    // Entry 节点只有右侧 handle
+    let style;
+    if (config.pinKind === 'exec') {
+      style = getExecHandleStyleRight();
+    } else {
+      style = getDataHandleStyle(config.color || '#888888');
+    }
+    
+    return (
+      <Handle
+        type={config.type}
+        position={position}
+        id={config.id}
+        isConnectable={true}
+        style={style}
+      />
+    );
+  }, []);
+
+  // TypeSelector 渲染回调
+  const renderTypeSelector = useCallback((config: TypeSelectorRenderConfig) => {
+    // 从 data 中获取显示类型
+    const displayType = outputTypes[config.pinId] || config.typeConstraint;
+    
+    // 从 portStateStore 读取端口状态
+    const portState = getPortState(id, config.pinId);
+    const canEdit = portState?.canEdit ?? false;
+    
+    // 计算可选类型
+    const constraint = portState?.constraint ?? config.typeConstraint;
+    const options = getConstraintElements(constraint);
+
+    return (
+      <UnifiedTypeSelector
+        selectedType={displayType}
+        onTypeSelect={(type) => handleTypeChange(config.pinId, type, config.typeConstraint)}
+        constraint={config.typeConstraint}
+        allowedTypes={options.length > 0 ? options : undefined}
+        disabled={!canEdit}
+      />
+    );
+  }, [id, outputTypes, getPortState, getConstraintElements, handleTypeChange]);
+
+  // EditableName 渲染回调
+  const renderEditableName = useCallback((config: { value: string; onChange: (newValue: string) => void }) => {
+    return (
+      <EditableName
+        value={config.value}
+        onChange={config.onChange}
+      />
+    );
+  }, []);
+
+  // Button 渲染回调
+  const renderButton = useCallback((config: { id: string; icon: string; onClick: () => void; disabled?: boolean }) => {
+    const iconMap: Record<string, React.ReactNode> = {
+      add: (
+        <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      ),
+      remove: (
+        <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      ),
+      expand: <span>▼</span>,
+      collapse: <span>▲</span>,
+    };
+
+    const iconContent = iconMap[config.icon] || null;
+    const className = config.icon === 'add' ? 'rf-add-btn' : 'rf-remove-btn';
+    
+    return (
+      <button
+        onClick={config.onClick}
+        className={className}
+        disabled={config.disabled}
+        title={config.icon === 'add' ? 'Add parameter' : 'Remove'}
+      >
+        {iconContent}
+      </button>
+    );
+  }, []);
+
+  // 交互元素渲染器
+  const interactiveRenderers: InteractiveRenderers = useMemo(() => ({
+    handle: renderHandle,
+    typeSelector: renderTypeSelector,
+    editableName: renderEditableName,
+    button: renderButton,
+  }), [renderHandle, renderTypeSelector, renderEditableName, renderButton]);
+
+  // 回调映射
+  const callbacks: CallbackMap = useMemo(() => ({
+    addParameter: handleAddParameter,
+    removeParameter: handleRemoveParameter,
+    renameParameter: (oldName: unknown, newName: unknown) => {
+      if (typeof oldName === 'string' && typeof newName === 'string') {
+        handleRenameParameter(oldName, newName);
+      }
+    },
+  }), [handleAddParameter, handleRemoveParameter, handleRenameParameter]);
+
+  // 根节点样式（仅选中时显示边框，与 Canvas 一致）
+  const rootStyle = useMemo(() => selected ? {
+    borderWidth: 2,
+    borderColor: '#60a5fa',
+    borderStyle: 'solid' as const,
+  } : undefined, [selected]);
 
   return (
-    <div
-      className="rf-node"
-      style={getNodeContainerStyle(selected)}
-    >
-      {/* Header */}
-      <div style={getHeaderContentStyle(headerColor)}>
-        <div className="rf-func-header">
-          <span className="rf-func-title">{functionName || 'Entry'}</span>
-          {isMain && <span className="rf-func-subtitle">(main)</span>}
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="rf-func-body">
-        {/* Exec out pin */}
-        <div className="rf-exec-row rf-exec-row-right">
-          <div className="rf-spacer-right" />
-          <Handle
-            type="source"
-            position={Position.Right}
-            id={execOut.id}
-            isConnectable={true}
-            className="rf-handle-right"
-            style={getExecHandleStyleRight()}
+    <div className="rf-node-wrapper">
+      <DOMRenderer
+        layoutTree={layoutTree}
+        interactiveRenderers={interactiveRenderers}
+        callbacks={callbacks}
+        rootStyle={rootStyle}
+        rootClassName="rf-node"
+      />
+      
+      {/* Traits editor - 作为额外的 DOM 元素 */}
+      {!isMain && (
+        <div className="rf-traits-container">
+          <FunctionTraitsEditor
+            parameters={parameters}
+            returnTypes={returnTypes}
+            traits={traits}
+            onChange={handleTraitsChange}
           />
         </div>
-
-        {/* Data pins */}
-        {dataPins.map((pin) => {
-          const displayType = getDisplayType(pin, data);
-          const portState = getPortState(id, pin.id);
-          // 如果 portState 不存在，默认不可编辑（等待类型传播完成）
-          const canEdit = portState?.canEdit ?? false;
-          const constraint = portState?.constraint ?? pin.typeConstraint;
-          const options = getConstraintElements(constraint);
-          
-          return (
-            <div key={pin.id} className="rf-data-row rf-data-row-right">
-              {!isMain && (
-                <button
-                  onClick={() => handleRemoveParameter(pin.label)}
-                  className="rf-remove-btn"
-                  title="Remove"
-                >
-                  <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-              <div className="rf-pin-content rf-pin-content-right">
-                {!isMain ? (
-                  <EditableName value={pin.label} onChange={(n) => handleRenameParameter(pin.label, n)} />
-                ) : (
-                  <span className="rf-pin-name">{pin.label}</span>
-                )}
-                <UnifiedTypeSelector
-                  selectedType={displayType}
-                  onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
-                  constraint={pin.typeConstraint}
-                  allowedTypes={options.length > 0 ? options : undefined}
-                  disabled={!canEdit}
-                />
-              </div>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={pin.id}
-                isConnectable={true}
-                className="rf-handle-right"
-                style={getDataHandleStyle(pin.color || getTypeColor(pin.typeConstraint))}
-              />
-            </div>
-          );
-        })}
-
-        {/* Add parameter button */}
-        {!isMain && (
-          <div className="rf-add-row rf-exec-row-right">
-            <button onClick={handleAddParameter} className="rf-add-btn rf-spacer-right" title="Add parameter">
-              <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {/* Traits editor */}
-        {!isMain && (
-          <div className="rf-traits-container">
-            <FunctionTraitsEditor
-              parameters={parameters}
-              returnTypes={returnTypes}
-              traits={traits}
-              onChange={handleTraitsChange}
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 });

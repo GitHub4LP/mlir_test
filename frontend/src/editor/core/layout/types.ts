@@ -168,6 +168,7 @@ export interface TypeConfig {
 /** 按钮样式配置 */
 export interface ButtonConfig {
   size: number;
+  iconSize?: number;
   borderRadius: number;
   bg: string;
   hoverBg: string;
@@ -334,6 +335,42 @@ export interface LayoutConfig {
 /** 命中测试行为 */
 export type HitTestBehavior = 'opaque' | 'translucent' | 'transparent';
 
+/** Handle 类型（ReactFlow/VueFlow） */
+export type HandleType = 'source' | 'target';
+
+/** Handle 位置 */
+export type HandlePosition = 'left' | 'right' | 'top' | 'bottom';
+
+/** 引脚类型 */
+export type PinKind = 'exec' | 'data';
+
+/** 按钮图标类型 */
+export type ButtonIcon = 'add' | 'remove' | 'expand' | 'collapse';
+
+/** 可编辑名称配置 */
+export interface EditableNameConfig {
+  /** 当前值 */
+  value: string;
+  /** 回调标识符（用于映射到实际处理函数） */
+  onChangeCallback: string;
+  /** 占位符文本 */
+  placeholder?: string;
+}
+
+/** 按钮配置 */
+export interface ButtonInteractiveConfig {
+  /** 按钮图标 */
+  icon: ButtonIcon;
+  /** 回调标识符（用于映射到实际处理函数） */
+  onClickCallback: string;
+  /** 是否禁用 */
+  disabled?: boolean;
+  /** 是否仅在 hover 时显示 */
+  showOnHover?: boolean;
+  /** 关联的数据（如参数名、索引等） */
+  data?: unknown;
+}
+
 /** 交互属性 */
 export interface Interactive {
   /** 唯一标识，如 'handle-data-in-lhs', 'type-label-exec-out' */
@@ -346,6 +383,28 @@ export interface Interactive {
   cursor?: string;
   /** 提示文本 */
   tooltip?: string;
+  
+  // === Handle 专用属性（DOM 渲染器使用）===
+  /** Handle 类型：source（输出）或 target（输入） */
+  handleType?: HandleType;
+  /** Handle 位置：left/right/top/bottom */
+  handlePosition?: HandlePosition;
+  /** 引脚类型：exec（执行）或 data（数据） */
+  pinKind?: PinKind;
+  /** 引脚颜色（仅 data 引脚） */
+  pinColor?: string;
+  /** 类型约束（仅 data 引脚，用于 TypeSelector） */
+  typeConstraint?: string;
+  /** 引脚标签 */
+  pinLabel?: string;
+  
+  // === EditableName 专用属性 ===
+  /** 可编辑名称配置 */
+  editableName?: EditableNameConfig;
+  
+  // === Button 专用属性 ===
+  /** 按钮配置 */
+  button?: ButtonInteractiveConfig;
 }
 
 /** 布局盒子样式 */

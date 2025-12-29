@@ -1,6 +1,23 @@
 /**
  * Figma 布局配置 → CSS 样式转换
  * 用于 ReactFlow、VueFlow 等 DOM 渲染器
+ * 
+ * Figma Auto Layout 与 CSS Flexbox 的核心映射：
+ * 
+ * | Figma 概念 | CSS 等价 |
+ * |-----------|---------|
+ * | layoutMode: HORIZONTAL | flex-direction: row |
+ * | layoutMode: VERTICAL | flex-direction: column |
+ * | primaryAxisSizingMode: AUTO | 主轴方向不设置尺寸（hug contents） |
+ * | primaryAxisSizingMode: FIXED | 主轴方向设置固定尺寸 |
+ * | counterAxisSizingMode: AUTO | 交叉轴方向不设置尺寸 |
+ * | counterAxisSizingMode: FIXED | 交叉轴方向设置固定尺寸 |
+ * | layoutGrow > 0 | flex-grow + flex-basis: 0（关键！） |
+ * | itemSpacing | gap |
+ * 
+ * 关键点：
+ * 1. layoutGrow 需要配合 flex-basis: 0 才能正确分配空间
+ * 2. 父容器需要有明确宽度，子元素的 flex-grow 才能生效
  */
 
 import type { CSSProperties } from 'react';
@@ -118,6 +135,8 @@ function mapCounterAlignToAlignItems(
 
 /**
  * Figma sizingMode → CSS width/height 值
+ * AUTO = hug contents (不设置，让 flexbox 自动计算)
+ * FIXED = 使用固定值
  */
 function mapSizingModeToCSS(
   mode: FigmaSizingMode | undefined,
@@ -125,7 +144,9 @@ function mapSizingModeToCSS(
 ): string | number | undefined {
   switch (mode) {
     case 'AUTO':
-      return 'auto';
+      // AUTO 表示 hug contents，不需要设置 width/height
+      // 让 flexbox 自动计算尺寸
+      return undefined;
     case 'FIXED':
       return fixedValue;
     default:
@@ -199,11 +220,32 @@ export function figmaToCSS(config: FigmaLayoutConfig): CSSProperties {
     style.alignItems = mapCounterAlignToAlignItems(config.counterAxisAlignItems);
   }
 
-  // 尺寸
-  const width = mapSizingModeToCSS(config.primaryAxisSizingMode, config.width);
-  const height = mapSizingModeToCSS(config.counterAxisSizingMode, config.height);
-  if (width !== undefined) style.width = width;
-  if (height !== undefined) style.height = height;
+  // 尺寸 - Figma 的 primaryAxis 对应主轴方向
+  // HORIZONTAL: primaryAxis = width, counterAxis = height
+  // VERTICAL: primaryAxis = height, counterAxis = width
+  const isVertical = config.layoutMode === 'VERTICAL';
+  
+  if (isVertical) {
+    // VERTICAL 布局：主轴是 height，交叉轴是 width
+    const height = mapSizingModeToCSS(config.primaryAxisSizingMode, config.height);
+    const width = mapSizingModeToCSS(config.counterAxisSizingMode, config.width);
+    if (width !== undefined) style.width = width;
+    if (height !== undefined) style.height = height;
+  } else {
+    // HORIZONTAL 布局：主轴是 width，交叉轴是 height
+    const width = mapSizingModeToCSS(config.primaryAxisSizingMode, config.width);
+    const height = mapSizingModeToCSS(config.counterAxisSizingMode, config.height);
+    if (width !== undefined) style.width = width;
+    if (height !== undefined) style.height = height;
+  }
+  
+  // 固定尺寸（直接指定的 width/height 优先）
+  if (config.width !== undefined && config.primaryAxisSizingMode === undefined && config.counterAxisSizingMode === undefined) {
+    style.width = config.width;
+  }
+  if (config.height !== undefined && config.primaryAxisSizingMode === undefined && config.counterAxisSizingMode === undefined) {
+    style.height = config.height;
+  }
 
   // 尺寸约束
   if (config.minWidth !== undefined) style.minWidth = config.minWidth;
@@ -212,8 +254,13 @@ export function figmaToCSS(config: FigmaLayoutConfig): CSSProperties {
   if (config.maxHeight !== undefined) style.maxHeight = config.maxHeight;
 
   // flex grow
-  if (config.layoutGrow !== undefined) {
+  // Figma 官方文档：layoutGrow: 1 时，对应轴的 sizingMode 应该是 FIXED
+  // 在 CSS 中，需要使用 flex: 1 1 0 让元素从 0 开始计算，然后按比例分配空间
+  // 只设置 flexGrow 不够，因为 flexBasis 默认是 auto（内容尺寸）
+  if (config.layoutGrow !== undefined && config.layoutGrow > 0) {
     style.flexGrow = config.layoutGrow;
+    style.flexShrink = 1;
+    style.flexBasis = 0;
   }
 
   // 圆角
@@ -240,6 +287,15 @@ export function figmaToCSS(config: FigmaLayoutConfig): CSSProperties {
   if (config.fontSize !== undefined) style.fontSize = config.fontSize;
   if (config.fontWeight !== undefined) style.fontWeight = config.fontWeight;
   if (config.lineHeight !== undefined) style.lineHeight = config.lineHeight;
+
+  // 文本溢出（需要配合 overflow: hidden）
+  // minWidth: 0 防止 flex 子元素被内容撑开
+  if (config.textOverflow === 'ellipsis') {
+    style.overflow = 'hidden';
+    style.textOverflow = 'ellipsis';
+    style.whiteSpace = 'nowrap';
+    style.minWidth = 0;
+  }
 
   return style;
 }

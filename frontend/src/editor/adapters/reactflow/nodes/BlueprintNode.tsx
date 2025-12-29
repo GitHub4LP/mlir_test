@@ -1,190 +1,133 @@
 /**
  * BlueprintNode 组件
  * 
- * UE5 风格蓝图节点组件。
- * - 左侧：exec-in + 输入操作数
- * - 右侧：exec-out + 输出结果
- * 
- * 类型传播模型：
- * - pinnedTypes：用户显式选择的类型（持久化）
- * - inputTypes/outputTypes：显示用的类型（传播结果）
+ * UE5 风格蓝图节点组件，使用 Figma 数据驱动的 DOM 布局。
+ * - 复用 buildNodeLayoutTree 构建布局树
+ * - 使用 DOMRenderer 渲染 DOM
+ * - 通过回调渲染 Handle 和 TypeSelector
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node } from '@xyflow/react';
-import type { BlueprintNodeData, DataPin } from '../../../../types';
-import { getOperands, getAttributes } from '../../../../services/dialectParser';
-import { getDisplayType } from '../../../../services/typeSelectorRenderer';
-import { AttributeEditor } from '../../../../components/AttributeEditor';
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import type { BlueprintNodeData, GraphNode } from '../../../../types';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
-import { NodePins } from '../../../../components/NodePins';
-import { buildPinRows, buildOperationDataPins } from '../../../../services/pinUtils';
 import { useReactStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { useTypeChangeHandler } from '../../../../hooks';
+import { getDialectColor } from '../../shared/figmaStyles';
 import {
-  getNodeContainerStyle,
-  getHeaderContentStyle,
-  getDialectColor,
+  buildNodeLayoutTree,
+  DOMRenderer,
+  type HandleRenderConfig,
+  type TypeSelectorRenderConfig,
+  type InteractiveRenderers,
+} from '../../../core/layout';
+import {
+  getExecHandleStyle,
+  getExecHandleStyleRight,
+  getDataHandleStyle,
 } from '../../shared/figmaStyles';
-import { getPortType } from '../../../../services/portTypeService';
-import { incrementVariadicCount, decrementVariadicCount } from '../../../../services/variadicService';
-import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import '../styles/nodes.css';
 
 export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
 
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
-  const { operation, attributes, inputTypes = {}, outputTypes = {}, execIn, execOuts, regionPins, pinnedTypes = {} } = data;
+  const { operation, inputTypes = {}, outputTypes = {} } = data;
   const dialectColor = getDialectColor(operation.dialect);
 
-  // 直接更新 editorStore（数据一份，订阅更新）
-  const { updateNodeData } = useEditorStoreUpdate<BlueprintNodeData>(id);
-  
   const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
-  
-  // 从 portStateStore 获取端口状态
   const getPortState = usePortStateStore(state => state.getPortState);
-
-  // 使用统一的 hook
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
-  const operands = getOperands(operation);
-  const attrs = getAttributes(operation);
-  const results = operation.results;
+  // 将 ReactFlow Node 转换为 GraphNode 格式
+  const graphNode: GraphNode = useMemo(() => ({
+    id,
+    type: 'operation',
+    position: { x: 0, y: 0 }, // 位置由 ReactFlow 管理
+    data,
+  }), [id, data]);
 
-  /**
-   * Updates node attribute - 直接更新 editorStore
-   */
-  const handleAttributeChange = useCallback((name: string, value: unknown) => {
-    updateNodeData(nodeData => ({
-      ...nodeData,
-      attributes: {
-        ...(nodeData.attributes as Record<string, string>),
-        [name]: String(value),
-      },
-    }));
-  }, [updateNodeData]);
+  // 构建布局树
+  const layoutTree = useMemo(() => {
+    const tree = buildNodeLayoutTree(graphNode);
+    // 设置 header 颜色
+    const headerWrapper = tree.children.find(c => c.type === 'headerWrapper');
+    if (headerWrapper) {
+      const headerContent = headerWrapper.children.find(c => c.type === 'headerContent');
+      if (headerContent) {
+        headerContent.style = { ...headerContent.style, fill: dialectColor };
+      }
+    }
+    return tree;
+  }, [graphNode, dialectColor]);
 
-  // Variadic 端口实例数量
-  const variadicCounts = useMemo(() => data.variadicCounts ?? {}, [data.variadicCounts]);
-
-  // Build pin rows using unified model (使用公用服务构建 DataPin)
-  const pinRows = useMemo(() => {
-    const { inputs: dataInputs, outputs: dataOutputs } = buildOperationDataPins(
-      operands,
-      results,
-      { inputTypes, outputTypes }
+  // Handle 渲染回调
+  const renderHandle = useCallback((config: HandleRenderConfig) => {
+    const position = config.position === 'left' ? Position.Left : Position.Right;
+    
+    // 根据引脚类型选择样式
+    let style;
+    if (config.pinKind === 'exec') {
+      style = config.position === 'left' ? getExecHandleStyle() : getExecHandleStyleRight();
+    } else {
+      style = getDataHandleStyle(config.color || '#888888');
+    }
+    
+    return (
+      <Handle
+        type={config.type}
+        position={position}
+        id={config.id}
+        isConnectable={true}
+        style={style}
+      />
     );
+  }, []);
 
-    return buildPinRows({
-      execIn,
-      execOuts,
-      dataInputs,
-      dataOutputs,
-      regionPins,
-      variadicCounts,
-    });
-  }, [operands, results, inputTypes, outputTypes, execIn, execOuts, regionPins, variadicCounts]);
-
-  // Render type selector for data pins
-  const renderTypeSelector = useCallback((pin: DataPin) => {
-    const displayType = getDisplayType(pin, data);
+  // TypeSelector 渲染回调
+  const renderTypeSelector = useCallback((config: TypeSelectorRenderConfig) => {
+    // 从 data 中获取显示类型
+    const displayType = inputTypes[config.pinId] || outputTypes[config.pinId] || config.typeConstraint;
     
     // 从 portStateStore 读取端口状态
-    const portState = getPortState(id, pin.id);
-    // 如果 portState 不存在，默认不可编辑（等待类型传播完成）
+    const portState = getPortState(id, config.pinId);
     const canEdit = portState?.canEdit ?? false;
     
-    // 如果 portState 存在，使用其 constraint 计算 options
-    // 否则回退到 pin.typeConstraint
-    const constraint = portState?.constraint ?? pin.typeConstraint;
+    // 计算可选类型
+    const constraint = portState?.constraint ?? config.typeConstraint;
     const options = getConstraintElements(constraint);
 
     return (
       <UnifiedTypeSelector
         selectedType={displayType}
-        onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
-        constraint={pin.typeConstraint}
+        onTypeSelect={(type) => handleTypeChange(config.pinId, type, config.typeConstraint)}
+        constraint={config.typeConstraint}
         allowedTypes={options.length > 0 ? options : undefined}
         disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, data, getPortState, getConstraintElements]);
+  }, [id, inputTypes, outputTypes, getPortState, getConstraintElements, handleTypeChange]);
 
-  // Get port type from node data (使用公用服务)
-  const getPortTypeWrapper = useCallback((pinId: string) => {
-    return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
-  }, [pinnedTypes, inputTypes, outputTypes]);
+  // 交互元素渲染器
+  const interactiveRenderers: InteractiveRenderers = useMemo(() => ({
+    handle: renderHandle,
+    typeSelector: renderTypeSelector,
+  }), [renderHandle, renderTypeSelector]);
 
-  // Variadic port add - 直接更新 editorStore
-  const handleVariadicAdd = useCallback((groupName: string) => {
-    updateNodeData(nodeData => ({
-      ...nodeData,
-      variadicCounts: incrementVariadicCount(nodeData.variadicCounts || {}, groupName),
-    }));
-  }, [updateNodeData]);
-
-  // Variadic port remove - 直接更新 editorStore
-  const handleVariadicRemove = useCallback((groupName: string) => {
-    updateNodeData(nodeData => ({
-      ...nodeData,
-      variadicCounts: decrementVariadicCount(nodeData.variadicCounts || {}, groupName, 0),
-    }));
-  }, [updateNodeData]);
+  // 根节点样式（仅选中时显示边框，与 Canvas 一致）
+  const rootStyle = useMemo(() => selected ? {
+    borderWidth: 2,
+    borderColor: '#60a5fa',
+    borderStyle: 'solid' as const,
+  } : undefined, [selected]);
 
   return (
-    <div
-      className="rf-node"
-      style={getNodeContainerStyle(selected)}
-    >
-      {/* Header */}
-      <div
-        style={getHeaderContentStyle(dialectColor)}
-        title={operation.description || undefined}
-      >
-        <div className="rf-node-header">
-          <div className="rf-node-header-left">
-            <span className="rf-node-dialect">{operation.dialect}</span>
-            <span className="rf-node-opname">{operation.opName}</span>
-          </div>
-          <div className="rf-node-header-right">
-            {operation.isPure && (
-              <span className="rf-node-badge" title="Pure - no side effects">ƒ</span>
-            )}
-            {operation.traits.includes('Commutative') && (
-              <span className="rf-node-badge" title="Commutative - operand order doesn't matter">⇄</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <NodePins
-        rows={pinRows}
-        nodeId={id}
-        getPortType={getPortTypeWrapper}
-        renderTypeSelector={renderTypeSelector}
-        onVariadicAdd={handleVariadicAdd}
-        onVariadicRemove={handleVariadicRemove}
-        variadicCounts={variadicCounts}
-      />
-
-      {/* Attributes */}
-      {attrs.length > 0 && (
-        <div className="rf-node-attrs">
-          {attrs.map((attr) => (
-            <AttributeEditor key={attr.name} attribute={attr} value={attributes[attr.name]} onChange={handleAttributeChange} />
-          ))}
-        </div>
-      )}
-
-      {/* Summary */}
-      {operation.summary && (
-        <div className="rf-node-summary">
-          <span className="rf-node-summary-text">{operation.summary}</span>
-        </div>
-      )}
-    </div>
+    <DOMRenderer
+      layoutTree={layoutTree}
+      interactiveRenderers={interactiveRenderers}
+      rootStyle={rootStyle}
+      rootClassName="rf-node"
+    />
   );
 });
 

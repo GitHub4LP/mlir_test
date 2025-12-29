@@ -590,6 +590,7 @@ export class GPURenderer implements IRenderer {
       
       if (isExec) {
         // 执行端口：三角形
+        // 所有执行引脚都朝右 ▶，表示执行流方向（与 UE5 蓝图一致）
         triangles.push({
           id: `lb-${id}-${nodeId}`,
           x: centerX,
@@ -598,7 +599,7 @@ export class GPURenderer implements IRenderer {
           fillColor: '#ffffff',
           borderColor: '#ffffff',
           borderWidth: 1,
-          direction: isOutput ? 'right' : 'left',
+          direction: 'right',
         });
       } else {
         // 数据端口：圆形

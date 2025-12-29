@@ -13,16 +13,15 @@
    direction: vertical, spacing: 0
    ============================================================ */
 
+/* 覆盖 ReactFlow 默认节点样式 */
+.react-flow__node {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
 .rf-node {
-  display: flex;
-  flex-direction: column;
-  min-width: var(--node-min-width);
-  padding: var(--node-padding);
-  background-color: var(--node-bg);
-  border: var(--node-border-width) solid var(--node-border-color);
-  border-radius: var(--node-border-radius);
   font-family: var(--font-family);
-  overflow: hidden;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
@@ -509,7 +508,7 @@
 }
 
 .rf-func-body {
-  padding: 4px;
+  padding: 0;
 }
 
 /* 执行引脚行 */
@@ -519,6 +518,7 @@
   align-items: center;
   min-height: var(--pin-row-min-height);
   padding: var(--pin-row-padding);
+  background-color: var(--pin-row-content-bg, #2d2d3d);
 }
 
 .rf-exec-row-left {
@@ -536,6 +536,7 @@
   align-items: center;
   min-height: var(--pin-row-min-height);
   padding: var(--pin-row-padding);
+  background-color: var(--pin-row-content-bg, #2d2d3d);
 }
 
 .rf-data-row-left {
@@ -598,6 +599,20 @@
   align-items: center;
   min-height: var(--pin-row-min-height);
   padding: var(--pin-row-padding);
+  padding-left: 6px;
+  padding-right: 6px;
+  background-color: transparent;
+}
+
+.rf-add-row::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  bottom: 0;
+  background-color: var(--pin-row-content-bg, #2d2d3d);
+  z-index: -1;
 }
 
 .rf-add-btn {
@@ -619,17 +634,17 @@
   padding: 0 8px;
 }
 
-/* Handle 定位 */
+/* Handle 定位 - Handle 中心在 pinRowContent 边缘（距离节点边缘 6px） */
 .rf-handle-left {
   position: absolute;
-  left: 0;
+  left: 6px;
   top: 50%;
   transform: translate(-50%, -50%);
 }
 
 .rf-handle-right {
   position: absolute;
-  right: 0;
+  right: 6px;
   top: 50%;
   transform: translate(50%, -50%);
 }
@@ -921,3 +936,34 @@
   color: var(--label-color);
 }
 
+
+/* ============================================================
+   DOMRenderer 生成的 DOM 元素样式
+   这些样式补充 figmaToCSS 生成的内联样式
+   ============================================================ */
+
+/* Handle 包装器 - 用于定位 */
+.dom-handle-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 类型标签容器 */
+.dom-type-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 类型标签文本 */
+.dom-type-label-text {
+  font-size: 10px;
+  color: #ffffff;
+}
+
+/* Handle 占位符（无回调时） */
+.dom-handle-placeholder {
+  width: 12px;
+  height: 12px;
+}

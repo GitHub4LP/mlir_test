@@ -6,6 +6,9 @@
 import type {
   LayoutNode,
   LayoutConfig,
+  HandleType,
+  HandlePosition,
+  PinKind,
 } from './types';
 import type {
   GraphNode,
@@ -28,11 +31,57 @@ interface PinInfo {
   typeConstraint: string;
   kind: 'exec' | 'data';
   isOutput: boolean;
+  /** 是否可编辑名称（Entry/Return 节点的参数/返回值） */
+  editable?: boolean;
+  /** 是否可删除（Entry/Return 节点的参数/返回值） */
+  removable?: boolean;
+  /** 原始参数名（用于回调） */
+  originalName?: string;
 }
 
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+/**
+ * 获取类型颜色
+ * 从 layoutConfig.type 中查找对应的颜色
+ */
+function getTypeColor(typeConstraint: string): string {
+  if (!typeConstraint) return layoutConfig.type.default;
+  
+  // 1. 精确匹配
+  if (layoutConfig.type[typeConstraint]) {
+    return layoutConfig.type[typeConstraint];
+  }
+  
+  // 2. 前缀模式匹配
+  if (/^UI\d+$/.test(typeConstraint)) return layoutConfig.type.unsignedInteger;
+  if (/^I\d+$/.test(typeConstraint)) return layoutConfig.type.signlessInteger;
+  if (/^SI\d+$/.test(typeConstraint)) return layoutConfig.type.signedInteger;
+  if (/^F\d+/.test(typeConstraint)) return layoutConfig.type.float;
+  if (/^TF\d+/.test(typeConstraint)) return layoutConfig.type.tensorFloat;
+  
+  // 3. 关键词匹配
+  if (typeConstraint.includes('Integer') || typeConstraint.includes('Signless')) {
+    return layoutConfig.type.signlessInteger;
+  }
+  if (typeConstraint.includes('Signed') && !typeConstraint.includes('Signless')) {
+    return layoutConfig.type.signedInteger;
+  }
+  if (typeConstraint.includes('Unsigned')) {
+    return layoutConfig.type.unsignedInteger;
+  }
+  if (typeConstraint.includes('Float')) {
+    return layoutConfig.type.float;
+  }
+  if (typeConstraint.includes('Bool')) {
+    return layoutConfig.type.I1;
+  }
+  
+  // 4. 默认颜色
+  return layoutConfig.type.default;
+}
 
 /**
  * 获取节点的 header 背景色
@@ -245,6 +294,7 @@ function collectOperationPins(data: BlueprintNodeData): { inputs: PinInfo[]; out
 function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs: PinInfo[] } {
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
+  const isMain = data.isMain;
 
   // 输出：execOut
   outputs.push({
@@ -255,7 +305,7 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
     isOutput: true,
   });
 
-  // 输出：parameters
+  // 输出：parameters（非 main 函数可编辑和删除）
   for (const param of data.outputs) {
     outputs.push({
       handleId: param.id || `data-out-${param.name}`,
@@ -263,6 +313,9 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
       typeConstraint: getDisplayType(param.name, param.typeConstraint, data.outputTypes),
       kind: 'data',
       isOutput: true,
+      editable: !isMain,
+      removable: !isMain,
+      originalName: param.name,
     });
   }
 
@@ -275,6 +328,7 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
 function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outputs: PinInfo[] } {
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
+  const isMain = data.isMain;
 
   // 输入：execIn
   inputs.push({
@@ -285,7 +339,7 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
     isOutput: false,
   });
 
-  // 输入：return values
+  // 输入：return values（非 main 函数可编辑和删除）
   for (const input of data.inputs) {
     inputs.push({
       handleId: input.id || `data-in-${input.name}`,
@@ -293,6 +347,9 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
       typeConstraint: getDisplayType(input.name, input.typeConstraint, data.inputTypes),
       kind: 'data',
       isOutput: false,
+      editable: !isMain,
+      removable: !isMain,
+      originalName: input.name,
     });
   }
 
@@ -395,8 +452,23 @@ function buildTextNode(
 
 /**
  * 构建 Handle 节点
+ * 
+ * 包含 DOM 渲染器所需的完整配置：
+ * - handleType: source（输出）或 target（输入）
+ * - handlePosition: left/right
+ * - pinKind: exec/data
+ * - pinColor: 引脚颜色（仅 data 引脚）
+ * - typeConstraint: 类型约束（仅 data 引脚）
+ * - pinLabel: 引脚标签
  */
 function buildHandle(pin: PinInfo): LayoutNode {
+  const handleType: HandleType = pin.isOutput ? 'source' : 'target';
+  const handlePosition: HandlePosition = pin.isOutput ? 'right' : 'left';
+  const pinKind: PinKind = pin.kind;
+  
+  // 计算引脚颜色（仅 data 引脚需要）
+  const pinColor = pin.kind === 'data' ? getTypeColor(pin.typeConstraint) : undefined;
+  
   return {
     type: 'handle',
     children: [],
@@ -404,6 +476,13 @@ function buildHandle(pin: PinInfo): LayoutNode {
       id: `handle-${pin.handleId}`,
       hitTestBehavior: 'opaque',
       cursor: 'crosshair',
+      // DOM 渲染器专用属性
+      handleType,
+      handlePosition,
+      pinKind,
+      pinColor,
+      typeConstraint: pin.kind === 'data' ? pin.typeConstraint : undefined,
+      pinLabel: pin.label,
     },
   };
 }
@@ -414,6 +493,10 @@ function buildHandle(pin: PinInfo): LayoutNode {
  * 结构：
  * typeLabel (有背景和 padding)
  * └── typeLabelText (文本节点，transparent 让点击穿透到父级)
+ * 
+ * DOM 渲染器专用属性：
+ * - typeConstraint: 原始类型约束
+ * - pinLabel: 引脚标签（用于识别）
  */
 function buildTypeLabel(pin: PinInfo): LayoutNode {
   return {
@@ -438,19 +521,56 @@ function buildTypeLabel(pin: PinInfo): LayoutNode {
       id: `type-label-${pin.handleId}`,
       hitTestBehavior: 'opaque',
       cursor: 'pointer',
+      // DOM 渲染器专用属性
+      typeConstraint: pin.typeConstraint,
+      pinLabel: pin.label,
     },
   };
 }
 
 /**
  * 构建 PinContent 节点
+ * 
+ * 对于可编辑的引脚（Entry/Return 节点的参数/返回值），结构为：
+ * pinContent
+ * ├── editableName (可编辑名称)
+ * └── typeLabel (类型选择器)
+ * 
+ * 对于不可编辑的引脚，结构为：
+ * pinContent
+ * ├── label (静态标签)
+ * └── typeLabel (类型选择器)
  */
 function buildPinContent(pin: PinInfo, side: 'left' | 'right', config: LayoutConfig): LayoutNode {
   const children: LayoutNode[] = [];
 
-  // 标签
+  // 标签或可编辑名称
   if (pin.label) {
-    children.push(buildTextNode('label', pin.label, config.text.label));
+    if (pin.editable) {
+      // 可编辑名称
+      children.push({
+        type: 'editableName',
+        children: [],
+        text: {
+          content: pin.label,
+          fontSize: config.text.label.fontSize,
+          fill: config.text.label.fill,
+        },
+        interactive: {
+          id: `editable-name-${pin.handleId}`,
+          hitTestBehavior: 'opaque',
+          cursor: 'text',
+          editableName: {
+            value: pin.label,
+            onChangeCallback: side === 'right' ? 'renameParameter' : 'renameReturnValue',
+            placeholder: side === 'right' ? 'param' : 'return',
+          },
+        },
+      });
+    } else {
+      // 静态标签
+      children.push(buildTextNode('label', pin.label, config.text.label));
+    }
   }
 
   // 类型标签（仅 data 引脚）
@@ -465,34 +585,90 @@ function buildPinContent(pin: PinInfo, side: 'left' | 'right', config: LayoutCon
 }
 
 /**
- * 构建左侧引脚组（Handle + Content）
+ * 构建左侧引脚组（Handle + Content + RemoveButton）
+ * 
+ * 对于可删除的引脚（Return 节点的返回值），结构为：
+ * leftPinGroup
+ * ├── handle
+ * ├── pinContent
+ * └── removeButton (可选)
  */
 function buildLeftPinGroup(pin: PinInfo | null, config: LayoutConfig): LayoutNode {
   if (!pin) {
     return { type: 'leftPinGroup', children: [] };
   }
+  
+  const children: LayoutNode[] = [
+    buildHandle(pin),
+    buildPinContent(pin, 'left', config),
+  ];
+  
+  // 添加删除按钮（仅可删除的引脚）
+  if (pin.removable) {
+    children.push({
+      type: 'button',
+      children: [],
+      interactive: {
+        id: `remove-btn-${pin.handleId}`,
+        hitTestBehavior: 'opaque',
+        cursor: 'pointer',
+        button: {
+          icon: 'remove',
+          onClickCallback: 'removeReturnValue',
+          showOnHover: true,
+          data: pin.originalName,
+        },
+      },
+    });
+  }
+  
   return {
     type: 'leftPinGroup',
-    children: [
-      buildHandle(pin),
-      buildPinContent(pin, 'left', config),
-    ],
+    children,
   };
 }
 
 /**
- * 构建右侧引脚组（Content + Handle）
+ * 构建右侧引脚组（RemoveButton + Content + Handle）
+ * 
+ * 对于可删除的引脚（Entry 节点的参数），结构为：
+ * rightPinGroup
+ * ├── removeButton (可选)
+ * ├── pinContent
+ * └── handle
  */
 function buildRightPinGroup(pin: PinInfo | null, config: LayoutConfig): LayoutNode {
   if (!pin) {
     return { type: 'rightPinGroup', children: [] };
   }
+  
+  const children: LayoutNode[] = [];
+  
+  // 添加删除按钮（仅可删除的引脚，放在最前面）
+  if (pin.removable) {
+    children.push({
+      type: 'button',
+      children: [],
+      interactive: {
+        id: `remove-btn-${pin.handleId}`,
+        hitTestBehavior: 'opaque',
+        cursor: 'pointer',
+        button: {
+          icon: 'remove',
+          onClickCallback: 'removeParameter',
+          showOnHover: true,
+          data: pin.originalName,
+        },
+      },
+    });
+  }
+  
+  children.push(buildPinContent(pin, 'right', config));
+  children.push(buildHandle(pin));
+  
   return {
     type: 'rightPinGroup',
-    children: [
-      buildPinContent(pin, 'right', config),
-      buildHandle(pin),
-    ],
+    children,
   };
 }
 
@@ -502,11 +678,13 @@ function buildRightPinGroup(pin: PinInfo | null, config: LayoutConfig): LayoutNo
  * 结构：
  * pinRow (horizontal, 透明, fill-parent)
  * ├── pinRowLeftSpacer (6px，透明)
- * ├── pinRowContent (fill-parent，有背景色)
+ * ├── pinRowContent (fill-parent，有背景色，SPACE_BETWEEN)
  * │   ├── leftPinGroup [handle, content]
- * │   ├── pinRowSpacer (fill-parent)
+ * │   ├── pinRowSpacer (minWidth: 4，保证最小间距)
  * │   └── rightPinGroup [content, handle]
  * └── pinRowRightSpacer (6px，透明)
+ * 
+ * 注意：pinRowSpacer 有 minWidth: 4 和 layoutGrow: 1，保证左右引脚之间有最小间距
  */
 function buildPinRow(
   leftPin: PinInfo | null, 
@@ -520,11 +698,8 @@ function buildPinRow(
   // 左侧引脚组
   contentChildren.push(buildLeftPinGroup(leftPin, config));
   
-  // 中间 spacer（fill-parent）
-  contentChildren.push({
-    type: 'pinRowSpacer',
-    children: [],
-  });
+  // 中间 spacer（minWidth: 4，layoutGrow: 1，保证最小间距并填充剩余空间）
+  contentChildren.push({ type: 'pinRowSpacer', children: [] });
   
   // 右侧引脚组
   contentChildren.push(buildRightPinGroup(rightPin, config));
@@ -549,13 +724,75 @@ function buildPinRow(
 }
 
 /**
+ * 构建"添加"按钮行
+ * 
+ * 结构：
+ * pinRow (horizontal, 透明)
+ * ├── pinRowLeftSpacer (6px，透明)
+ * ├── pinRowContent (fill-parent，有背景色)
+ * │   └── addButton
+ * └── pinRowRightSpacer (6px，透明)
+ */
+function buildAddButtonRow(
+  side: 'left' | 'right',
+  callbackName: string,
+  hasBottomRadius: boolean = false
+): LayoutNode {
+  const addButton: LayoutNode = {
+    type: 'button',
+    children: [],
+    interactive: {
+      id: `add-btn-${side}`,
+      hitTestBehavior: 'opaque',
+      cursor: 'pointer',
+      button: {
+        icon: 'add',
+        onClickCallback: callbackName,
+      },
+    },
+  };
+
+  // pinRowContent 的子节点
+  const contentChildren: LayoutNode[] = [];
+  
+  if (side === 'left') {
+    // Return 节点：添加按钮在左侧
+    contentChildren.push({ type: 'leftPinGroup', children: [addButton] });
+    contentChildren.push({ type: 'pinRowSpacer', children: [] });
+    contentChildren.push({ type: 'rightPinGroup', children: [] });
+  } else {
+    // Entry 节点：添加按钮在右侧
+    contentChildren.push({ type: 'leftPinGroup', children: [] });
+    contentChildren.push({ type: 'pinRowSpacer', children: [] });
+    contentChildren.push({ type: 'rightPinGroup', children: [addButton] });
+  }
+
+  // pinRowContent（有背景色）
+  const pinRowContent: LayoutNode = {
+    type: 'pinRowContent',
+    children: contentChildren,
+    style: hasBottomRadius ? { cornerRadius: [0, 0, 8, 8] } : undefined,
+  };
+
+  return {
+    type: 'pinRow',
+    children: [
+      { type: 'pinRowLeftSpacer', children: [] },
+      pinRowContent,
+      { type: 'pinRowRightSpacer', children: [] },
+    ],
+  };
+}
+
+/**
  * 构建 PinArea 节点
  * 
  * 结构：
  * pinArea (vertical)
  * ├── pinRow [leftPinGroup, rightPinGroup]  // 第一行
  * ├── pinRow [leftPinGroup, rightPinGroup]  // 第二行
- * └── ...
+ * ├── ...
+ * └── addButtonRow (可选，Entry/Return 非 main 函数)
  * 
  * 配对规则（与 React Flow 一致）：
  * 1. 先配对 exec pins（execIn 与 execOuts）
@@ -576,9 +813,19 @@ function buildPinArea(node: GraphNode, config: LayoutConfig, hasBottomRadius: bo
   const maxExec = Math.max(execInputs.length, execOutputs.length);
   const maxData = Math.max(dataInputs.length, dataOutputs.length);
 
+  // 检查是否需要添加按钮行
+  const isEntry = node.type === 'function-entry';
+  const isReturn = node.type === 'function-return';
+  const isMain = isEntry 
+    ? (node.data as FunctionEntryData).isMain 
+    : isReturn 
+      ? (node.data as FunctionReturnData).isMain 
+      : false;
+  const needsAddButton = (isEntry || isReturn) && !isMain;
+
   // 1. Exec pin rows
-  // 如果没有 data pins，最后一个 exec row 需要 hasBottomRadius
-  const execNeedsBottomRadius = hasBottomRadius && maxData === 0;
+  // 如果没有 data pins 且没有添加按钮，最后一个 exec row 需要 hasBottomRadius
+  const execNeedsBottomRadius = hasBottomRadius && maxData === 0 && !needsAddButton;
   for (let i = 0; i < maxExec; i++) {
     const leftPin = execInputs[i] || null;
     const rightPin = execOutputs[i] || null;
@@ -587,11 +834,24 @@ function buildPinArea(node: GraphNode, config: LayoutConfig, hasBottomRadius: bo
   }
 
   // 2. Data pin rows
+  // 如果没有添加按钮，最后一个 data row 需要 hasBottomRadius
+  const dataNeedsBottomRadius = hasBottomRadius && !needsAddButton;
   for (let i = 0; i < maxData; i++) {
     const leftPin = dataInputs[i] || null;
     const rightPin = dataOutputs[i] || null;
     const isLastRow = i === maxData - 1;
-    rows.push(buildPinRow(leftPin, rightPin, config, isLastRow && hasBottomRadius));
+    rows.push(buildPinRow(leftPin, rightPin, config, isLastRow && dataNeedsBottomRadius));
+  }
+
+  // 3. 添加按钮行（Entry/Return 非 main 函数）
+  if (needsAddButton) {
+    if (isEntry) {
+      // Entry 节点：添加参数按钮在右侧
+      rows.push(buildAddButtonRow('right', 'addParameter', hasBottomRadius));
+    } else if (isReturn) {
+      // Return 节点：添加返回值按钮在左侧
+      rows.push(buildAddButtonRow('left', 'addReturnValue', hasBottomRadius));
+    }
   }
 
   return {
@@ -606,11 +866,12 @@ function buildPinArea(node: GraphNode, config: LayoutConfig, hasBottomRadius: bo
  * 结构：
  * headerWrapper (horizontal, 透明, fill-parent)
  * ├── headerLeftSpacer (6px 宽, 透明)
- * ├── headerContent (fill-parent, 有背景色)
+ * ├── headerContent (fill-parent, 有背景色, SPACE_BETWEEN)
  * │   ├── titleGroup
- * │   ├── headerSpacer (fill-parent)
  * │   └── badgesGroup
  * └── headerRightSpacer (6px 宽, 透明)
+ * 
+ * 注意：headerContent 使用 SPACE_BETWEEN 自动分配 titleGroup 和 badgesGroup 之间的空间
  */
 function buildHeader(node: GraphNode, config: LayoutConfig): LayoutNode {
   const title = getNodeTitle(node);
@@ -631,22 +892,16 @@ function buildHeader(node: GraphNode, config: LayoutConfig): LayoutNode {
     children: titleGroupChildren,
   };
 
-  // Spacer
-  const spacer: LayoutNode = {
-    type: 'headerSpacer',
-    children: [],
-  };
-
   // BadgesGroup（暂时为空）
   const badgesGroup: LayoutNode = {
     type: 'badgesGroup',
     children: [],
   };
 
-  // headerContent（有背景色，颜色在这里设置）
+  // headerContent（有背景色，使用 SPACE_BETWEEN 布局）
   const headerContent: LayoutNode = {
     type: 'headerContent',
-    children: [titleGroup, spacer, badgesGroup],
+    children: [titleGroup, badgesGroup],
     // 设置样式，包含动态的 headerColor
     style: {
       fill: headerColor,
@@ -776,14 +1031,16 @@ function buildSummaryWrapper(node: GraphNode, config: LayoutConfig): LayoutNode 
  * node (透明容器，无背景)
  * ├── headerWrapper (透明)
  * │   ├── headerLeftSpacer (6px，透明)
- * │   ├── headerContent (fill-parent，有背景色，上圆角)
+ * │   ├── headerContent (fill-parent，有背景色，上圆角，SPACE_BETWEEN)
+ * │   │   ├── titleGroup
+ * │   │   └── badgesGroup
  * │   └── headerRightSpacer (6px，透明)
  * ├── pinArea
  * │   └── pinRow (透明)
  * │       ├── pinRowLeftSpacer (6px，透明)
  * │       ├── pinRowContent (fill-parent，有背景色)
  * │       │   ├── leftPinGroup [handle, content]
- * │       │   ├── pinRowSpacer (fill-parent)
+ * │       │   ├── pinRowSpacer (minWidth: 4, layoutGrow: 1)
  * │       │   └── rightPinGroup [content, handle]
  * │       └── pinRowRightSpacer (6px，透明)
  * ├── attrWrapper (可选，透明)
@@ -800,6 +1057,7 @@ function buildSummaryWrapper(node: GraphNode, config: LayoutConfig): LayoutNode 
  * - headerContent 和 pinRowContent 有背景色，宽度 = node 宽度 - 12px
  * - handle 中心正好在背景边缘
  * - 最后一个有背景的区域有下圆角
+ * - pinRowSpacer 有 minWidth: 4 保证左右引脚最小间距
  */
 export function buildNodeLayoutTree(
   node: GraphNode,

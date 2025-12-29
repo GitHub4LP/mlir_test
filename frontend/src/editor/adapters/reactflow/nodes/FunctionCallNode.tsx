@@ -1,26 +1,31 @@
 /**
  * FunctionCallNode 组件
  * 
- * 自定义函数调用节点：
+ * 自定义函数调用节点，使用 Figma 数据驱动的 DOM 布局。
  * - 左侧：exec-in + 输入参数
  * - 右侧：exec-out + 返回值
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { type NodeProps, type Node } from '@xyflow/react';
-import type { FunctionCallData, DataPin } from '../../../../types';
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import type { FunctionCallData, GraphNode } from '../../../../types';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
-import { NodePins } from '../../../../components/NodePins';
-import { buildPinRows, buildCallDataPins } from '../../../../services/pinUtils';
 import { useReactStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
-import { getDisplayType } from '../../../../services/typeSelectorRenderer';
 import { useTypeChangeHandler } from '../../../../hooks';
-import { getPortType } from '../../../../services/portTypeService';
 import {
-  getNodeContainerStyle,
-  getHeaderContentStyle,
+  buildNodeLayoutTree,
+  DOMRenderer,
+  type HandleRenderConfig,
+  type TypeSelectorRenderConfig,
+  type InteractiveRenderers,
+} from '../../../core/layout';
+import {
+  getExecHandleStyle,
+  getExecHandleStyleRight,
+  getDataHandleStyle,
   getNodeTypeColor,
 } from '../../shared/figmaStyles';
+import '../styles/nodes.css';
 
 export type FunctionCallNodeType = Node<FunctionCallData, 'function-call'>;
 export type FunctionCallNodeProps = NodeProps<FunctionCallNodeType>;
@@ -30,79 +35,96 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   data,
   selected,
 }: FunctionCallNodeProps) {
-  const { functionName, inputs, outputs, execIn, execOuts, pinnedTypes = {} } = data;
-  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
-  
-  // 从 portStateStore 获取端口状态
-  const getPortState = usePortStateStore(state => state.getPortState);
-
   const { inputTypes = {}, outputTypes = {} } = data;
+  const headerColor = getNodeTypeColor('call');
 
+  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
+  const getPortState = usePortStateStore(state => state.getPortState);
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
-  // Build pin rows (使用公用服务)
-  const pinRows = useMemo(() => {
-    const { inputs: dataInputs, outputs: dataOutputs } = buildCallDataPins(
-      inputs,
-      outputs,
-      { inputTypes, outputTypes }
-    );
+  // 将 ReactFlow Node 转换为 GraphNode 格式
+  const graphNode: GraphNode = useMemo(() => ({
+    id,
+    type: 'function-call',
+    position: { x: 0, y: 0 },
+    data,
+  }), [id, data]);
 
-    return buildPinRows({ execIn, execOuts: execOuts || [], dataInputs, dataOutputs });
-  }, [inputs, outputs, inputTypes, outputTypes, execIn, execOuts]);
+  // 构建布局树
+  const layoutTree = useMemo(() => {
+    const tree = buildNodeLayoutTree(graphNode);
+    // 设置 header 颜色
+    const headerWrapper = tree.children.find(c => c.type === 'headerWrapper');
+    if (headerWrapper) {
+      const headerContent = headerWrapper.children.find(c => c.type === 'headerContent');
+      if (headerContent) {
+        headerContent.style = { ...headerContent.style, fill: headerColor };
+      }
+    }
+    return tree;
+  }, [graphNode, headerColor]);
 
-  // Render type selector
-  const renderTypeSelector = useCallback((pin: DataPin) => {
-    const displayType = getDisplayType(pin, data);
+  // Handle 渲染回调
+  const renderHandle = useCallback((config: HandleRenderConfig) => {
+    const position = config.position === 'left' ? Position.Left : Position.Right;
     
-    // 从 portStateStore 读取端口状态
-    const portState = getPortState(id, pin.id);
-    // 如果 portState 不存在，默认不可编辑（等待类型传播完成）
+    let style;
+    if (config.pinKind === 'exec') {
+      style = config.position === 'left' ? getExecHandleStyle() : getExecHandleStyleRight();
+    } else {
+      style = getDataHandleStyle(config.color || '#888888');
+    }
+    
+    return (
+      <Handle
+        type={config.type}
+        position={position}
+        id={config.id}
+        isConnectable={true}
+        style={style}
+      />
+    );
+  }, []);
+
+  // TypeSelector 渲染回调
+  const renderTypeSelector = useCallback((config: TypeSelectorRenderConfig) => {
+    const displayType = inputTypes[config.pinId] || outputTypes[config.pinId] || config.typeConstraint;
+    const portState = getPortState(id, config.pinId);
     const canEdit = portState?.canEdit ?? false;
-    const constraint = portState?.constraint ?? pin.typeConstraint;
+    const constraint = portState?.constraint ?? config.typeConstraint;
     const options = getConstraintElements(constraint);
 
     return (
       <UnifiedTypeSelector
         selectedType={displayType}
-        onTypeSelect={(type) => handleTypeChange(pin.id, type, pin.typeConstraint)}
-        constraint={pin.typeConstraint}
+        onTypeSelect={(type) => handleTypeChange(config.pinId, type, config.typeConstraint)}
+        constraint={config.typeConstraint}
         allowedTypes={options.length > 0 ? options : undefined}
         disabled={!canEdit}
       />
     );
-  }, [handleTypeChange, id, data, getPortState, getConstraintElements]);
+  }, [id, inputTypes, outputTypes, getPortState, getConstraintElements, handleTypeChange]);
 
-  // Get port type (使用公用服务)
-  const getPortTypeWrapper = useCallback((pinId: string) => {
-    return getPortType(pinId, { pinnedTypes, inputTypes, outputTypes });
-  }, [pinnedTypes, inputTypes, outputTypes]);
+  // 交互元素渲染器
+  const interactiveRenderers: InteractiveRenderers = useMemo(() => ({
+    handle: renderHandle,
+    typeSelector: renderTypeSelector,
+  }), [renderHandle, renderTypeSelector]);
 
-  const headerColor = getNodeTypeColor('call');
+  // 根节点样式（仅选中时显示边框）
+  const rootStyle = useMemo(() => selected ? {
+    borderWidth: 2,
+    borderColor: '#60a5fa',
+    borderStyle: 'solid' as const,
+  } : undefined, [selected]);
 
   return (
-    <div
-      className="rf-node"
-      style={getNodeContainerStyle(selected)}
-    >
-      {/* Header */}
-      <div style={getHeaderContentStyle(headerColor)}>
-        <div className="rf-node-header">
-          <div className="rf-node-header-left">
-            <span className="rf-node-dialect">call</span>
-            <span className="rf-node-opname">{functionName}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <NodePins
-        rows={pinRows}
-        nodeId={id}
-        getPortType={getPortTypeWrapper}
-        renderTypeSelector={renderTypeSelector}
-      />
-    </div>
+    <DOMRenderer
+      layoutTree={layoutTree}
+      interactiveRenderers={interactiveRenderers}
+      rootStyle={rootStyle}
+      rootClassName="rf-node"
+    />
   );
 });
 

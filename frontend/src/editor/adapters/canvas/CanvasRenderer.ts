@@ -840,8 +840,8 @@ export class CanvasRenderer implements IRenderer {
 
     if (isExec) {
       // 执行端口：三角形（白色）
-      const direction = isOutput ? 'right' : 'left';
-      this.renderExecHandle(ctx, centerX, centerY, size, direction, strokeWidth);
+      // 所有执行引脚都朝右 ▶，表示执行流方向（与 UE5 蓝图一致）
+      this.renderExecHandle(ctx, centerX, centerY, size, 'right', strokeWidth);
     } else {
       // 数据端口：圆形，从 handleColorMap 获取颜色
       // id 格式: handle-data-in-xxx 或 handle-data-out-xxx

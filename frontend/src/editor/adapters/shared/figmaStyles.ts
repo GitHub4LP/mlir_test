@@ -100,13 +100,17 @@ function getCachedStyle(key: string, config: ContainerConfig): CSSProperties {
 export function getNodeContainerStyle(selected = false): CSSProperties {
   const baseStyle = getCachedStyle('node', layoutConfig.node);
   
-  // 添加边框样式（选中状态）
-  return {
-    ...baseStyle,
-    borderWidth: selected ? 2 : 1,
-    borderColor: selected ? '#60a5fa' : '#3d3d4d',
-    borderStyle: 'solid',
-  };
+  // 仅选中时显示边框（与 Canvas 一致）
+  if (selected) {
+    return {
+      ...baseStyle,
+      borderWidth: 2,
+      borderColor: '#60a5fa',
+      borderStyle: 'solid',
+    };
+  }
+  
+  return baseStyle;
 }
 
 /**
@@ -292,7 +296,7 @@ const DEFAULTS = {
 } as const;
 
 /**
- * 获取执行引脚样式（左侧输入，三角形朝右）
+ * 获取执行引脚样式（左侧输入，三角形朝右 ▶）
  */
 export function getExecHandleStyle(): CSSProperties {
   const execColor = layoutConfig.edge.exec.stroke ?? DEFAULTS.execColor;
@@ -311,7 +315,7 @@ export function getExecHandleStyle(): CSSProperties {
 }
 
 /**
- * 获取执行引脚样式（右侧输出，三角形朝右）
+ * 获取执行引脚样式（右侧输出，三角形朝右 ▶）
  */
 export function getExecHandleStyleRight(): CSSProperties {
   const execColor = layoutConfig.edge.exec.stroke ?? DEFAULTS.execColor;
@@ -322,8 +326,9 @@ export function getExecHandleStyleRight(): CSSProperties {
     minHeight: 0,
     padding: 0,
     borderStyle: 'solid',
-    borderWidth: '5px 8px 5px 0',
-    borderColor: `transparent ${execColor} transparent transparent`,
+    // 三角形朝右：左边框有颜色
+    borderWidth: '5px 0 5px 8px',
+    borderColor: `transparent transparent transparent ${execColor}`,
     backgroundColor: 'transparent',
     borderRadius: 0,
   };
@@ -377,61 +382,24 @@ export function getPinRowSpacerStyle(): CSSProperties {
 }
 
 // ============================================================================
-// 颜色获取函数
+// 颜色获取函数（从 LayoutConfig 重导出）
 // ============================================================================
 
-/**
- * 获取方言颜色
- */
-export function getDialectColor(dialectName: string): string {
-  return layoutConfig.dialect[dialectName] ?? layoutConfig.dialect.default;
-}
+// 从 LayoutConfig 导入统一实现
+import {
+  getDialectColor as _getDialectColor,
+  getNodeTypeColor as _getNodeTypeColor,
+  getTypeColor as _getTypeColor,
+} from '../../core/layout/LayoutConfig';
 
-/**
- * 获取节点类型颜色
- */
-export function getNodeTypeColor(type: 'entry' | 'entryMain' | 'return' | 'returnMain' | 'call' | 'operation'): string {
-  return layoutConfig.nodeType[type];
-}
+/** 获取方言颜色 */
+export const getDialectColor = _getDialectColor;
 
-/**
- * 获取类型颜色
- */
-export function getTypeColor(typeConstraint: string): string {
-  if (!typeConstraint) return layoutConfig.type.default;
-  
-  // 1. 精确匹配
-  if (layoutConfig.type[typeConstraint]) {
-    return layoutConfig.type[typeConstraint];
-  }
-  
-  // 2. 前缀模式匹配
-  if (/^UI\d+$/.test(typeConstraint)) return layoutConfig.type.unsignedInteger;
-  if (/^I\d+$/.test(typeConstraint)) return layoutConfig.type.signlessInteger;
-  if (/^SI\d+$/.test(typeConstraint)) return layoutConfig.type.signedInteger;
-  if (/^F\d+/.test(typeConstraint)) return layoutConfig.type.float;
-  if (/^TF\d+/.test(typeConstraint)) return layoutConfig.type.tensorFloat;
-  
-  // 3. 关键词匹配
-  if (typeConstraint.includes('Integer') || typeConstraint.includes('Signless')) {
-    return layoutConfig.type.signlessInteger;
-  }
-  if (typeConstraint.includes('Signed') && !typeConstraint.includes('Signless')) {
-    return layoutConfig.type.signedInteger;
-  }
-  if (typeConstraint.includes('Unsigned')) {
-    return layoutConfig.type.unsignedInteger;
-  }
-  if (typeConstraint.includes('Float')) {
-    return layoutConfig.type.float;
-  }
-  if (typeConstraint.includes('Bool')) {
-    return layoutConfig.type.I1;
-  }
-  
-  // 4. 默认颜色
-  return layoutConfig.type.default;
-}
+/** 获取节点类型颜色 */
+export const getNodeTypeColor = _getNodeTypeColor;
+
+/** 获取类型颜色 */
+export const getTypeColor = _getTypeColor;
 
 // ============================================================================
 // 常量导出

@@ -1,30 +1,43 @@
 <!--
-  FunctionReturn 节点 - 对应 React Flow 的 FunctionReturnNode.tsx
+  FunctionReturn 节点 - 使用 DOMRenderer 统一渲染
   
-  功能：
-  - 显示函数返回值作为输入端口
-  - 支持添加/删除/重命名返回值
-  - 支持类型选择器
-  - main 函数隐藏编辑功能
+  数据流：
+  GraphNode → buildNodeLayoutTree() → LayoutNode → DOMRenderer
+  
+  与 React Flow FunctionReturnNode.tsx 保持一致的架构
 -->
 <script setup lang="ts">
-import { computed, watch } from 'vue';
-import { Handle, Position, useVueFlow } from '@vue-flow/core';
+import { computed, h, watch, type VNode } from 'vue';
+import { Handle, Position } from '@vue-flow/core';
 import { getTypeColor } from '../../../../services/typeSystem';
 import { 
   useVueStore, 
   projectStore, 
   typeConstraintStore,
-  getStoreSnapshot,
+  usePortStateStore,
 } from '../../../../stores';
-import { computeTypeSelectorState, type TypeSelectorRenderParams } from '../../../../services/typeSelectorRenderer';
 import { dataInHandle } from '../../../../services/port';
-import { getContainerStyle, getHeaderStyle, getHandleTop, getCSSVariables, EXEC_COLOR, getNodeTypeColor } from './nodeStyles';
+import { generateReturnTypeName } from '../../../../services/parameterService';
 import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
 import EditableName from '../components/EditableName.vue';
-import type { DataPin } from '../../../../types';
-import { generateReturnTypeName } from '../../../../services/parameterService';
-import { buildReturnDataPins } from '../../../../services/pinUtils';
+import DOMRenderer, {
+  type HandleRenderConfig,
+  type TypeSelectorRenderConfig,
+  type EditableNameRenderConfig,
+  type ButtonRenderConfig,
+  type InteractiveRenderers,
+  type CallbackMap,
+} from '../components/DOMRenderer.vue';
+import {
+  buildNodeLayoutTree,
+} from '../../../core/layout';
+import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import type { GraphNode, FunctionReturnData } from '../../../../types';
+import {
+  getExecHandleStyle,
+  getDataHandleStyle,
+  getNodeTypeColor,
+} from '../../shared/figmaStyles';
 
 const props = defineProps<{
   id: string;
@@ -32,17 +45,18 @@ const props = defineProps<{
   selected?: boolean;
 }>();
 
-// CSS 变量
-const cssVars = getCSSVariables();
-
-// Vue Flow 实例（仅用于获取节点/边信息，不用于更新数据）
-const { getNodes, getEdges } = useVueFlow();
-
-// 直接更新 editorStore（数据一份，订阅更新）
-import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+// 直接更新 editorStore
 const { updateNodeData } = useEditorStoreUpdate(props.id);
 
-// 使用 Vue Store Adapter 订阅 projectStore
+// 订阅 stores
+const getConstraintElements = useVueStore(typeConstraintStore, state => state.getConstraintElements);
+
+// 获取 portStateStore（直接使用 getState，不是 React hook）
+function getPortState(nodeId: string, pinId: string) {
+  return usePortStateStore.getState().getPortState(nodeId, pinId);
+}
+
+// 订阅 projectStore 获取当前函数
 const currentFunction = useVueStore(
   projectStore,
   (state) => {
@@ -53,44 +67,35 @@ const currentFunction = useVueStore(
   }
 );
 
-// 基础数据
-const branchName = computed(() => (props.data.branchName as string) || '');
-const isMain = computed(() => (props.data.isMain as boolean) || false);
-const execIn = computed(() => props.data.execIn as { id: string; label: string } | undefined);
-const pinnedTypes = computed(() => (props.data.pinnedTypes as Record<string, string>) || {});
-const inputTypes = computed(() => (props.data.inputTypes as Record<string, string>) || {});
+// 获取节点数据
+const nodeData = computed(() => props.data as FunctionReturnData);
+const isMain = computed(() => nodeData.value.isMain || false);
+const inputTypes = computed(() => nodeData.value.inputTypes || {});
 
 const functionId = computed(() => currentFunction.value?.id || '');
 const returnTypes = computed(() => currentFunction.value?.returnTypes || []);
 
-// 构建 DataPin 列表（使用公用服务）
-const dataPins = computed<DataPin[]>(() => {
-  return buildReturnDataPins(
-    returnTypes.value,
-    { pinnedTypes: pinnedTypes.value, inputTypes: inputTypes.value },
-    isMain.value
-  );
-});
+// 将 props 转换为 GraphNode 格式
+const graphNode = computed<GraphNode>(() => ({
+  id: props.id,
+  type: 'function-return',
+  position: { x: 0, y: 0 }, // 位置由 VueFlow 管理
+  data: nodeData.value,
+}));
 
-// 构建输入引脚（包含执行引脚）
-const inputPins = computed(() => {
-  const pins: Array<{ id: string; name: string; label: string; isExec: boolean; color: string }> = [];
-  
-  if (execIn.value) {
-    pins.push({ id: execIn.value.id, name: 'exec-in', label: '', isExec: true, color: EXEC_COLOR });
+// 构建布局树
+const layoutTree = computed(() => {
+  const tree = buildNodeLayoutTree(graphNode.value);
+  // 设置 header 颜色
+  const headerColor = isMain.value ? getNodeTypeColor('returnMain') : getNodeTypeColor('return');
+  const headerWrapper = tree.children.find(c => c.type === 'headerWrapper');
+  if (headerWrapper) {
+    const headerContent = headerWrapper.children.find(c => c.type === 'headerContent');
+    if (headerContent) {
+      headerContent.style = { ...headerContent.style, fill: headerColor };
+    }
   }
-  
-  for (const pin of dataPins.value) {
-    pins.push({
-      id: pin.id,
-      name: pin.label,
-      label: pin.label,
-      isExec: false,
-      color: pin.color || getTypeColor(pin.typeConstraint),
-    });
-  }
-  
-  return pins;
+  return tree;
 });
 
 // 同步 FunctionDef.returnTypes 到 editorStore node data.inputs
@@ -114,44 +119,15 @@ watch(returnTypes, (newReturns) => {
   }
 }, { immediate: true });
 
-// 类型选择器参数
-function getTypeSelectorParams(_pin: DataPin): TypeSelectorRenderParams {
-  const constraintState = getStoreSnapshot(typeConstraintStore, (s) => ({
-    getConstraintElements: s.getConstraintElements,
-  }));
-  
-  return {
-    nodeId: props.id,
-    data: props.data as Record<string, unknown>,
-    nodes: getNodes.value.map(n => ({
-      id: n.id,
-      type: (n.type || 'operation') as 'operation' | 'function-entry' | 'function-return' | 'function-call',
-      data: n.data as Record<string, unknown>,
-      position: n.position || { x: 0, y: 0 },
-    })),
-    edges: getEdges.value.map(e => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle || '',
-      targetHandle: e.targetHandle || '',
-    })),
-    currentFunction: currentFunction.value ?? undefined,
-    getConstraintElements: constraintState.getConstraintElements,
-    onTypeSelect: handleTypeSelect,
-  };
-}
-
-// 类型选择处理 - 直接更新 editorStore
-function handleTypeSelect(portId: string, type: string, _originalConstraint: string) {
+// 类型选择处理
+function handleTypeChange(pinId: string, type: string) {
   updateNodeData(data => ({
     ...data,
-    pinnedTypes: { ...(data.pinnedTypes as Record<string, string> || {}), [portId]: type },
+    pinnedTypes: { ...(data.pinnedTypes as Record<string, string> || {}), [pinId]: type },
   }));
-  // TODO: 触发类型传播
 }
 
-// 返回值操作（使用公用服务）
+// 返回值操作
 function handleAddReturnType() {
   const state = projectStore.getState();
   const func = state.getFunctionById(functionId.value);
@@ -162,226 +138,187 @@ function handleAddReturnType() {
   }
 }
 
-function handleRemoveReturnType(returnName: string) {
-  const state = projectStore.getState();
-  if (functionId.value) {
+function handleRemoveReturnType(returnName: unknown) {
+  if (typeof returnName === 'string' && functionId.value) {
+    const state = projectStore.getState();
     state.removeReturnType(functionId.value, returnName);
   }
 }
 
-function handleRenameReturnType(oldName: string, newName: string) {
-  const state = projectStore.getState();
-  const func = state.getFunctionById(functionId.value);
-  const ret = func?.returnTypes.find(r => r.name === oldName);
-  if (ret && functionId.value) {
-    state.updateReturnType(functionId.value, oldName, { ...ret, name: newName });
+function handleRenameReturnType(oldName: unknown, newName: unknown) {
+  if (typeof oldName === 'string' && typeof newName === 'string' && functionId.value) {
+    const state = projectStore.getState();
+    const func = state.getFunctionById(functionId.value);
+    const ret = func?.returnTypes.find(r => r.name === oldName);
+    if (ret) {
+      state.updateReturnType(functionId.value, oldName, { ...ret, name: newName });
+    }
   }
 }
 
-// 样式
-const containerStyle = computed(() => getContainerStyle(props.selected || false));
-const headerColor = computed(() => isMain.value ? getNodeTypeColor('returnMain') : getNodeTypeColor('return'));
-const headerText = computed(() => branchName.value ? `Return "${branchName.value}"` : 'Return');
-const headerStyle = computed(() => getHeaderStyle(headerColor.value));
+// Handle 渲染回调
+function renderHandle(config: HandleRenderConfig): VNode {
+  const position = config.position === 'left' ? Position.Left : Position.Right;
+  
+  // Return 节点只有左侧 handle
+  let style: Record<string, string | number>;
+  if (config.pinKind === 'exec') {
+    const execStyle = getExecHandleStyle();
+    style = { ...execStyle } as Record<string, string | number>;
+  } else {
+    const dataStyle = getDataHandleStyle(config.color || '#888888');
+    style = { ...dataStyle } as Record<string, string | number>;
+  }
+  
+  return h(Handle, {
+    type: config.type,
+    position: position,
+    id: config.id,
+    isConnectable: true,
+    style: style,
+  });
+}
+
+// TypeSelector 渲染回调
+function renderTypeSelector(config: TypeSelectorRenderConfig): VNode {
+  // 从 data 中获取显示类型
+  const displayType = inputTypes.value[config.pinId] || config.typeConstraint;
+  
+  // 从 portStateStore 读取端口状态
+  const portState = getPortState(props.id, config.pinId);
+  const canEdit = portState?.canEdit ?? false;
+  
+  // 计算可选类型
+  const constraint = portState?.constraint ?? config.typeConstraint;
+  const options = getConstraintElements.value(constraint);
+
+  return h(UnifiedTypeSelector, {
+    selectedType: displayType,
+    onSelect: (type: string) => handleTypeChange(config.pinId, type),
+    constraint: config.typeConstraint,
+    allowedTypes: options.length > 0 ? options : undefined,
+    disabled: !canEdit,
+  });
+}
+
+// EditableName 渲染回调
+function renderEditableName(config: EditableNameRenderConfig): VNode {
+  return h(EditableName, {
+    value: config.value,
+    onChange: config.onChange,
+  });
+}
+
+// Button 渲染回调
+function renderButton(config: ButtonRenderConfig): VNode {
+  const iconMap: Record<string, VNode> = {
+    add: h('svg', { 
+      style: { width: '12px', height: '12px' }, 
+      fill: 'none', 
+      stroke: 'currentColor', 
+      viewBox: '0 0 24 24' 
+    }, [
+      h('path', { 
+        'stroke-linecap': 'round', 
+        'stroke-linejoin': 'round', 
+        'stroke-width': '2', 
+        d: 'M12 4v16m8-8H4' 
+      })
+    ]),
+    remove: h('svg', { 
+      style: { width: '12px', height: '12px' }, 
+      fill: 'none', 
+      stroke: 'currentColor', 
+      viewBox: '0 0 24 24' 
+    }, [
+      h('path', { 
+        'stroke-linecap': 'round', 
+        'stroke-linejoin': 'round', 
+        'stroke-width': '2', 
+        d: 'M6 18L18 6M6 6l12 12' 
+      })
+    ]),
+    expand: h('span', {}, '▼'),
+    collapse: h('span', {}, '▲'),
+  };
+
+  const iconContent = iconMap[config.icon] || null;
+  const className = config.icon === 'add' ? 'vf-add-btn' : 'vf-remove-btn';
+  
+  return h('button', {
+    onClick: config.onClick,
+    class: className,
+    disabled: config.disabled,
+    title: config.icon === 'add' ? 'Add return value' : 'Remove',
+  }, iconContent ? [iconContent] : []);
+}
+
+// 交互元素渲染器
+const interactiveRenderers = computed<InteractiveRenderers>(() => ({
+  handle: renderHandle,
+  typeSelector: renderTypeSelector,
+  editableName: renderEditableName,
+  button: renderButton,
+}));
+
+// 回调映射
+const callbacks = computed<CallbackMap>(() => ({
+  addReturnValue: handleAddReturnType,
+  removeReturnValue: handleRemoveReturnType,
+  renameReturnValue: handleRenameReturnType,
+}));
+
+// 根节点样式（选中时显示边框）
+const rootStyle = computed(() => props.selected ? {
+  borderWidth: '2px',
+  borderColor: '#60a5fa',
+  borderStyle: 'solid',
+} : undefined);
 </script>
 
 <template>
-  <div class="return-node" :style="{ ...containerStyle, ...cssVars }">
-    <div class="node-header" :style="headerStyle">
-      <span class="fn-name">{{ headerText }}</span>
-      <span v-if="isMain" class="main-tag">(main)</span>
-    </div>
-    
-    <div class="node-body">
-      <!-- 执行引脚行 -->
-      <div v-if="execIn" class="pin-row">
-        <div class="pin-cell left">
-          <div class="ml-4" />
-        </div>
-      </div>
-      
-      <!-- 数据引脚行 -->
-      <div v-for="pin in dataPins" :key="pin.id" class="pin-row group">
-        <div class="pin-cell left flex-1">
-          <div class="pin-content left">
-            <!-- 可编辑名称 -->
-            <EditableName
-              v-if="!isMain"
-              :value="pin.label"
-              @change="(n) => handleRenameReturnType(pin.label, n)"
-            />
-            <span v-else class="pin-label">{{ pin.label }}</span>
-            
-            <!-- 类型选择器 -->
-            <UnifiedTypeSelector
-              :selected-type="(() => {
-                const params = getTypeSelectorParams(pin);
-                const state = computeTypeSelectorState(pin, params);
-                return state.displayType;
-              })()"
-              :constraint="pin.typeConstraint"
-              :allowed-types="(() => {
-                const params = getTypeSelectorParams(pin);
-                const state = computeTypeSelectorState(pin, params);
-                return state.options.length > 0 ? state.options : undefined;
-              })()"
-              :disabled="(() => {
-                const params = getTypeSelectorParams(pin);
-                const state = computeTypeSelectorState(pin, params);
-                return !state.canEdit;
-              })()"
-              @select="(type) => handleTypeSelect(pin.id, type, pin.typeConstraint)"
-            />
-          </div>
-        </div>
-        
-        <!-- 删除按钮 -->
-        <button
-          v-if="!isMain"
-          class="delete-btn"
-          title="Remove"
-          @click="handleRemoveReturnType(pin.label)"
-        >
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      
-      <!-- 添加返回值按钮 -->
-      <div v-if="!isMain" class="pin-row">
-        <div class="pin-cell left">
-          <button class="add-btn" title="Add return value" @click="handleAddReturnType">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Handles -->
-    <Handle
-      v-for="(pin, idx) in inputPins"
-      :key="pin.id"
-      :id="pin.id"
-      type="target"
-      :position="Position.Left"
-      :class="pin.isExec ? 'handle-exec' : 'handle-data'"
-      :style="{ top: getHandleTop(idx), backgroundColor: pin.isExec ? 'transparent' : pin.color }"
-    />
-  </div>
+  <DOMRenderer
+    :layout-tree="layoutTree"
+    :interactive-renderers="interactiveRenderers"
+    :callbacks="callbacks"
+    :root-style="rootStyle"
+    root-class-name="vf-node"
+  />
 </template>
 
 <style scoped>
-.return-node {
-  position: relative;
-  overflow: visible;
-}
-
-.node-header {
+/* 按钮样式 */
+.vf-add-btn,
+.vf-remove-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid #4b5563;
+  background-color: #374151;
+  color: #d1d5db;
+  cursor: pointer;
+  transition: background-color 0.15s;
 }
 
-.fn-name {
-  font-size: var(--text-title-size);
-  color: var(--text-title-color);
-  font-weight: var(--text-title-weight);
+.vf-add-btn:hover:not(:disabled),
+.vf-remove-btn:hover:not(:disabled) {
+  background-color: #4b5563;
 }
 
-.main-tag {
-  font-size: var(--text-subtitle-size);
-  color: var(--text-subtitle-color);
-  margin-left: 4px;
+.vf-remove-btn {
+  color: #ef4444;
 }
 
-.node-body {
-  padding: var(--body-padding);
+.vf-remove-btn:hover:not(:disabled) {
+  color: #f87171;
 }
 
-.pin-row {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  padding: var(--pin-row-padding-y) 0;
-  min-height: var(--pin-row-min-height);
-  position: relative;
-}
-
-.pin-cell {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.pin-cell.left {
-  justify-content: flex-start;
-}
-
-.pin-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--pin-content-spacing);
-}
-
-.pin-content.left {
-  align-items: flex-start;
-  margin-left: var(--pin-content-margin-left);
-}
-
-.pin-label {
-  font-size: var(--text-label-size);
-  color: var(--text-label-color);
-  line-height: 1;
-}
-
-/* 删除按钮 */
-.delete-btn {
-  opacity: 0;
-  padding: 2px;
-  color: var(--text-muted-color);
-  margin-left: 4px;
-  transition: opacity 0.15s;
-}
-
-.delete-btn:hover {
-  color: var(--btn-danger-hover-color);
-}
-
-.group:hover .delete-btn {
-  opacity: 1;
-}
-
-/* 添加按钮 */
-.add-btn {
-  margin-left: var(--pin-content-margin-left);
-  color: var(--text-muted-color);
-}
-
-.add-btn:hover {
-  color: var(--text-title-color);
-}
-
-/* Handle 样式 */
-:deep(.handle-exec) {
-  width: 0 !important;
-  height: 0 !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  background: transparent !important;
-  border: none !important;
-  border-style: solid !important;
-  border-width: 5px 0 5px 8px !important;
-  border-color: transparent transparent transparent var(--exec-color) !important;
-  border-radius: 0 !important;
-}
-
-:deep(.handle-data) {
-  width: var(--handle-size) !important;
-  height: var(--handle-size) !important;
-  border: 2px solid var(--node-bg-color) !important;
-  border-radius: 50% !important;
+.vf-add-btn:disabled,
+.vf-remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
