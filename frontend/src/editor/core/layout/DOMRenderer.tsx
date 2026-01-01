@@ -1,14 +1,17 @@
 /**
  * DOM 渲染器
  * 
- * 将 LayoutNode 树转换为 DOM 元素。
- * 使用 computeLayout 计算精确布局，然后用绝对定位渲染（与 Canvas 一致）。
+ * 使用 CSS flexbox 自然布局，交互组件尺寸由内容决定。
+ * 
+ * 交互组件渲染策略：
+ * - Handle：使用 React Flow 的 <Handle> 组件（连线功能依赖）
+ * - TypeSelector、EditableName、Button：通过 interactiveRenderers 回调渲染
  */
 
 import { memo, useMemo, type ReactNode, type CSSProperties } from 'react';
-import type { LayoutNode, LayoutBox } from './types';
-import { computeLayout } from './LayoutEngine';
-import { layoutConfig } from './LayoutConfig';
+import type { LayoutNode } from './types';
+import { layoutConfig, getContainerConfig } from './LayoutConfig';
+import { configToFlexboxStyle } from './configToCSS';
 
 // ============================================================================
 // 类型定义
@@ -28,46 +31,32 @@ export interface TypeSelectorRenderConfig {
   pinLabel?: string;
 }
 
-/** 可编辑名称渲染配置 */
 export interface EditableNameRenderConfig {
-  /** 当前值 */
   value: string;
-  /** 值变更回调 */
   onChange: (newValue: string) => void;
-  /** 占位符文本 */
   placeholder?: string;
 }
 
-/** 按钮渲染配置 */
 export interface ButtonRenderConfig {
-  /** 按钮 ID */
   id: string;
-  /** 按钮图标类型 */
   icon: 'add' | 'remove' | 'expand' | 'collapse';
-  /** 点击回调 */
   onClick: () => void;
-  /** 是否禁用 */
   disabled?: boolean;
-  /** 是否仅在 hover 时显示 */
   showOnHover?: boolean;
 }
 
 export interface InteractiveRenderers {
   handle?: (config: HandleRenderConfig) => ReactNode;
   typeSelector?: (config: TypeSelectorRenderConfig) => ReactNode;
-  /** 可编辑名称渲染器 */
   editableName?: (config: EditableNameRenderConfig) => ReactNode;
-  /** 按钮渲染器 */
   button?: (config: ButtonRenderConfig) => ReactNode;
 }
 
-/** 回调映射表类型 */
 export type CallbackMap = Record<string, (...args: unknown[]) => void>;
 
 export interface DOMRendererProps {
   layoutTree: LayoutNode;
   interactiveRenderers?: InteractiveRenderers;
-  /** 回调映射表：将回调标识符映射到实际处理函数 */
   callbacks?: CallbackMap;
   rootStyle?: CSSProperties;
   rootClassName?: string;
@@ -113,41 +102,69 @@ function DataHandle({ color }: { color: string }) {
 }
 
 // ============================================================================
-// LayoutBox 渲染（绝对定位，与 Canvas 一致）
+// 递归渲染 LayoutNode
 // ============================================================================
 
-function renderLayoutBox(
-  box: LayoutBox,
+function renderLayoutNode(
+  node: LayoutNode,
   renderers?: InteractiveRenderers,
   callbacks?: CallbackMap,
-  key?: string | number
+  key?: string | number,
+  parentDirection?: 'HORIZONTAL' | 'VERTICAL'
 ): ReactNode {
-  const { type, x, y, width, height, style, text, interactive, children } = box;
-
-  // 基础样式：绝对定位
-  const baseStyle: CSSProperties = {
-    position: 'absolute',
-    left: x,
-    top: y,
-    width,
-    height,
-  };
-
-  // 背景和边框样式
-  if (style) {
-    if (style.fill) baseStyle.backgroundColor = style.fill;
-    if (style.stroke) {
-      baseStyle.borderColor = style.stroke;
-      baseStyle.borderStyle = 'solid';
-      baseStyle.borderWidth = style.strokeWidth || 1;
-    }
-    if (style.cornerRadius !== undefined) {
-      if (typeof style.cornerRadius === 'number') {
-        baseStyle.borderRadius = style.cornerRadius;
-      } else {
-        baseStyle.borderRadius = `${style.cornerRadius[0]}px ${style.cornerRadius[1]}px ${style.cornerRadius[2]}px ${style.cornerRadius[3]}px`;
-      }
-    }
+  const { type, children, text, interactive, style: nodeStyle } = node;
+  
+  // 获取配置并转换为 CSS
+  const config = getContainerConfig(type);
+  const baseStyle = configToFlexboxStyle(config, parentDirection);
+  const className = config.className;
+  
+  // Overlay 模式：返回占位元素 + absolute 定位的实际元素
+  // 占位元素参与布局，实际元素不参与宽度计算
+  if (config.overlay && config.overlayHeight !== undefined) {
+    const currentDirection = config.layoutMode as 'HORIZONTAL' | 'VERTICAL' | undefined;
+    const renderedChildren = children.map((child, index) =>
+      renderLayoutNode(child, renderers, callbacks, index, currentDirection)
+    );
+    
+    // 使用相对定位的容器，让 absolute 子元素相对于它定位
+    const containerStyle: CSSProperties = {
+      position: 'relative',
+      height: config.overlayHeight,
+      width: '100%',
+      flexShrink: 0,
+    };
+    
+    // 实际元素样式：absolute 定位，填充容器
+    const overlayStyle: CSSProperties = {
+      ...baseStyle,
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+    };
+    
+    return (
+      <div key={key} style={containerStyle}>
+        <div className={className} style={overlayStyle}>
+          {renderedChildren}
+        </div>
+      </div>
+    );
+  }
+  
+  // 合并节点动态样式
+  if (nodeStyle?.fill) baseStyle.backgroundColor = nodeStyle.fill;
+  if (nodeStyle?.stroke) {
+    baseStyle.borderColor = nodeStyle.stroke;
+    baseStyle.borderStyle = 'solid';
+    baseStyle.borderWidth = nodeStyle.strokeWidth ?? 1;
+  }
+  if (nodeStyle?.cornerRadius !== undefined) {
+    baseStyle.borderRadius = typeof nodeStyle.cornerRadius === 'number'
+      ? nodeStyle.cornerRadius
+      : `${nodeStyle.cornerRadius[0]}px ${nodeStyle.cornerRadius[1]}px ${nodeStyle.cornerRadius[2]}px ${nodeStyle.cornerRadius[3]}px`;
   }
 
   // Handle 节点
@@ -161,7 +178,7 @@ function renderLayoutBox(
 
     if (renderers?.handle) {
       return (
-        <div key={key} style={handleStyle}>
+        <div key={key} className={className} style={handleStyle}>
           {renderers.handle({
             id: extractHandleId(interactive.id),
             type: interactive.handleType || 'target',
@@ -176,7 +193,7 @@ function renderLayoutBox(
     const isExec = interactive.pinKind === 'exec';
     const isOutput = interactive.handleType === 'source';
     return (
-      <div key={key} style={handleStyle}>
+      <div key={key} className={className} style={handleStyle}>
         {isExec ? <ExecHandle direction={isOutput ? 'right' : 'left'} /> : <DataHandle color={interactive.pinColor || '#888888'} />}
       </div>
     );
@@ -184,22 +201,9 @@ function renderLayoutBox(
 
   // TypeLabel 节点
   if (type === 'typeLabel' && interactive) {
-    // typeLabel 使用绝对定位，但允许内容溢出
-    // 这样 TypeSelector 下拉框可以正常显示
-    const typeLabelStyle: CSSProperties = {
-      position: 'absolute',
-      left: x,
-      top: y,
-      // 使用计算的尺寸作为最小尺寸，但允许内容撑开
-      minWidth: width,
-      minHeight: height,
-      // 允许溢出
-      overflow: 'visible',
-    };
-
     if (renderers?.typeSelector && interactive.typeConstraint) {
       return (
-        <div key={key} style={typeLabelStyle}>
+        <div key={key} className={className} style={{ ...baseStyle, overflow: 'visible' }}>
           {renderers.typeSelector({
             pinId: extractPinId(interactive.id),
             typeConstraint: interactive.typeConstraint,
@@ -209,21 +213,9 @@ function renderLayoutBox(
       );
     }
 
-    // 默认渲染类型文本（使用计算的尺寸）
-    const defaultStyle: CSSProperties = {
-      ...baseStyle,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: style?.fill,
-      borderRadius: style?.cornerRadius !== undefined
-        ? typeof style.cornerRadius === 'number'
-          ? style.cornerRadius
-          : `${style.cornerRadius[0]}px ${style.cornerRadius[1]}px ${style.cornerRadius[2]}px ${style.cornerRadius[3]}px`
-        : 3,
-    };
+    // 默认渲染
     return (
-      <div key={key} style={defaultStyle}>
+      <div key={key} className={className} style={baseStyle}>
         <span style={{ fontSize: 10, color: '#ffffff', lineHeight: 1 }}>{text?.content || ''}</span>
       </div>
     );
@@ -231,22 +223,12 @@ function renderLayoutBox(
 
   // EditableName 节点
   if (type === 'editableName' && interactive?.editableName) {
-    const editableNameStyle: CSSProperties = {
-      position: 'absolute',
-      left: x,
-      top: y,
-      minWidth: width,
-      minHeight: height,
-      overflow: 'visible',
-    };
-
     const { value, onChangeCallback, placeholder } = interactive.editableName;
 
     if (renderers?.editableName) {
-      // 从 callbacks 中获取实际的回调函数
       const onChange = callbacks?.[onChangeCallback];
       return (
-        <div key={key} style={editableNameStyle}>
+        <div key={key} className={className} style={baseStyle}>
           {renderers.editableName({
             value,
             onChange: onChange ? (newValue: string) => onChange(value, newValue) : () => {},
@@ -256,17 +238,9 @@ function renderLayoutBox(
       );
     }
 
-    // 默认渲染：静态文本
-    const defaultStyle: CSSProperties = {
-      ...baseStyle,
-      display: 'flex',
-      alignItems: 'center',
-      fontSize: layoutConfig.text.label.fontSize,
-      color: layoutConfig.text.label.fill,
-      fontFamily: layoutConfig.text.fontFamily,
-    };
+    // 默认渲染
     return (
-      <div key={key} style={defaultStyle}>
+      <div key={key} className={className} style={baseStyle}>
         {value || placeholder || ''}
       </div>
     );
@@ -274,24 +248,12 @@ function renderLayoutBox(
 
   // Button 节点
   if (type === 'button' && interactive?.button) {
-    const buttonStyle: CSSProperties = {
-      position: 'absolute',
-      left: x,
-      top: y,
-      width,
-      height,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    };
-
     const { icon, onClickCallback, disabled, showOnHover, data } = interactive.button;
 
     if (renderers?.button) {
-      // 从 callbacks 中获取实际的回调函数
       const onClick = callbacks?.[onClickCallback];
       return (
-        <div key={key} style={buttonStyle}>
+        <div key={key} className={className} style={baseStyle}>
           {renderers.button({
             id: interactive.id,
             icon,
@@ -303,39 +265,20 @@ function renderLayoutBox(
       );
     }
 
-    // 默认渲染：简单的图标按钮
-    const defaultButtonStyle: CSSProperties = {
-      ...buttonStyle,
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      opacity: disabled ? 0.5 : 1,
-      backgroundColor: layoutConfig.button.bg,
-      borderRadius: layoutConfig.button.borderRadius,
-      border: `${layoutConfig.button.borderWidth}px solid ${layoutConfig.button.borderColor}`,
-    };
-
-    // 简单的图标渲染
-    const iconContent = {
-      add: '+',
-      remove: '−',
-      expand: '▼',
-      collapse: '▲',
-    }[icon];
-
-    const handleClick = () => {
-      if (!disabled && callbacks?.[onClickCallback]) {
-        callbacks[onClickCallback](data);
-      }
-    };
-
+    // 默认渲染
+    const iconContent = { add: '+', remove: '−', expand: '▼', collapse: '▲' }[icon];
     return (
-      <div key={key} style={defaultButtonStyle} onClick={handleClick}>
-        <span style={{ 
-          fontSize: layoutConfig.button.fontSize, 
-          color: icon === 'remove' ? layoutConfig.button.danger.color : layoutConfig.button.textColor,
-          lineHeight: 1,
-        }}>
-          {iconContent}
-        </span>
+      <div
+        key={key}
+        className={className}
+        style={{
+          ...baseStyle,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.5 : 1,
+        }}
+        onClick={() => !disabled && callbacks?.[onClickCallback]?.(data)}
+      >
+        {iconContent}
       </div>
     );
   }
@@ -350,19 +293,23 @@ function renderLayoutBox(
       fontFamily: text.fontFamily || layoutConfig.text.fontFamily,
       lineHeight: 1,
       whiteSpace: 'nowrap',
-      overflow: style?.textOverflow === 'ellipsis' ? 'hidden' : undefined,
-      textOverflow: style?.textOverflow === 'ellipsis' ? 'ellipsis' : undefined,
     };
-    return <div key={key} style={textStyle}>{text.content}</div>;
+    if (nodeStyle?.textOverflow === 'ellipsis') {
+      textStyle.overflow = 'hidden';
+      textStyle.textOverflow = 'ellipsis';
+      textStyle.minWidth = 0;
+    }
+    return <div key={key} className={className} style={textStyle}>{text.content}</div>;
   }
 
-  // 容器节点
-  const renderedChildren = children.map((child, index) => 
-    renderLayoutBox(child, renderers, callbacks, index)
+  // 容器节点：递归渲染子节点
+  const currentDirection = config.layoutMode as 'HORIZONTAL' | 'VERTICAL' | undefined;
+  const renderedChildren = children.map((child, index) =>
+    renderLayoutNode(child, renderers, callbacks, index, currentDirection)
   );
 
   return (
-    <div key={key} style={baseStyle}>
+    <div key={key} className={className} style={baseStyle}>
       {renderedChildren}
     </div>
   );
@@ -379,32 +326,34 @@ export const DOMRenderer = memo(function DOMRenderer({
   rootStyle,
   rootClassName,
 }: DOMRendererProps) {
-  // 使用 computeLayout 计算精确布局（与 Canvas 一致）
-  const layoutBox = useMemo(() => computeLayout(layoutTree), [layoutTree]);
+  
+  // 根样式计算
+  const rootFlexStyle = useMemo(() => {
+    const rootConfig = getContainerConfig(layoutTree.type);
+    const baseStyle = configToFlexboxStyle(rootConfig);
+    
+    // 合并节点动态样式
+    if (layoutTree.style?.fill) baseStyle.backgroundColor = layoutTree.style.fill;
+    if (layoutTree.style?.cornerRadius !== undefined) {
+      baseStyle.borderRadius = typeof layoutTree.style.cornerRadius === 'number'
+        ? layoutTree.style.cornerRadius
+        : `${layoutTree.style.cornerRadius[0]}px ${layoutTree.style.cornerRadius[1]}px ${layoutTree.style.cornerRadius[2]}px ${layoutTree.style.cornerRadius[3]}px`;
+    }
+    
+    return baseStyle;
+  }, [layoutTree]);
 
   // 渲染子节点
   const renderedChildren = useMemo(() => {
-    return layoutBox.children.map((child, index) => 
-      renderLayoutBox(child, interactiveRenderers, callbacks, index)
+    const rootConfig = getContainerConfig(layoutTree.type);
+    const rootDirection = rootConfig.layoutMode as 'HORIZONTAL' | 'VERTICAL' | undefined;
+    return layoutTree.children.map((child, index) =>
+      renderLayoutNode(child, interactiveRenderers, callbacks, index, rootDirection)
     );
-  }, [layoutBox, interactiveRenderers, callbacks]);
-
-  // 根节点样式
-  const containerStyle: CSSProperties = {
-    position: 'relative',
-    width: layoutBox.width,
-    height: layoutBox.height,
-    backgroundColor: layoutBox.style?.fill,
-    borderRadius: layoutBox.style?.cornerRadius !== undefined
-      ? typeof layoutBox.style.cornerRadius === 'number'
-        ? layoutBox.style.cornerRadius
-        : `${layoutBox.style.cornerRadius[0]}px ${layoutBox.style.cornerRadius[1]}px ${layoutBox.style.cornerRadius[2]}px ${layoutBox.style.cornerRadius[3]}px`
-      : undefined,
-    ...rootStyle,
-  };
+  }, [layoutTree, interactiveRenderers, callbacks]);
 
   return (
-    <div className={rootClassName} style={containerStyle}>
+    <div className={rootClassName} style={{ ...rootFlexStyle, ...rootStyle }}>
       {renderedChildren}
     </div>
   );

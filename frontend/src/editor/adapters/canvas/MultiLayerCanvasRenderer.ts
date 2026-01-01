@@ -28,7 +28,7 @@ import { InteractionRenderer } from './layers/InteractionRenderer';
 import { UIRenderer } from './layers/UIRenderer';
 import { TextCache } from './layers/TextCache';
 import { TypeSelector, type TypeOption, type ConstraintData } from './ui/TypeSelector';
-import { AttributeEditor, type AttributeDef, type AttributeValue } from './ui/AttributeEditor';
+import { AttributeEditor, type AttributeDefinition } from './ui/AttributeEditor';
 import { detectBestRendererSync } from './layers/RendererDetector';
 
 /** 渲染器配置 */
@@ -344,8 +344,7 @@ export class MultiLayerCanvasRenderer implements IRenderer {
     screenX: number,
     screenY: number,
     title: string,
-    attributes: AttributeDef[],
-    values: AttributeValue[]
+    attributes: AttributeDefinition[]
   ): void {
     // 隐藏现有的
     this.hideAttributeEditor();
@@ -354,7 +353,6 @@ export class MultiLayerCanvasRenderer implements IRenderer {
     this.attributeEditor = new AttributeEditor(`attr-editor-${nodeId}`);
     this.attributeEditor.setTitle(title);
     this.attributeEditor.setAttributes(attributes);
-    this.attributeEditor.setValues(values);
     this.attributeEditor.setPosition(screenX, screenY);
     this.attributeEditor.setOnChange((name, value) => {
       this.onAttributeChange?.(nodeId, name, value);

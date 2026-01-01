@@ -37,6 +37,8 @@ interface PinInfo {
   removable?: boolean;
   /** 原始参数名（用于回调） */
   originalName?: string;
+  /** 引脚索引（用于生成 interactive.id） */
+  index?: number;
 }
 
 // ============================================================================
@@ -85,16 +87,22 @@ function getTypeColor(typeConstraint: string): string {
 
 /**
  * 获取节点的 header 背景色
+ * 优先使用 node.data.headerColor（节点创建时设置的方言颜色）
  */
 function getHeaderColor(node: GraphNode): string {
+  // 优先使用 node.data.headerColor（方言颜色等动态颜色）
+  const data = node.data as Record<string, unknown>;
+  if (data.headerColor && typeof data.headerColor === 'string') {
+    return data.headerColor;
+  }
+  
+  // Fallback: 根据节点类型返回默认颜色
   switch (node.type) {
     case 'function-entry': {
-      const data = node.data as FunctionEntryData;
-      return data.isMain ? layoutConfig.nodeType.entryMain : layoutConfig.nodeType.entry;
+      return layoutConfig.nodeType.entry;
     }
     case 'function-return': {
-      const data = node.data as FunctionReturnData;
-      return data.isMain ? layoutConfig.nodeType.returnMain : layoutConfig.nodeType.return;
+      return layoutConfig.nodeType.return;
     }
     case 'function-call':
       return layoutConfig.nodeType.call;
@@ -306,6 +314,7 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
   });
 
   // 输出：parameters（非 main 函数可编辑和删除）
+  let paramIndex = 0;
   for (const param of data.outputs) {
     outputs.push({
       handleId: param.id || `data-out-${param.name}`,
@@ -316,7 +325,9 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
       editable: !isMain,
       removable: !isMain,
       originalName: param.name,
+      index: paramIndex,
     });
+    paramIndex++;
   }
 
   return { inputs, outputs };
@@ -340,6 +351,7 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
   });
 
   // 输入：return values（非 main 函数可编辑和删除）
+  let returnIndex = 0;
   for (const input of data.inputs) {
     inputs.push({
       handleId: input.id || `data-in-${input.name}`,
@@ -350,7 +362,9 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
       editable: !isMain,
       removable: !isMain,
       originalName: input.name,
+      index: returnIndex,
     });
+    returnIndex++;
   }
 
   return { inputs, outputs };
@@ -497,8 +511,12 @@ function buildHandle(pin: PinInfo): LayoutNode {
  * DOM 渲染器专用属性：
  * - typeConstraint: 原始类型约束
  * - pinLabel: 引脚标签（用于识别）
+ * - pinColor: 引脚颜色（用于背景色）
  */
 function buildTypeLabel(pin: PinInfo): LayoutNode {
+  // 计算引脚颜色（与 handle 一致）
+  const pinColor = getTypeColor(pin.typeConstraint);
+  
   return {
     type: 'typeLabel',
     children: [
@@ -524,6 +542,7 @@ function buildTypeLabel(pin: PinInfo): LayoutNode {
       // DOM 渲染器专用属性
       typeConstraint: pin.typeConstraint,
       pinLabel: pin.label,
+      pinColor,
     },
   };
 }
@@ -546,8 +565,9 @@ function buildPinContent(pin: PinInfo, side: 'left' | 'right', config: LayoutCon
 
   // 标签或可编辑名称
   if (pin.label) {
-    if (pin.editable) {
-      // 可编辑名称
+    if (pin.editable && pin.index !== undefined) {
+      // 可编辑名称 - 使用 param-name-{index} 或 return-name-{index} 格式
+      const idPrefix = side === 'right' ? 'param-name' : 'return-name';
       children.push({
         type: 'editableName',
         children: [],
@@ -557,7 +577,7 @@ function buildPinContent(pin: PinInfo, side: 'left' | 'right', config: LayoutCon
           fill: config.text.label.fill,
         },
         interactive: {
-          id: `editable-name-${pin.handleId}`,
+          id: `${idPrefix}-${pin.index}`,
           hitTestBehavior: 'opaque',
           cursor: 'text',
           editableName: {
@@ -604,12 +624,12 @@ function buildLeftPinGroup(pin: PinInfo | null, config: LayoutConfig): LayoutNod
   ];
   
   // 添加删除按钮（仅可删除的引脚）
-  if (pin.removable) {
+  if (pin.removable && pin.index !== undefined) {
     children.push({
       type: 'button',
       children: [],
       interactive: {
-        id: `remove-btn-${pin.handleId}`,
+        id: `return-remove-${pin.index}`,
         hitTestBehavior: 'opaque',
         cursor: 'pointer',
         button: {
@@ -645,12 +665,12 @@ function buildRightPinGroup(pin: PinInfo | null, config: LayoutConfig): LayoutNo
   const children: LayoutNode[] = [];
   
   // 添加删除按钮（仅可删除的引脚，放在最前面）
-  if (pin.removable) {
+  if (pin.removable && pin.index !== undefined) {
     children.push({
       type: 'button',
       children: [],
       interactive: {
-        id: `remove-btn-${pin.handleId}`,
+        id: `param-remove-${pin.index}`,
         hitTestBehavior: 'opaque',
         cursor: 'pointer',
         button: {
@@ -738,11 +758,13 @@ function buildAddButtonRow(
   callbackName: string,
   hasBottomRadius: boolean = false
 ): LayoutNode {
+  // 使用 param-add 或 return-add 格式
+  const buttonId = side === 'right' ? 'param-add' : 'return-add';
   const addButton: LayoutNode = {
     type: 'button',
     children: [],
     interactive: {
-      id: `add-btn-${side}`,
+      id: buttonId,
       hitTestBehavior: 'opaque',
       cursor: 'pointer',
       button: {

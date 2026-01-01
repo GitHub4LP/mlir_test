@@ -2,17 +2,20 @@
  * 性能监控器
  * 
  * 监控渲染性能指标：FPS、帧时间、节点数、边数。
+ * 支持所有渲染器（ReactFlow/VueFlow/Canvas）。
+ * 
+ * 工作模式：
+ * - Canvas 渲染器：主动上报帧时间（通过 recordFrame）
+ * - ReactFlow/VueFlow：只显示节点/边数量，不显示 FPS
  */
-
-import type { RenderData } from './types';
 
 /**
  * 性能指标
  */
 export interface PerformanceMetrics {
-  /** 每秒帧数 */
+  /** 每秒帧数（-1 表示不适用） */
   fps: number;
-  /** 平均帧时间（毫秒） */
+  /** 平均帧时间（毫秒，-1 表示不适用） */
   frameTime: number;
   /** 最小帧时间（毫秒） */
   minFrameTime: number;
@@ -22,8 +25,12 @@ export interface PerformanceMetrics {
   nodeCount: number;
   /** 边数量 */
   edgeCount: number;
-  /** 总图元数量 */
+  /** 总图元数量（仅 Canvas 渲染器有效） */
   primitiveCount: number;
+  /** 渲染器名称 */
+  rendererName: string;
+  /** 是否支持 FPS 测量 */
+  supportsFps: boolean;
 }
 
 /**
@@ -36,82 +43,78 @@ export type PerformanceCallback = (metrics: PerformanceMetrics) => void;
  */
 export class PerformanceMonitor {
   private callback: PerformanceCallback | null = null;
-  private isRunning: boolean = false;
-  private animationFrameId: number | null = null;
+  private updateIntervalId: number | null = null;
   
-  // 帧时间记录
+  // 帧时间记录（由渲染器主动上报）
   private frameTimes: number[] = [];
-  private lastFrameTime: number = 0;
-  private readonly maxFrameHistory = 60; // 保留最近 60 帧
+  private readonly maxFrameHistory = 60;
   
   // 当前渲染数据统计
   private currentNodeCount: number = 0;
   private currentEdgeCount: number = 0;
   private currentPrimitiveCount: number = 0;
+  private currentRendererName: string = 'Unknown';
+  private currentSupportsFps: boolean = false;
 
   /**
    * 开始监控
    * @param callback 性能指标回调
    */
   start(callback: PerformanceCallback): void {
-    if (this.isRunning) return;
-    
     this.callback = callback;
-    this.isRunning = true;
-    this.lastFrameTime = performance.now();
-    this.frameTimes = [];
     
-    this.tick();
+    // 定时更新 UI（每 100ms）
+    this.updateIntervalId = window.setInterval(() => {
+      this.callback?.(this.getMetrics());
+    }, 100);
   }
 
   /**
    * 停止监控
    */
   stop(): void {
-    this.isRunning = false;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
+    if (this.updateIntervalId !== null) {
+      clearInterval(this.updateIntervalId);
+      this.updateIntervalId = null;
     }
     this.callback = null;
   }
 
   /**
-   * 记录渲染数据统计
-   * @param data 渲染数据
+   * 记录一帧的渲染时间（由 Canvas 渲染器调用）
+   * @param frameTimeMs 帧时间（毫秒）
    */
-  recordRenderData(data: RenderData): void {
-    // 统计节点数（通过矩形数量估算，排除选择框等）
-    this.currentNodeCount = data.rects.filter(r => r.id.startsWith('rect-')).length;
-    
-    // 统计边数
-    this.currentEdgeCount = data.paths.filter(p => p.id.startsWith('edge-')).length;
-    
-    // 统计总图元数
-    this.currentPrimitiveCount = 
-      data.rects.length + 
-      data.texts.length + 
-      data.paths.length + 
-      data.circles.length;
-  }
-
-  /**
-   * 记录帧开始
-   */
-  frameStart(): void {
-    this.lastFrameTime = performance.now();
-  }
-
-  /**
-   * 记录帧结束
-   */
-  frameEnd(): void {
-    const now = performance.now();
-    const frameTime = now - this.lastFrameTime;
-    
-    this.frameTimes.push(frameTime);
+  recordFrame(frameTimeMs: number): void {
+    this.frameTimes.push(frameTimeMs);
     if (this.frameTimes.length > this.maxFrameHistory) {
       this.frameTimes.shift();
+    }
+  }
+
+  /**
+   * 更新渲染统计数据
+   * @param nodeCount 节点数量
+   * @param edgeCount 边数量
+   * @param rendererName 渲染器名称
+   * @param supportsFps 是否支持 FPS 测量
+   * @param primitiveCount 图元数量（可选）
+   */
+  updateStats(
+    nodeCount: number,
+    edgeCount: number,
+    rendererName: string,
+    supportsFps: boolean,
+    primitiveCount: number = 0
+  ): void {
+    this.currentNodeCount = nodeCount;
+    this.currentEdgeCount = edgeCount;
+    this.currentRendererName = rendererName;
+    this.currentSupportsFps = supportsFps;
+    this.currentPrimitiveCount = primitiveCount;
+    
+    // 切换渲染器时清空帧时间历史
+    if (!supportsFps) {
+      this.frameTimes = [];
     }
   }
 
@@ -119,15 +122,18 @@ export class PerformanceMonitor {
    * 获取当前性能指标
    */
   getMetrics(): PerformanceMetrics {
-    if (this.frameTimes.length === 0) {
+    // 不支持 FPS 或没有帧数据
+    if (!this.currentSupportsFps || this.frameTimes.length === 0) {
       return {
-        fps: 0,
-        frameTime: 0,
+        fps: -1,
+        frameTime: -1,
         minFrameTime: 0,
         maxFrameTime: 0,
         nodeCount: this.currentNodeCount,
         edgeCount: this.currentEdgeCount,
         primitiveCount: this.currentPrimitiveCount,
+        rendererName: this.currentRendererName,
+        supportsFps: this.currentSupportsFps,
       };
     }
 
@@ -144,31 +150,10 @@ export class PerformanceMonitor {
       nodeCount: this.currentNodeCount,
       edgeCount: this.currentEdgeCount,
       primitiveCount: this.currentPrimitiveCount,
+      rendererName: this.currentRendererName,
+      supportsFps: this.currentSupportsFps,
     };
   }
-
-  /**
-   * 内部 tick 函数
-   */
-  private tick = (): void => {
-    if (!this.isRunning) return;
-
-    const now = performance.now();
-    const frameTime = now - this.lastFrameTime;
-    this.lastFrameTime = now;
-
-    this.frameTimes.push(frameTime);
-    if (this.frameTimes.length > this.maxFrameHistory) {
-      this.frameTimes.shift();
-    }
-
-    // 每秒更新一次指标
-    if (this.frameTimes.length % 10 === 0) {
-      this.callback?.(this.getMetrics());
-    }
-
-    this.animationFrameId = requestAnimationFrame(this.tick);
-  };
 }
 
 // 导出单例

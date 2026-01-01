@@ -114,11 +114,9 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
     typeSelector: renderTypeSelector,
   }), [renderHandle, renderTypeSelector]);
 
-  // 根节点样式（仅选中时显示边框，与 Canvas 一致）
+  // 根节点样式（选中时使用 box-shadow，不占用布局空间，与 Canvas 一致）
   const rootStyle = useMemo(() => selected ? {
-    borderWidth: 2,
-    borderColor: '#60a5fa',
-    borderStyle: 'solid' as const,
+    boxShadow: '0 0 0 2px #60a5fa',
   } : undefined, [selected]);
 
   return (

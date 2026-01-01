@@ -1,45 +1,47 @@
 /**
  * AttributeEditor - Canvas UI 属性编辑器组件
  * 
- * 支持多种属性类型：
- * - 整数/浮点输入
- * - 布尔开关
- * - 枚举下拉
- * - 字符串输入
+ * 支持多种属性类型的编辑：
+ * - integer: 整数输入
+ * - float: 浮点数输入
+ * - string: 字符串输入
+ * - boolean: 复选框
+ * - enum: 下拉选择
  * 
- * 样式从 Design Tokens 统一获取
+ * 样式从 Design Tokens 统一获取。
  */
 
-import { ContainerComponent, type UIMouseEvent } from './UIComponent';
+import { ContainerComponent, type UIMouseEvent, type UIKeyEvent } from './UIComponent';
 import { TextInput } from './TextInput';
-import { Button } from './Button';
-import { ScrollableList, type ListItem } from './ScrollableList';
-import { TEXT, UI, OVERLAY, LAYOUT } from '../../shared/styles';
+import { ScrollableList } from './ScrollableList';
+import { TEXT, UI, OVERLAY, BUTTON } from '../../shared/styles';
 
 /** 属性类型 */
-export type AttributeType = 'integer' | 'float' | 'boolean' | 'string' | 'enum';
+export type AttributeType = 'integer' | 'float' | 'string' | 'boolean' | 'enum';
 
 /** 属性定义 */
-export interface AttributeDef {
+export interface AttributeDefinition {
+  /** 属性名 */
   name: string;
-  label: string;
+  /** 属性类型 */
   type: AttributeType;
-  /** 枚举选项（type='enum' 时必需） */
-  options?: string[];
-  /** 默认值 */
-  defaultValue?: unknown;
+  /** 当前值 */
+  value: unknown;
+  /** 枚举选项（仅 enum 类型） */
+  enumOptions?: string[];
   /** 是否必填 */
   required?: boolean;
-}
-
-/** 属性值 */
-export interface AttributeValue {
-  name: string;
-  value: unknown;
+  /** 描述 */
+  description?: string;
+  /** 最小值（仅数值类型） */
+  min?: number;
+  /** 最大值（仅数值类型） */
+  max?: number;
 }
 
 export interface AttributeEditorStyle {
   width: number;
+  maxHeight: number;
   backgroundColor: string;
   borderColor: string;
   borderWidth: number;
@@ -50,48 +52,38 @@ export interface AttributeEditorStyle {
   rowHeight: number;
   labelWidth: number;
   gap: number;
-  labelColor: string;
-  fontSize: number;
-  fontFamily: string;
-  headerHeight: number;
-  headerBackgroundColor: string;
-  headerTextColor: string;
 }
 
 function getDefaultStyle(): AttributeEditorStyle {
   return {
     width: UI.panelWidthMedium,
+    maxHeight: UI.panelMaxHeight,
     backgroundColor: OVERLAY.bg,
     borderColor: OVERLAY.borderColor,
     borderWidth: OVERLAY.borderWidth,
     borderRadius: OVERLAY.borderRadius,
     shadowColor: UI.shadowColor,
     shadowBlur: UI.shadowBlur,
-    padding: OVERLAY.padding + 4,
+    padding: OVERLAY.padding,
     rowHeight: UI.rowHeight,
     labelWidth: UI.labelWidth,
     gap: UI.gap,
-    labelColor: TEXT.mutedColor,
-    fontSize: TEXT.labelSize,
-    fontFamily: TEXT.fontFamily,
-    headerHeight: LAYOUT.headerHeight,
-    headerBackgroundColor: UI.darkBg,
-    headerTextColor: TEXT.titleColor,
   };
 }
 
-/**
- * 属性编辑器
- */
+/** 属性行组件 */
+interface AttributeRow {
+  definition: AttributeDefinition;
+  input?: TextInput;
+  enumList?: ScrollableList;
+  checkboxBounds?: { x: number; y: number; size: number };
+  isEnumExpanded?: boolean;
+}
+
 export class AttributeEditor extends ContainerComponent {
   private style: AttributeEditorStyle;
+  private attributes: AttributeRow[] = [];
   private title: string = 'Attributes';
-  private attributes: AttributeDef[] = [];
-  private values: Map<string, unknown> = new Map();
-  private inputs: Map<string, TextInput> = new Map();
-  private boolButtons: Map<string, Button> = new Map();
-  private enumLists: Map<string, ScrollableList> = new Map();
-  private activeEnumName: string | null = null;
   private onChange?: (name: string, value: unknown) => void;
   private onClose?: () => void;
   private container: HTMLElement | null = null;
@@ -102,74 +94,96 @@ export class AttributeEditor extends ContainerComponent {
     this.width = this.style.width;
   }
 
-  /**
-   * 设置标题
-   */
   setTitle(title: string): void {
     this.title = title;
   }
 
-  /**
-   * 设置属性定义
-   */
-  setAttributes(attributes: AttributeDef[]): void {
-    // 清理旧组件
-    this.clearInputs();
+  setAttributes(definitions: AttributeDefinition[]): void {
+    // 清理旧的输入组件
+    this.disposeInputs();
     
-    this.attributes = attributes;
-    this.createInputs();
+    this.attributes = definitions.map((def, index) => {
+      const row: AttributeRow = { definition: def };
+      
+      if (def.type === 'integer' || def.type === 'float' || def.type === 'string') {
+        const input = new TextInput(`${this.id}-input-${index}`);
+        input.setValue(String(def.value ?? ''));
+        input.setPlaceholder(def.description ?? def.name);
+        input.setOnChange((value) => this.handleInputChange(def.name, def.type, value));
+        input.setOnSubmit((value) => this.handleInputSubmit(def.name, def.type, value));
+        if (this.container) {
+          input.mountHiddenInput(this.container);
+        }
+        row.input = input;
+        this.addChild(input);
+      } else if (def.type === 'enum' && def.enumOptions) {
+        const list = new ScrollableList(`${this.id}-enum-${index}`);
+        list.setItems(def.enumOptions.map(opt => ({
+          id: opt,
+          label: opt,
+        })));
+        list.setOnSelect((item) => this.handleEnumSelect(def.name, item.id));
+        list.visible = false;
+        row.enumList = list;
+        row.isEnumExpanded = false;
+        this.addChild(list);
+      }
+      
+      return row;
+    });
+    
     this.updateLayout();
   }
 
-  /**
-   * 设置属性值
-   */
-  setValues(values: AttributeValue[]): void {
-    for (const { name, value } of values) {
-      this.values.set(name, value);
-      this.updateInputValue(name, value);
-    }
-  }
-
-  /**
-   * 获取所有属性值
-   */
-  getValues(): AttributeValue[] {
-    return Array.from(this.values.entries()).map(([name, value]) => ({ name, value }));
-  }
-
-  /**
-   * 设置变更回调
-   */
   setOnChange(callback: (name: string, value: unknown) => void): void {
     this.onChange = callback;
   }
 
-  /**
-   * 设置关闭回调
-   */
   setOnClose(callback: () => void): void {
     this.onClose = callback;
   }
 
-  /**
-   * 挂载到容器
-   */
   mount(container: HTMLElement): void {
     this.container = container;
-    for (const input of this.inputs.values()) {
-      input.mountHiddenInput(container);
+    // 挂载所有输入组件
+    for (const row of this.attributes) {
+      if (row.input) {
+        row.input.mountHiddenInput(container);
+      }
     }
   }
 
-  /**
-   * 卸载
-   */
   unmount(): void {
-    for (const input of this.inputs.values()) {
-      input.unmountHiddenInput();
-    }
+    this.disposeInputs();
     this.container = null;
+  }
+
+  private disposeInputs(): void {
+    for (const row of this.attributes) {
+      if (row.input) {
+        row.input.unmountHiddenInput();
+        row.input.dispose();
+      }
+      if (row.enumList) {
+        row.enumList.dispose();
+      }
+    }
+  }
+
+  show(): void {
+    this.visible = true;
+    this.updateLayout();
+  }
+
+  hide(): void {
+    this.visible = false;
+    // 关闭所有展开的枚举列表
+    for (const row of this.attributes) {
+      if (row.enumList) {
+        row.enumList.visible = false;
+        row.isEnumExpanded = false;
+      }
+    }
   }
 
   protected renderSelf(ctx: CanvasRenderingContext2D): void {
@@ -184,44 +198,9 @@ export class AttributeEditor extends ContainerComponent {
     this.roundRect(ctx, this.x, this.y, this.width, this.height, this.style.borderRadius);
     ctx.fill();
 
+    // 清除阴影
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
-
-    // 标题栏
-    ctx.fillStyle = this.style.headerBackgroundColor;
-    this.roundRectTop(ctx, this.x, this.y, this.width, this.style.headerHeight, this.style.borderRadius);
-    ctx.fill();
-
-    // 标题
-    ctx.fillStyle = this.style.headerTextColor;
-    ctx.font = `${this.style.fontSize + 1}px ${this.style.fontFamily}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.title, this.x + UI.titleLeftPadding, this.y + this.style.headerHeight / 2);
-
-    // 关闭按钮
-    const closeX = this.x + this.width - UI.closeButtonOffset;
-    const closeY = this.y + this.style.headerHeight / 2;
-    ctx.strokeStyle = this.style.headerTextColor;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(closeX - 5, closeY - 5);
-    ctx.lineTo(closeX + 5, closeY + 5);
-    ctx.moveTo(closeX + 5, closeY - 5);
-    ctx.lineTo(closeX - 5, closeY + 5);
-    ctx.stroke();
-
-    // 属性标签
-    let rowY = this.y + this.style.headerHeight + this.style.padding;
-    ctx.fillStyle = this.style.labelColor;
-    ctx.font = `${this.style.fontSize}px ${this.style.fontFamily}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    for (const attr of this.attributes) {
-      ctx.fillText(attr.label, this.x + this.style.padding, rowY + this.style.rowHeight / 2);
-      rowY += this.style.rowHeight + this.style.gap;
-    }
 
     // 边框
     ctx.strokeStyle = this.style.borderColor;
@@ -229,243 +208,276 @@ export class AttributeEditor extends ContainerComponent {
     this.roundRect(ctx, this.x, this.y, this.width, this.height, this.style.borderRadius);
     ctx.stroke();
 
+    // 标题
+    ctx.fillStyle = TEXT.titleColor;
+    ctx.font = `${TEXT.titleWeight} ${TEXT.titleSize}px ${TEXT.fontFamily}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.title, this.x + this.style.padding, this.y + this.style.padding + TEXT.titleSize / 2);
+
+    // 渲染属性行
+    this.renderAttributeRows(ctx);
+
     ctx.restore();
   }
 
+  private renderAttributeRows(ctx: CanvasRenderingContext2D): void {
+    const { padding, rowHeight, labelWidth, gap } = this.style;
+    const contentWidth = this.width - padding * 2;
+    const valueWidth = contentWidth - labelWidth - gap;
+    
+    let rowY = this.y + padding + TEXT.titleSize + gap;
+
+    for (const row of this.attributes) {
+      const def = row.definition;
+      
+      // 标签
+      ctx.fillStyle = TEXT.labelColor;
+      ctx.font = `${TEXT.labelSize}px ${TEXT.fontFamily}`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(def.name, this.x + padding + labelWidth, rowY + rowHeight / 2);
+
+      const valueX = this.x + padding + labelWidth + gap;
+      const valueY = rowY;
+
+      // 根据类型渲染值
+      if (def.type === 'boolean') {
+        this.renderCheckbox(ctx, row, valueX, valueY + (rowHeight - 16) / 2, 16);
+      } else if (def.type === 'enum') {
+        this.renderEnumButton(ctx, row, valueX, valueY, valueWidth, rowHeight);
+      }
+      // TextInput 由子组件渲染
+
+      rowY += rowHeight;
+    }
+  }
+
+  private renderCheckbox(ctx: CanvasRenderingContext2D, row: AttributeRow, x: number, y: number, size: number): void {
+    const checked = Boolean(row.definition.value);
+    
+    // 保存边界用于点击检测
+    row.checkboxBounds = { x, y, size };
+
+    // 边框
+    ctx.strokeStyle = BUTTON.borderColor;
+    ctx.lineWidth = BUTTON.borderWidth;
+    this.roundRect(ctx, x, y, size, size, 3);
+    ctx.stroke();
+
+    // 背景
+    ctx.fillStyle = checked ? UI.successColor : 'transparent';
+    this.roundRect(ctx, x, y, size, size, 3);
+    ctx.fill();
+
+    // 勾选标记
+    if (checked) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x + 3, y + size / 2);
+      ctx.lineTo(x + size / 2 - 1, y + size - 4);
+      ctx.lineTo(x + size - 3, y + 4);
+      ctx.stroke();
+    }
+  }
+
+  private renderEnumButton(ctx: CanvasRenderingContext2D, row: AttributeRow, x: number, y: number, width: number, height: number): void {
+    const value = String(row.definition.value ?? '');
+    const isExpanded = row.isEnumExpanded ?? false;
+
+    // 背景
+    ctx.fillStyle = BUTTON.bg;
+    this.roundRect(ctx, x, y + 2, width, height - 4, BUTTON.borderRadius);
+    ctx.fill();
+
+    // 边框
+    ctx.strokeStyle = BUTTON.borderColor;
+    ctx.lineWidth = BUTTON.borderWidth;
+    this.roundRect(ctx, x, y + 2, width, height - 4, BUTTON.borderRadius);
+    ctx.stroke();
+
+    // 文字
+    ctx.fillStyle = BUTTON.textColor;
+    ctx.font = `${BUTTON.fontSize}px ${TEXT.fontFamily}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(value, x + 8, y + height / 2);
+
+    // 下拉箭头
+    const arrowX = x + width - 16;
+    const arrowY = y + height / 2;
+    ctx.strokeStyle = BUTTON.textColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (isExpanded) {
+      ctx.moveTo(arrowX - 4, arrowY + 2);
+      ctx.lineTo(arrowX, arrowY - 2);
+      ctx.lineTo(arrowX + 4, arrowY + 2);
+    } else {
+      ctx.moveTo(arrowX - 4, arrowY - 2);
+      ctx.lineTo(arrowX, arrowY + 2);
+      ctx.lineTo(arrowX + 4, arrowY - 2);
+    }
+    ctx.stroke();
+  }
+
+  private handleInputChange(_name: string, type: AttributeType, value: string): void {
+    // 实时验证但不触发回调
+    if (type === 'integer') {
+      const num = parseInt(value, 10);
+      if (!isNaN(num)) {
+        // 有效整数
+      }
+    } else if (type === 'float') {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        // 有效浮点数
+      }
+    }
+  }
+
+  private handleInputSubmit(name: string, type: AttributeType, value: string): void {
+    let parsedValue: unknown = value;
+    
+    if (type === 'integer') {
+      const num = parseInt(value, 10);
+      parsedValue = isNaN(num) ? 0 : num;
+    } else if (type === 'float') {
+      const num = parseFloat(value);
+      parsedValue = isNaN(num) ? 0 : num;
+    }
+    
+    // 更新定义中的值
+    const row = this.attributes.find(r => r.definition.name === name);
+    if (row) {
+      row.definition.value = parsedValue;
+    }
+    
+    this.onChange?.(name, parsedValue);
+  }
+
+  private handleEnumSelect(name: string, value: string): void {
+    const row = this.attributes.find(r => r.definition.name === name);
+    if (row) {
+      row.definition.value = value;
+      row.isEnumExpanded = false;
+      if (row.enumList) {
+        row.enumList.visible = false;
+      }
+    }
+    this.onChange?.(name, value);
+  }
+
+  private handleCheckboxClick(row: AttributeRow): void {
+    const newValue = !row.definition.value;
+    row.definition.value = newValue;
+    this.onChange?.(row.definition.name, newValue);
+  }
+
   onMouseDown(event: UIMouseEvent): boolean {
-    // 关闭按钮
-    const closeX = this.x + this.width - UI.closeButtonOffset;
-    const closeY = this.y + this.style.headerHeight / 2;
-    if (
-      event.x >= closeX - UI.closeButtonSize && event.x <= closeX + UI.closeButtonSize &&
-      event.y >= closeY - UI.closeButtonSize && event.y <= closeY + UI.closeButtonSize
-    ) {
+    // 点击外部关闭
+    if (!this.hitTest(event.x, event.y)) {
       this.onClose?.();
-      return true;
+      return false;
     }
 
-    // 关闭枚举下拉
-    if (this.activeEnumName) {
-      const list = this.enumLists.get(this.activeEnumName);
-      if (list && !list.hitTest(event.x, event.y)) {
-        list.visible = false;
-        this.activeEnumName = null;
+    // 检查复选框点击
+    for (const row of this.attributes) {
+      if (row.definition.type === 'boolean' && row.checkboxBounds) {
+        const { x, y, size } = row.checkboxBounds;
+        if (event.x >= x && event.x <= x + size && event.y >= y && event.y <= y + size) {
+          this.handleCheckboxClick(row);
+          return true;
+        }
       }
+    }
+
+    // 检查枚举按钮点击
+    const { padding, rowHeight, labelWidth, gap } = this.style;
+    const contentWidth = this.width - padding * 2;
+    const valueWidth = contentWidth - labelWidth - gap;
+    let rowY = this.y + padding + TEXT.titleSize + gap;
+
+    for (const row of this.attributes) {
+      if (row.definition.type === 'enum') {
+        const valueX = this.x + padding + labelWidth + gap;
+        if (event.x >= valueX && event.x <= valueX + valueWidth &&
+            event.y >= rowY && event.y <= rowY + rowHeight) {
+          // 切换展开状态
+          row.isEnumExpanded = !row.isEnumExpanded;
+          if (row.enumList) {
+            row.enumList.visible = row.isEnumExpanded;
+            if (row.isEnumExpanded) {
+              // 定位枚举列表
+              row.enumList.setPosition(valueX, rowY + rowHeight);
+              row.enumList.setSize(valueWidth, Math.min(
+                (row.definition.enumOptions?.length ?? 0) * UI.listItemHeight + 4,
+                150
+              ));
+            }
+          }
+          return true;
+        }
+      }
+      rowY += rowHeight;
     }
 
     return super.onMouseDown(event);
   }
 
-  private clearInputs(): void {
-    for (const input of this.inputs.values()) {
-      input.dispose();
-      this.removeChild(input.id);
-    }
-    for (const btn of this.boolButtons.values()) {
-      btn.dispose();
-      this.removeChild(btn.id);
-    }
-    for (const list of this.enumLists.values()) {
-      list.dispose();
-      this.removeChild(list.id);
-    }
-    this.inputs.clear();
-    this.boolButtons.clear();
-    this.enumLists.clear();
-  }
-
-  private createInputs(): void {
-    for (const attr of this.attributes) {
-      switch (attr.type) {
-        case 'integer':
-        case 'float':
-        case 'string':
-          this.createTextInput(attr);
-          break;
-        case 'boolean':
-          this.createBoolButton(attr);
-          break;
-        case 'enum':
-          this.createEnumSelector(attr);
-          break;
+  onKeyDown(event: UIKeyEvent): boolean {
+    if (event.key === 'Escape') {
+      // 关闭展开的枚举列表或整个编辑器
+      let closedEnum = false;
+      for (const row of this.attributes) {
+        if (row.isEnumExpanded) {
+          row.isEnumExpanded = false;
+          if (row.enumList) {
+            row.enumList.visible = false;
+          }
+          closedEnum = true;
+        }
       }
-
-      // 设置默认值
-      if (attr.defaultValue !== undefined && !this.values.has(attr.name)) {
-        this.values.set(attr.name, attr.defaultValue);
+      if (!closedEnum) {
+        this.onClose?.();
       }
+      return true;
     }
-  }
-
-  private createTextInput(attr: AttributeDef): void {
-    const input = new TextInput(`${this.id}-input-${attr.name}`);
-    input.setPlaceholder(attr.type === 'integer' ? '0' : attr.type === 'float' ? '0.0' : '');
-    input.setOnChange((value) => this.handleInputChange(attr, value));
-    input.setOnSubmit((value) => this.handleInputChange(attr, value));
-    
-    if (this.container) {
-      input.mountHiddenInput(this.container);
-    }
-    
-    this.inputs.set(attr.name, input);
-    this.addChild(input);
-  }
-
-  private createBoolButton(attr: AttributeDef): void {
-    const value = this.values.get(attr.name) ?? attr.defaultValue ?? false;
-    const btn = new Button(`${this.id}-bool-${attr.name}`, value ? 'true' : 'false', {
-      backgroundColor: value ? UI.successColor : UI.buttonBg,
-      hoverBackgroundColor: value ? UI.successHoverColor : UI.buttonHoverBg,
-    });
-    btn.setOnClick(() => this.toggleBool(attr.name));
-    
-    this.boolButtons.set(attr.name, btn);
-    this.addChild(btn);
-  }
-
-  private createEnumSelector(attr: AttributeDef): void {
-    // 显示当前值的按钮
-    const value = this.values.get(attr.name) ?? attr.defaultValue ?? attr.options?.[0] ?? '';
-    const btn = new Button(`${this.id}-enum-btn-${attr.name}`, String(value), {
-      backgroundColor: UI.buttonBg,
-    });
-    btn.setOnClick(() => this.toggleEnumList(attr.name));
-    
-    this.boolButtons.set(attr.name, btn);
-    this.addChild(btn);
-
-    // 下拉列表
-    const list = new ScrollableList(`${this.id}-enum-list-${attr.name}`);
-    list.visible = false;
-    list.setItems((attr.options ?? []).map(opt => ({ id: opt, label: opt })));
-    list.setOnSelect((item) => this.handleEnumSelect(attr.name, item));
-    
-    this.enumLists.set(attr.name, list);
-    this.addChild(list);
-  }
-
-  private handleInputChange(attr: AttributeDef, value: string): void {
-    let parsed: unknown = value;
-    
-    if (attr.type === 'integer') {
-      parsed = parseInt(value, 10);
-      if (isNaN(parsed as number)) parsed = 0;
-    } else if (attr.type === 'float') {
-      parsed = parseFloat(value);
-      if (isNaN(parsed as number)) parsed = 0.0;
-    }
-    
-    this.values.set(attr.name, parsed);
-    this.onChange?.(attr.name, parsed);
-  }
-
-  private toggleBool(name: string): void {
-    const current = this.values.get(name) ?? false;
-    const newValue = !current;
-    this.values.set(name, newValue);
-    
-    const btn = this.boolButtons.get(name);
-    if (btn) {
-      btn.setText(newValue ? 'true' : 'false');
-    }
-    
-    this.onChange?.(name, newValue);
-  }
-
-  private toggleEnumList(name: string): void {
-    const list = this.enumLists.get(name);
-    if (!list) return;
-
-    if (this.activeEnumName === name) {
-      list.visible = false;
-      this.activeEnumName = null;
-    } else {
-      // 关闭其他
-      if (this.activeEnumName) {
-        const other = this.enumLists.get(this.activeEnumName);
-        if (other) other.visible = false;
-      }
-      list.visible = true;
-      this.activeEnumName = name;
-    }
-  }
-
-  private handleEnumSelect(name: string, item: ListItem): void {
-    this.values.set(name, item.id);
-    
-    const btn = this.boolButtons.get(name);
-    if (btn) {
-      btn.setText(item.label);
-    }
-    
-    const list = this.enumLists.get(name);
-    if (list) {
-      list.visible = false;
-    }
-    this.activeEnumName = null;
-    
-    this.onChange?.(name, item.id);
-  }
-
-  private updateInputValue(name: string, value: unknown): void {
-    const input = this.inputs.get(name);
-    if (input) {
-      input.setValue(String(value ?? ''));
-      return;
-    }
-
-    const btn = this.boolButtons.get(name);
-    if (btn) {
-      const attr = this.attributes.find(a => a.name === name);
-      if (attr?.type === 'boolean') {
-        btn.setText(value ? 'true' : 'false');
-      } else {
-        btn.setText(String(value ?? ''));
-      }
-    }
+    return false;
   }
 
   private updateLayout(): void {
-    const { padding, headerHeight, rowHeight, labelWidth, gap } = this.style;
-    const inputWidth = this.width - padding * 2 - labelWidth - gap;
-    const inputX = this.x + padding + labelWidth + gap;
+    const { padding, rowHeight, labelWidth, gap } = this.style;
+    const contentWidth = this.width - padding * 2;
+    const valueWidth = contentWidth - labelWidth - gap;
+    
+    let rowY = this.y + padding + TEXT.titleSize + gap;
 
-    let rowY = this.y + headerHeight + padding;
+    for (const row of this.attributes) {
+      const valueX = this.x + padding + labelWidth + gap;
 
-    for (const attr of this.attributes) {
-      const input = this.inputs.get(attr.name);
-      if (input) {
-        input.setPosition(inputX, rowY);
-        input.setSize(inputWidth, rowHeight);
+      if (row.input) {
+        row.input.setPosition(valueX, rowY + 2);
+        row.input.setSize(valueWidth, rowHeight - 4);
       }
 
-      const btn = this.boolButtons.get(attr.name);
-      if (btn) {
-        btn.setPosition(inputX, rowY);
-        btn.setSize(inputWidth, rowHeight);
-      }
-
-      const list = this.enumLists.get(attr.name);
-      if (list) {
-        list.setPosition(inputX, rowY + rowHeight + 2);
-        list.setSize(inputWidth, Math.min(150, (attr.options?.length ?? 5) * UI.listItemHeight + 4));
-      }
-
-      rowY += rowHeight + gap;
+      rowY += rowHeight;
     }
 
-    this.height = rowY - this.y + padding - gap;
-  }
-
-  setPosition(x: number, y: number): void {
-    super.setPosition(x, y);
-    this.updateLayout();
+    // 计算总高度
+    this.height = padding + TEXT.titleSize + gap + this.attributes.length * rowHeight + padding;
   }
 
   private roundRect(
     ctx: CanvasRenderingContext2D,
     x: number, y: number, w: number, h: number, r: number
   ): void {
+    if (r === 0) {
+      ctx.rect(x, y, w, h);
+      return;
+    }
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.lineTo(x + w - r, y);
@@ -479,24 +491,8 @@ export class AttributeEditor extends ContainerComponent {
     ctx.closePath();
   }
 
-  private roundRectTop(
-    ctx: CanvasRenderingContext2D,
-    x: number, y: number, w: number, h: number, r: number
-  ): void {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x, y + h);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  }
-
   dispose(): void {
-    this.unmount();
-    this.clearInputs();
+    this.disposeInputs();
     super.dispose();
   }
 }

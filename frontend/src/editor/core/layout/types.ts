@@ -72,8 +72,8 @@ export interface ContainerConfig {
   padding?: Padding;
 
   // === 尺寸属性 ===
-  width?: SizingMode | number;
-  height?: SizingMode | number;
+  width?: SizingMode | number | string;
+  height?: SizingMode | number | string;
   minWidth?: number;
   maxWidth?: number;
   minHeight?: number;
@@ -92,9 +92,24 @@ export interface ContainerConfig {
   // === 文本溢出（仅对文本节点有效）===
   textOverflow?: TextOverflow;
 
+  // === 溢出处理 ===
+  overflow?: 'visible' | 'hidden';
+
+  // === 定位 ===
+  position?: 'relative' | 'absolute';
+
+  // === Overlay 模式 ===
+  // overlay 元素使用 absolute 定位，不参与父容器宽度计算
+  // 需要配合 overlayHeight 指定占位元素高度
+  overlay?: boolean;
+  overlayHeight?: number;
+
   // === 嵌套状态 ===
   selected?: Partial<ContainerConfig>;
   hover?: Partial<ContainerConfig>;
+
+  // === CSS 类名（用于 DOM 渲染器）===
+  className?: string;
 }
 
 /** 文本样式配置 */
@@ -131,9 +146,7 @@ export interface EdgeConfig {
 /** 节点类型颜色配置 */
 export interface NodeTypeConfig {
   entry: string;
-  entryMain: string;
   return: string;
-  returnMain: string;
   call: string;
   operation: string;
 }
@@ -302,6 +315,7 @@ export interface LayoutConfig {
   valueColumn: ContainerConfig;
   attrLabel: ContainerConfig;
   attrValue: ContainerConfig;
+  editableName: ContainerConfig;
   typeLabel: ContainerConfig;
   summary: ContainerConfig;
   summaryWrapper: ContainerConfig;
@@ -317,7 +331,8 @@ export interface LayoutConfig {
   colors: ColorsConfig;
   dialect: DialectConfig;
   type: TypeConfig;
-  button: ButtonConfig;
+  button: ContainerConfig;      // 布局配置
+  buttonStyle: ButtonConfig;    // 样式配置
   overlay: OverlayConfig;
   ui: UIConfig;
   canvas: CanvasConfig;

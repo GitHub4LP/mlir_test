@@ -216,15 +216,153 @@ displayType = pinnedTypes[port] ?? propagatedType ?? originalConstraint
 
 ## 渲染器架构
 
+### 统一布局系统
+
+所有渲染器（ReactFlow、VueFlow、Canvas、GPU）都使用统一的布局系统：
+
+```
+GraphNode → buildNodeLayoutTree() → LayoutNode → computeLayout() → LayoutBox → 渲染器适配
+```
+
+#### 核心组件
+
+| 组件 | 位置 | 职责 |
+|------|------|------|
+| `buildNodeLayoutTree` | `editor/core/layout/` | 构建节点布局树 |
+| `computeLayout` | `editor/core/layout/` | 计算布局（类似 CSS Flexbox） |
+| `DOMRenderer` | `editor/core/layout/` | React DOM 渲染器 |
+| `DOMRenderer.vue` | `editor/adapters/vueflow/` | Vue DOM 渲染器 |
+| `CanvasRenderer` | `editor/adapters/canvas/` | Canvas 2D 渲染器 |
+| `GPURenderer` | `editor/adapters/gpu/` | GPU 渲染器 |
+
+#### DOMRenderer 使用
+
+React 组件中使用 DOMRenderer：
+
+```tsx
+import { DOMRenderer, buildNodeLayoutTree, computeLayout } from '../../core/layout';
+
+function BlueprintNode({ data, selected }) {
+  const layoutTree = useMemo(() => buildNodeLayoutTree(data, 'operation'), [data]);
+  const layoutBox = useMemo(() => computeLayout(layoutTree), [layoutTree]);
+  
+  return (
+    <DOMRenderer
+      layoutBox={layoutBox}
+      selected={selected}
+      interactiveRenderers={{
+        handle: (config) => <Handle {...config} />,
+        typeSelector: (config) => <TypeSelector {...config} />,
+      }}
+      callbacks={{
+        'type-select': (handleId, type) => handleTypeSelect(handleId, type),
+      }}
+    />
+  );
+}
+```
+
+Vue 组件中使用 DOMRenderer.vue：
+
+```vue
+<template>
+  <DOMRenderer
+    :layoutBox="layoutBox"
+    :selected="selected"
+    :interactiveRenderers="interactiveRenderers"
+    :callbacks="callbacks"
+  />
+</template>
+
+<script setup>
+import DOMRenderer from '../components/DOMRenderer.vue';
+import { buildNodeLayoutTree, computeLayout } from '@/editor/core/layout';
+
+const layoutTree = computed(() => buildNodeLayoutTree(props.data, 'operation'));
+const layoutBox = computed(() => computeLayout(layoutTree.value));
+</script>
+```
+
+#### 交互元素配置
+
+LayoutNode 支持以下交互元素：
+
+| 类型 | 用途 | 配置 |
+|------|------|------|
+| `handle` | 连接端口 | `handleType`, `handlePosition`, `pinKind`, `pinColor` |
+| `typeSelector` | 类型选择器触发 | `typeConstraint`, `pinLabel` |
+| `editableName` | 可编辑名称 | `value`, `onChangeCallback`, `placeholder` |
+| `button` | 按钮 | `icon`, `onClickCallback`, `disabled`, `showOnHover` |
+
+### Canvas UI 组件
+
+Canvas 渲染器使用原生 Canvas UI 组件：
+
+```
+editor/adapters/canvas/ui/
+├── UIComponent.ts      # 基类
+├── TextInput.ts        # 文字输入
+├── Button.ts           # 按钮（支持图标）
+├── EditableName.ts     # 可编辑名称
+├── TypeSelector.ts     # 类型选择器
+├── ScrollableList.ts   # 可滚动列表
+└── AttributeEditor.ts  # 属性编辑器
+```
+
+#### UIManager
+
+`UIManager` 统一管理所有 Canvas UI 组件：
+
+```typescript
+import { UIManager } from './canvas/UIManager';
+
+const uiManager = new UIManager();
+uiManager.mount(container);
+
+// 显示类型选择器
+uiManager.showTypeSelector(nodeId, handleId, screenX, screenY, options, currentType, constraintData);
+
+// 显示可编辑名称
+uiManager.showEditableName(nodeId, fieldId, screenX, screenY, width, value, placeholder);
+
+// 显示属性编辑器
+uiManager.showAttributeEditor(nodeId, screenX, screenY, attributes, title);
+
+// 设置回调
+uiManager.setCallbacks({
+  onTypeSelect: (nodeId, handleId, type) => { ... },
+  onNameSubmit: (nodeId, fieldId, value) => { ... },
+  onAttributeChange: (nodeId, attrName, value) => { ... },
+});
+```
+
+#### HitTest 系统
+
+Canvas 渲染器使用 LayoutBox 进行命中测试：
+
+```typescript
+import { hitTestLayoutBox, parseInteractiveId } from '../core/layout';
+
+// 命中测试
+const hit = hitTestLayoutBox(layoutBox, localX, localY);
+if (hit?.box.interactive?.id) {
+  const parsed = parseInteractiveId(hit.box.interactive.id);
+  // parsed.type: 'type-label' | 'variadic' | 'param-add' | 'param-remove' | ...
+  // parsed.handleId, parsed.group, parsed.action, parsed.index
+}
+```
+
 ### 渲染器类型
 
 | 类型 | 实现 | 说明 |
 |------|------|------|
 | `reactflow` | ReactFlowNodeEditor | React Flow 库，React 组件渲染 |
 | `vueflow` | VueFlowNodeEditor | Vue Flow 库，Vue 组件渲染 |
-| `canvas` | CanvasNodeEditor | Canvas 2D 全部渲染 |
-| `webgl` | GPUNodeEditor(preferWebGPU=false) | WebGL 2.0 GPU 渲染 |
-| `webgpu` | GPUNodeEditor(preferWebGPU=true) | WebGPU GPU 渲染 |
+| `canvas` | CanvasNodeEditor + CanvasRenderer | Canvas 2D 渲染 |
+| `webgl` | CanvasNodeEditor + GPURenderer(webgl) | WebGL 2.0 GPU 渲染 |
+| `webgpu` | CanvasNodeEditor + GPURenderer(webgpu) | WebGPU GPU 渲染 |
+
+Canvas/WebGL/WebGPU 方案统一使用 `CanvasNodeEditor`，通过不同的渲染器工厂区分后端。
 
 ### INodeEditor 接口
 
@@ -413,20 +551,21 @@ type EdgeChange =
 
 ### GPU 渲染器架构
 
+Canvas/WebGL/WebGPU 方案统一使用 `CanvasNodeEditor`，通过渲染器工厂注入不同后端：
+
 ```
-GPUNodeEditor (wrapper)
-    └── GPUNodeEditor (core)
-            ├── GPURenderer
-            │       ├── WebGLBackend / WebGPUBackend
-            │       ├── NodeBatchManager
-            │       ├── EdgeBatchManager
-            │       ├── TextBatchManager
-            │       └── ...
-            ├── GraphController (交互逻辑)
-            └── UIManager (原生 Canvas UI)
+CanvasNodeEditor
+    ├── IExtendedRenderer (CanvasRenderer 或 GPURenderer)
+    │       ├── Canvas2D / WebGLBackend / WebGPUBackend
+    │       ├── NodeBatchManager (GPU 模式)
+    │       ├── EdgeBatchManager (GPU 模式)
+    │       ├── TextBatchManager (GPU 模式)
+    │       └── ...
+    ├── GraphController (交互逻辑)
+    └── UIManager (原生 Canvas UI)
 ```
 
-#### 多层 Canvas 架构
+#### 多层 Canvas 架构（GPU 模式）
 
 GPU 渲染器使用三层 Canvas：
 

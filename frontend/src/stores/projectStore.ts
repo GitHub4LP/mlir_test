@@ -90,7 +90,7 @@ function createFunctionGraph(
     execOut: { id: 'exec-out', label: '' },
     isMain,
     // 节点头部颜色（创建时确定，不会变化）
-    headerColor: isMain ? tokens.nodeType.entryMain : tokens.nodeType.entry,
+    headerColor: tokens.nodeType.entry,
   };
 
   const returnData: FunctionReturnData = {
@@ -101,7 +101,7 @@ function createFunctionGraph(
     execIn: { id: 'exec-in', label: '' },
     isMain,
     // 节点头部颜色（创建时确定，不会变化）
-    headerColor: isMain ? tokens.nodeType.returnMain : tokens.nodeType.return,
+    headerColor: tokens.nodeType.return,
   };
 
   return {

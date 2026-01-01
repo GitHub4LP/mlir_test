@@ -241,6 +241,17 @@
     "height": 20,
     "counterAxisAlignItems": "CENTER"
   },
+  "editableName": {
+    "paddingTop": 2,
+    "paddingRight": 4,
+    "paddingBottom": 2,
+    "paddingLeft": 4,
+    "primaryAxisSizingMode": "AUTO",
+    "counterAxisSizingMode": "AUTO",
+    "cornerRadius": 3,
+    "minWidth": 24,
+    "minHeight": 16
+  },
   "typeLabel": {
     "paddingTop": 2,
     "paddingRight": 6,
@@ -249,7 +260,15 @@
     "primaryAxisSizingMode": "AUTO",
     "counterAxisSizingMode": "AUTO",
     "cornerRadius": 3,
+    "minWidth": 20,
+    "minHeight": 16,
     "fills": [{ "type": "SOLID", "color": { "r": 0.216, "g": 0.255, "b": 0.318 }, "opacity": 1 }]
+  },
+  "button": {
+    "width": 16,
+    "height": 16,
+    "minWidth": 16,
+    "minHeight": 16
   },
   "summary": {
     "layoutMode": "HORIZONTAL",
@@ -420,7 +439,7 @@
     "tensorFloat": "#5BA3E8",
     "default": "#95A5A6"
   },
-  "button": {
+  "buttonStyle": {
     "size": 16,
     "iconSize": 12,
     "borderRadius": 4,

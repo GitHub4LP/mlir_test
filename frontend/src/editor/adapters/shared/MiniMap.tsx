@@ -8,6 +8,15 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { EditorNode, EditorViewport } from '../../types';
 
+/** 节点尺寸 */
+export interface NodeSize {
+  width: number;
+  height: number;
+}
+
+/** 获取节点尺寸的函数类型 */
+export type GetNodeSizeFn = (node: EditorNode) => NodeSize;
+
 export interface MiniMapProps {
   /** 节点列表 */
   nodes: EditorNode[];
@@ -23,28 +32,58 @@ export interface MiniMapProps {
   height?: number;
   /** 视口变更回调 */
   onViewportChange?: (viewport: EditorViewport) => void;
+  /** 自定义获取节点尺寸函数 */
+  getNodeSize?: GetNodeSizeFn;
   /** 自定义类名 */
   className?: string;
   /** 自定义样式 */
   style?: React.CSSProperties;
 }
 
-/** 默认节点颜色 */
-const NODE_COLOR = '#4a5568';
-/** 选中节点颜色 */
-const SELECTED_NODE_COLOR = '#4299e1';
 /** 视口指示器颜色 */
 const VIEWPORT_COLOR = 'rgba(66, 153, 225, 0.3)';
 /** 视口边框颜色 */
 const VIEWPORT_BORDER_COLOR = 'rgba(66, 153, 225, 0.8)';
-/** 背景颜色 */
-const BACKGROUND_COLOR = '#1a1a1a';
+/** 背景颜色 - 与 ReactFlow/VueFlow MiniMap 默认一致 */
+const BACKGROUND_COLOR = '#1f2937';
+
+/**
+ * 根据节点类型获取颜色
+ * 与 ReactFlow/VueFlow MiniMap 保持一致
+ */
+function getNodeColor(nodeType: string | undefined): string {
+  switch (nodeType) {
+    case 'function-entry': return '#22c55e';  // 绿色
+    case 'function-return': return '#ef4444'; // 红色
+    case 'function-call': return '#a855f7';   // 紫色
+    default: return '#3b82f6';                // 蓝色（operation）
+  }
+}
+
+
+/** 默认获取节点尺寸函数 */
+function defaultGetNodeSize(node: EditorNode): NodeSize {
+  const nodeData = node.data as Record<string, unknown> | undefined;
+  return {
+    width: typeof nodeData?.width === 'number' ? nodeData.width : 200,
+    height: typeof nodeData?.height === 'number' ? nodeData.height : 100,
+  };
+}
 
 
 /**
- * 计算节点边界
+ * 计算 MiniMap 的显示边界
+ * 
+ * 策略：以节点边界为基础，确保视口框始终完全可见
+ * 当视口超出节点边界时，扩展边界以包含视口
  */
-function computeBounds(nodes: EditorNode[]): {
+function computeBounds(
+  nodes: EditorNode[],
+  viewport: { x: number; y: number; zoom: number },
+  containerWidth: number,
+  containerHeight: number,
+  getNodeSize: GetNodeSizeFn
+): {
   minX: number;
   minY: number;
   maxX: number;
@@ -52,22 +91,39 @@ function computeBounds(nodes: EditorNode[]): {
   width: number;
   height: number;
 } {
-  if (nodes.length === 0) {
-    return { minX: 0, minY: 0, maxX: 100, maxY: 100, width: 100, height: 100 };
-  }
+  // 计算视口在画布坐标中的范围
+  const viewportCanvasX = -viewport.x / viewport.zoom;
+  const viewportCanvasY = -viewport.y / viewport.zoom;
+  const viewportCanvasW = containerWidth / viewport.zoom;
+  const viewportCanvasH = containerHeight / viewport.zoom;
   
-  let minX = Infinity, minY = Infinity;
-  let maxX = -Infinity, maxY = -Infinity;
+  // 先计算节点边界
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   
   for (const node of nodes) {
-    const nodeData = node.data as Record<string, unknown> | undefined;
-    const width = (typeof nodeData?.width === 'number' ? nodeData.width : 200);
-    const height = (typeof nodeData?.height === 'number' ? nodeData.height : 100);
+    const { width, height } = getNodeSize(node);
     
     minX = Math.min(minX, node.position.x);
     minY = Math.min(minY, node.position.y);
     maxX = Math.max(maxX, node.position.x + width);
     maxY = Math.max(maxY, node.position.y + height);
+  }
+  
+  // 如果没有节点，使用视口作为边界
+  if (!isFinite(minX)) {
+    minX = viewportCanvasX;
+    minY = viewportCanvasY;
+    maxX = viewportCanvasX + viewportCanvasW;
+    maxY = viewportCanvasY + viewportCanvasH;
+  } else {
+    // 扩展边界以包含视口（确保视口框完全可见）
+    minX = Math.min(minX, viewportCanvasX);
+    minY = Math.min(minY, viewportCanvasY);
+    maxX = Math.max(maxX, viewportCanvasX + viewportCanvasW);
+    maxY = Math.max(maxY, viewportCanvasY + viewportCanvasH);
   }
   
   // 添加边距
@@ -98,33 +154,40 @@ export function MiniMap({
   width = 200,
   height = 150,
   onViewportChange,
+  getNodeSize = defaultGetNodeSize,
   className,
   style,
 }: MiniMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   
-  // 计算缩放比例
-  const bounds = computeBounds(nodes);
+  // 计算缩放比例（包含视口和节点的联合边界）
+  const bounds = computeBounds(nodes, viewport, containerWidth, containerHeight, getNodeSize);
   const scaleX = width / bounds.width;
   const scaleY = height / bounds.height;
   const scale = Math.min(scaleX, scaleY);
   
-  // 画布坐标转 MiniMap 坐标
+  // 计算居中偏移
+  const contentWidth = bounds.width * scale;
+  const contentHeight = bounds.height * scale;
+  const offsetX = (width - contentWidth) / 2;
+  const offsetY = (height - contentHeight) / 2;
+  
+  // 画布坐标转 MiniMap 坐标（带居中偏移）
   const canvasToMiniMap = useCallback((x: number, y: number) => {
     return {
-      x: (x - bounds.minX) * scale,
-      y: (y - bounds.minY) * scale,
+      x: (x - bounds.minX) * scale + offsetX,
+      y: (y - bounds.minY) * scale + offsetY,
     };
-  }, [bounds.minX, bounds.minY, scale]);
+  }, [bounds.minX, bounds.minY, scale, offsetX, offsetY]);
   
-  // MiniMap 坐标转画布坐标
+  // MiniMap 坐标转画布坐标（带居中偏移）
   const miniMapToCanvas = useCallback((x: number, y: number) => {
     return {
-      x: x / scale + bounds.minX,
-      y: y / scale + bounds.minY,
+      x: (x - offsetX) / scale + bounds.minX,
+      y: (y - offsetY) / scale + bounds.minY,
     };
-  }, [bounds.minX, bounds.minY, scale]);
+  }, [bounds.minX, bounds.minY, scale, offsetX, offsetY]);
 
   // 渲染 MiniMap
   useEffect(() => {
@@ -146,15 +209,13 @@ export function MiniMap({
     
     // 绘制节点
     for (const node of nodes) {
-      const nodeData = node.data as Record<string, unknown> | undefined;
-      const nodeWidth = (typeof nodeData?.width === 'number' ? nodeData.width : 200);
-      const nodeHeight = (typeof nodeData?.height === 'number' ? nodeData.height : 100);
+      const { width: nodeWidth, height: nodeHeight } = getNodeSize(node);
       
       const pos = canvasToMiniMap(node.position.x, node.position.y);
       const w = nodeWidth * scale;
       const h = nodeHeight * scale;
       
-      ctx.fillStyle = node.selected ? SELECTED_NODE_COLOR : NODE_COLOR;
+      ctx.fillStyle = getNodeColor(node.type);
       ctx.fillRect(pos.x, pos.y, Math.max(w, 2), Math.max(h, 2));
     }
     
@@ -177,7 +238,7 @@ export function MiniMap({
     ctx.strokeStyle = VIEWPORT_BORDER_COLOR;
     ctx.lineWidth = 2;
     ctx.strokeRect(vpPos.x, vpPos.y, vpW, vpH);
-  }, [nodes, viewport, containerWidth, containerHeight, width, height, scale, canvasToMiniMap]);
+  }, [nodes, viewport, containerWidth, containerHeight, width, height, scale, canvasToMiniMap, getNodeSize]);
 
   // 处理点击导航
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

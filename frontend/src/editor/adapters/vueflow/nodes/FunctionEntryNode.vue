@@ -91,7 +91,7 @@ const graphNode = computed<GraphNode>(() => ({
 const layoutTree = computed(() => {
   const tree = buildNodeLayoutTree(graphNode.value);
   // 设置 header 颜色
-  const headerColor = isMain.value ? getNodeTypeColor('entryMain') : getNodeTypeColor('entry');
+  const headerColor = getNodeTypeColor('entry');
   const headerWrapper = tree.children.find(c => c.type === 'headerWrapper');
   if (headerWrapper) {
     const headerContent = headerWrapper.children.find(c => c.type === 'headerContent');
@@ -276,11 +276,9 @@ const callbacks = computed<CallbackMap>(() => ({
   renameParameter: handleRenameParameter,
 }));
 
-// 根节点样式（选中时显示边框）
+// 根节点样式（选中时使用 box-shadow，不占用布局空间，与 Canvas 一致）
 const rootStyle = computed(() => props.selected ? {
-  borderWidth: '2px',
-  borderColor: '#60a5fa',
-  borderStyle: 'solid',
+  boxShadow: '0 0 0 2px #60a5fa',
 } : undefined);
 </script>
 

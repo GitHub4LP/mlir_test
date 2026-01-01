@@ -15,9 +15,13 @@
 <script setup lang="ts">
 import { computed, markRaw, onMounted, watch, nextTick } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
+import { MiniMap } from '@vue-flow/minimap';
+import { Controls } from '@vue-flow/controls';
 import type { NodeDragEvent, Connection, ViewportTransform } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
+import '@vue-flow/minimap/dist/style.css';
+import '@vue-flow/controls/dist/style.css';
 import OperationNode from './nodes/OperationNode.vue';
 import FunctionEntryNode from './nodes/FunctionEntryNode.vue';
 import FunctionReturnNode from './nodes/FunctionReturnNode.vue';
@@ -246,6 +250,16 @@ function handleKeyDown(event: KeyboardEvent) {
   
   // TODO: 其他快捷键（复制、粘贴、撤销、重做等）需要在上层实现
 }
+
+// MiniMap 节点颜色
+function getNodeColor(node: { type?: string }): string {
+  switch (node.type) {
+    case 'function-entry': return '#22c55e';
+    case 'function-return': return '#ef4444';
+    case 'function-call': return '#a855f7';
+    default: return '#3b82f6';
+  }
+}
 </script>
 
 <template>
@@ -287,6 +301,8 @@ function handleKeyDown(event: KeyboardEvent) {
       <template #node-function-call="nodeProps">
         <FunctionCallNode v-bind="nodeProps" />
       </template>
+      <Controls position="bottom-left" :show-interactive="false" />
+      <MiniMap :node-color="getNodeColor" position="bottom-right" pannable zoomable />
     </VueFlow>
   </div>
 </template>
@@ -338,40 +354,44 @@ function handleKeyDown(event: KeyboardEvent) {
   border: 1px solid var(--node-selected-borderColor, #60a5fa);
 }
 
-/* 控制面板 */
-.vue-flow__controls {
-  background-color: var(--overlay-bg, #1f2937);
-  border-color: var(--ui-buttonBg, #374151);
-  border-radius: 6px;
-}
-
+/* 控制面板按钮 */
 .vue-flow__controls-button {
   background-color: var(--overlay-bg, #1f2937);
-  border-color: var(--ui-buttonBg, #374151);
   color: var(--text-muted-color, #9ca3af);
+  fill: var(--text-muted-color, #9ca3af);
+  border-bottom-color: #374151;
 }
 
 .vue-flow__controls-button:hover {
   background-color: var(--ui-buttonBg, #374151);
 }
 
+.vue-flow__controls-button svg {
+  fill: var(--text-muted-color, #9ca3af);
+}
+
 /* 小地图 */
 .vue-flow__minimap {
   background-color: var(--overlay-bg, #1f2937);
-  border-radius: 6px;
 }
 
-/* Handle 定位 - 确保正确的左右位置 */
-.vue-flow__handle {
+/* 控制面板 */
+.vue-flow__controls {
+  background-color: var(--overlay-bg, #1f2937);
+}
+
+/* Handle 定位 - 仅在非 layout-handle 容器中使用绝对定位 */
+/* 在 layout-handle 容器中，Handle 由 interactive.css 控制，使用 flexbox 布局 */
+.vue-flow__handle:not(.layout-handle .vue-flow__handle) {
   position: absolute !important;
 }
 
-.vue-flow__handle-left {
+.vue-flow__handle-left:not(.layout-handle .vue-flow__handle-left) {
   left: 0 !important;
   transform: translateX(-50%) translateY(-50%) !important;
 }
 
-.vue-flow__handle-right {
+.vue-flow__handle-right:not(.layout-handle .vue-flow__handle-right) {
   right: 0 !important;
   left: auto !important;
   transform: translateX(50%) translateY(-50%) !important;

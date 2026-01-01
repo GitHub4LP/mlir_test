@@ -13,14 +13,14 @@
  * - 使用 editorStore 管理节点/边状态
  */
 
-import { useCallback, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Node } from '@xyflow/react';
 
 import { NodePalette } from '../components/NodePalette';
 import { FunctionManager } from '../components/FunctionManager';
 import { ExecutionPanel } from '../components/ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from '../components/ProjectDialog';
-import { EditorContainer, type RendererType } from './components/EditorContainer';
+import { EditorContainer } from './components/EditorContainer';
 import { useEditorFactory } from './hooks/useEditorFactory';
 import { useGraphEditor } from './hooks/useGraphEditor';
 import type { EditorSelection, ConnectionRequest } from '../editor/types';
@@ -30,6 +30,7 @@ import { useProjectStore } from '../stores/projectStore';
 import { useDialectStore } from '../stores/dialectStore';
 import { useEditorStore } from '../core/stores/editorStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
+import { useRendererStore } from '../stores/rendererStore';
 import { handlePinnedTypeChange, type TypeChangeHandlerDeps } from '../services/typeChangeHandler';
 
 // Layout components
@@ -64,14 +65,12 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
-  // Renderer state
-  const [renderer, setRenderer] = useState<RendererType>('reactflow');
-  
-  // 文字渲染模式状态（仅 WebGPU 有效）
-  const [textRenderMode, setTextRenderMode] = useState<'gpu' | 'canvas'>('gpu');
-  
-  // 边渲染模式状态（仅 GPU 渲染器有效）
-  const [edgeRenderMode, setEdgeRenderMode] = useState<'gpu' | 'canvas'>('gpu');
+  // Renderer state from store
+  const renderer = useRendererStore(state => state.currentRenderer);
+  const canvasBackend = useRendererStore(state => state.canvasBackend);
+  const textRenderMode = useRendererStore(state => state.textRenderMode);
+  const edgeRenderMode = useRendererStore(state => state.edgeRenderMode);
+  const setCurrentRenderer = useRendererStore(state => state.setCurrentRenderer);
   
   // 编辑器实例引用
   const editorRef = useRef<INodeEditor | null>(null);
@@ -96,58 +95,24 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   } = graphEditor;
   
   // 渲染器切换处理
-  const handleRendererChange = useCallback((newRenderer: RendererType) => {
-    setRenderer(newRenderer);
-    // 切换渲染器时重置渲染模式
-    setTextRenderMode('gpu');
-    setEdgeRenderMode('gpu');
-  }, []);
-  
-  // 文字渲染模式切换处理
-  const handleTextRenderModeChange = useCallback((mode: 'gpu' | 'canvas') => {
-    setTextRenderMode(mode);
-    // 通知编辑器切换文字渲染模式
-    const editor = editorRef.current;
-    if (editor && typeof (editor as unknown as { setTextRenderMode?: (m: string) => void }).setTextRenderMode === 'function') {
-      (editor as unknown as { setTextRenderMode: (m: string) => void }).setTextRenderMode(mode);
-    }
-  }, []);
-  
-  // 边渲染模式切换处理
-  const handleEdgeRenderModeChange = useCallback((mode: 'gpu' | 'canvas') => {
-    setEdgeRenderMode(mode);
-    // 通知编辑器切换边渲染模式
-    const editor = editorRef.current;
-    if (editor && typeof (editor as unknown as { setEdgeRenderMode?: (m: string) => void }).setEdgeRenderMode === 'function') {
-      (editor as unknown as { setEdgeRenderMode: (m: string) => void }).setEdgeRenderMode(mode);
-    }
-  }, []);
+  const handleRendererChange = useCallback((newRenderer: typeof renderer) => {
+    setCurrentRenderer(newRenderer);
+  }, [setCurrentRenderer]);
   
   // 编辑器就绪回调
   const handleEditorReady = useCallback((editor: INodeEditor) => {
     editorRef.current = editor;
-    // 如果是 GPU 渲染器（WebGL 或 WebGPU），同步当前文字模式
-    if ((renderer === 'webgpu' || renderer === 'webgl') && 
-        typeof (editor as unknown as { setTextRenderMode?: (m: string) => void }).setTextRenderMode === 'function') {
-      (editor as unknown as { setTextRenderMode: (m: string) => void }).setTextRenderMode(textRenderMode);
+    // 如果是 GPU 后端（WebGL 或 WebGPU），同步当前渲染模式
+    if (renderer === 'canvas' && (canvasBackend === 'webgl' || canvasBackend === 'webgpu')) {
+      if (typeof (editor as unknown as { setTextRenderMode?: (m: string) => void }).setTextRenderMode === 'function') {
+        (editor as unknown as { setTextRenderMode: (m: string) => void }).setTextRenderMode(textRenderMode);
+      }
+      if (typeof (editor as unknown as { setEdgeRenderMode?: (m: string) => void }).setEdgeRenderMode === 'function') {
+        (editor as unknown as { setEdgeRenderMode: (m: string) => void }).setEdgeRenderMode(edgeRenderMode);
+      }
     }
-  }, [renderer, textRenderMode]);
+  }, [renderer, canvasBackend, textRenderMode, edgeRenderMode]);
   
-  // GPU availability detection
-  const webglAvailable = useMemo(() => {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2');
-      return !!gl;
-    } catch {
-      return false;
-    }
-  }, []);
-  
-  const webgpuAvailable = useMemo(() => {
-    return 'gpu' in navigator;
-  }, []);
-
   // Get project state
   const project = useProjectStore(state => state.project);
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
@@ -345,6 +310,50 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     useEditorStore.getState().setNodes(updatedNodes);
   }, [getCurrentFunction, getConstraintElements, pickConstraintName]);
 
+  // 参数重命名处理（Canvas 渲染器）
+  const updateParameter = useProjectStore(state => state.updateParameter);
+  const handleParameterRename = useCallback((functionId: string, oldName: string, newName: string) => {
+    if (oldName === newName) return;
+    
+    // 获取当前参数信息
+    const project = useProjectStore.getState().project;
+    if (!project) return;
+    
+    const func = project.mainFunction.id === functionId
+      ? project.mainFunction
+      : project.customFunctions.find(f => f.id === functionId);
+    
+    if (!func) return;
+    
+    const param = func.parameters.find(p => p.name === oldName);
+    if (!param) return;
+    
+    // 更新参数名称
+    updateParameter(functionId, oldName, { ...param, name: newName });
+  }, [updateParameter]);
+
+  // 返回值重命名处理（Canvas 渲染器）
+  const updateReturnType = useProjectStore(state => state.updateReturnType);
+  const handleReturnTypeRename = useCallback((functionId: string, oldName: string, newName: string) => {
+    if (oldName === newName) return;
+    
+    // 获取当前返回值信息
+    const project = useProjectStore.getState().project;
+    if (!project) return;
+    
+    const func = project.mainFunction.id === functionId
+      ? project.mainFunction
+      : project.customFunctions.find(f => f.id === functionId);
+    
+    if (!func) return;
+    
+    const returnType = func.returnTypes.find(r => r.name === oldName);
+    if (!returnType) return;
+    
+    // 更新返回值名称
+    updateReturnType(functionId, oldName, { ...returnType, name: newName });
+  }, [updateReturnType]);
+
   const dismissError = useCallback(() => {
     setConnectionError(null);
   }, []);
@@ -362,12 +371,6 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
         project={project}
         renderer={renderer}
         onRendererChange={handleRendererChange}
-        webglAvailable={webglAvailable}
-        webgpuAvailable={webgpuAvailable}
-        textRenderMode={textRenderMode}
-        onTextRenderModeChange={handleTextRenderModeChange}
-        edgeRenderMode={edgeRenderMode}
-        onEdgeRenderModeChange={handleEdgeRenderModeChange}
         onCreateClick={() => setIsCreateDialogOpen(true)}
         onOpenClick={() => setIsOpenDialogOpen(true)}
         onSaveClick={() => setIsSaveDialogOpen(true)}
@@ -407,6 +410,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
           <div className="flex-1 relative">
             <EditorContainer
               rendererType={renderer}
+              canvasBackend={canvasBackend}
               createEditor={createEditor}
               onConnect={handleConnect}
               onDrop={handleDrop}
@@ -416,6 +420,8 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
               onViewportChange={setViewport}
               onTypeSelect={handleTypeSelect}
               onEditorReady={handleEditorReady}
+              onParameterRename={handleParameterRename}
+              onReturnTypeRename={handleReturnTypeRename}
             />
 
             {connectionError && (

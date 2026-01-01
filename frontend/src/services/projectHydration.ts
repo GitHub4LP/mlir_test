@@ -216,7 +216,7 @@ export function hydrateGraphNode(
       outputTypes: {},
       narrowedConstraints: {},
       // 节点头部颜色
-      headerColor: stored.isMain ? tokens.nodeType.entryMain : tokens.nodeType.entry,
+      headerColor: tokens.nodeType.entry,
     };
     return {
       ...node,
@@ -234,7 +234,7 @@ export function hydrateGraphNode(
       inputTypes: {},
       narrowedConstraints: {},
       // 节点头部颜色
-      headerColor: stored.isMain ? tokens.nodeType.returnMain : tokens.nodeType.return,
+      headerColor: tokens.nodeType.return,
     };
     return {
       ...node,

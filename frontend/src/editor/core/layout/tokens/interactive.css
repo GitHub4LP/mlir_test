@@ -1,0 +1,91 @@
+/**
+ * 交互组件 CSS 样式
+ * 与 containers/interactive.ts 配置保持同步
+ * 
+ * 注意：修改此文件时，需同步更新 interactive.ts 中的配置值
+ */
+
+/* 可编辑名称 */
+.layout-editable-name {
+  padding: 2px 4px;
+  min-width: 24px;
+  min-height: 16px;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+/* 类型标签 */
+.layout-type-label {
+  padding: 2px 6px;
+  min-width: 20px;
+  min-height: 16px;
+  border-radius: 3px;
+  background-color: rgba(55, 65, 81, 1); /* r: 0.216, g: 0.255, b: 0.318 */
+  box-sizing: border-box;
+}
+
+/* 按钮 */
+.layout-button {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  box-sizing: border-box;
+}
+
+/* Handle */
+.layout-handle {
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  /* 确保 handle 容器参与 flexbox 布局 */
+  flex-shrink: 0;
+}
+
+/**
+ * 覆盖 React Flow Handle 的默认绝对定位
+ * 
+ * React Flow 的 Handle 默认使用 position: absolute，会定位到节点边缘
+ * 在 DOMRenderer 的 flexbox 布局中，我们需要让 Handle 跟随布局流
+ * 
+ * 解决方案：
+ * 1. 使用 position: relative 让 Handle 参与 flexbox 布局
+ * 2. 重置 transform，避免 React Flow 的默认偏移
+ * 3. 保持 Handle 的尺寸和外观
+ */
+.layout-handle .react-flow__handle {
+  position: relative !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  /* 保持 Handle 的尺寸 */
+  width: 12px;
+  height: 12px;
+  /* 重置 React Flow 的默认样式 */
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/**
+ * 覆盖 VueFlow Handle 的默认绝对定位
+ * 
+ * VueFlow 的 Handle 也使用 position: absolute，需要同样的处理
+ */
+.layout-handle .vue-flow__handle {
+  position: relative !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  /* 保持 Handle 的尺寸 */
+  width: 12px;
+  height: 12px;
+  /* 重置 VueFlow 的默认样式 */
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}

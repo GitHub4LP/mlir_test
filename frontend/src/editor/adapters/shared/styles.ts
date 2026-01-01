@@ -197,7 +197,7 @@ export const tokens = {
   radius: layoutConfig.radius,
   border: layoutConfig.border,
   font: layoutConfig.font,
-  button: layoutConfig.button,
+  button: layoutConfig.buttonStyle,
   dialect: layoutConfig.dialect,
   overlay: layoutConfig.overlay,
   canvas: layoutConfig.canvas,
@@ -554,16 +554,16 @@ export const OVERLAY = {
 // ============================================================
 
 export const BUTTON = {
-  size: layoutConfig.button.size,
-  borderRadius: layoutConfig.button.borderRadius,
-  bg: layoutConfig.button.bg,
-  hoverBg: layoutConfig.button.hoverBg,
-  borderColor: layoutConfig.button.borderColor,
-  borderWidth: layoutConfig.button.borderWidth,
-  textColor: layoutConfig.button.textColor,
-  fontSize: layoutConfig.button.fontSize,
-  dangerColor: layoutConfig.button.danger.color,
-  dangerHoverColor: layoutConfig.button.danger.hoverColor,
+  size: layoutConfig.buttonStyle.size,
+  borderRadius: layoutConfig.buttonStyle.borderRadius,
+  bg: layoutConfig.buttonStyle.bg,
+  hoverBg: layoutConfig.buttonStyle.hoverBg,
+  borderColor: layoutConfig.buttonStyle.borderColor,
+  borderWidth: layoutConfig.buttonStyle.borderWidth,
+  textColor: layoutConfig.buttonStyle.textColor,
+  fontSize: layoutConfig.buttonStyle.fontSize,
+  dangerColor: layoutConfig.buttonStyle.danger.color,
+  dangerHoverColor: layoutConfig.buttonStyle.danger.hoverColor,
 };
 
 // ============================================================

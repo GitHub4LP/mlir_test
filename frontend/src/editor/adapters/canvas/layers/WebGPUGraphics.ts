@@ -264,7 +264,12 @@ export class WebGPUGraphics implements IGraphicsRenderer {
    */
   renderRects(rects: RenderRect[]): void {
     if (!this.initialized || rects.length === 0) return;
-    this.renderShapes(this.buildRectData(rects));
+    
+    // 按 zIndex 排序，确保正确的渲染顺序
+    const sortedRects = [...rects].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    
+    // 所有矩形都作为填充矩形渲染（包括选中边框矩形）
+    this.renderShapes(this.buildRectData(sortedRects));
   }
 
   /**

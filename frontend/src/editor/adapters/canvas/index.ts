@@ -51,20 +51,11 @@ export { BaseRenderer } from './IRenderer';
 export { GraphController } from './GraphController';
 export type { ControllerState, HitResult } from './GraphController';
 
-// 布局工具
-export type {
-  HandleLayout,
-  NodeLayout,
-  EdgeLayout,
-  ComputeNodeLayoutFn,
-} from './layout';
-
+// 布局工具（边计算和几何函数）
 export {
   NODE_LAYOUT,
   EDGE_LAYOUT,
-  computeNodeLayout,
   computeEdgePath,
-  computeEdgeLayout,
   distanceToEdge,
   isPointInRect,
   isPointInCircle,
@@ -89,19 +80,5 @@ export type { PerformanceMetrics, PerformanceCallback } from './PerformanceMonit
 export { OverlayManager, getOverlayManager, resetOverlayManager } from './OverlayManager';
 export type { OverlayType, OverlayConfig, ActiveOverlay, OverlayRenderCallback } from './OverlayManager';
 
-// 扩展命中测试
-export {
-  hitTestTypeLabel,
-  hitTestHandle,
-  hitTestNode,
-  hitTestNodeComplete,
-  getTypeLabelPosition,
-} from './HitTest';
-export type {
-  HitNone,
-  HitNode,
-  HitHandle,
-  HitTypeLabel,
-  HitAttribute,
-  HitEdge,
-} from './HitTest';
+// 命中测试已移至 core/layout/hitTest.ts
+// 使用 hitTestLayoutBox, parseInteractiveId 等函数

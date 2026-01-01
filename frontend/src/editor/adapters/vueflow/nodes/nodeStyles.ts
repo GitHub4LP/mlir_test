@@ -164,7 +164,7 @@ export function getExecColor(): string {
 }
 
 /** 获取节点类型颜色 */
-export function getNodeTypeColor(type: 'entry' | 'entryMain' | 'return' | 'returnMain' | 'call' | 'operation'): string {
+export function getNodeTypeColor(type: 'entry' | 'return' | 'call' | 'operation'): string {
   return figmaGetNodeTypeColor(type);
 }
 
@@ -322,6 +322,6 @@ export function getCSSVariables(): Record<string, string> {
     // Title group spacing
     '--title-group-spacing': `${layoutConfig.titleGroup.itemSpacing ?? 4}px`,
     // Button
-    '--btn-danger-hover-color': layoutConfig.button?.danger?.hoverColor ?? '#f87171',
+    '--btn-danger-hover-color': layoutConfig.buttonStyle?.danger?.hoverColor ?? '#f87171',
   };
 }

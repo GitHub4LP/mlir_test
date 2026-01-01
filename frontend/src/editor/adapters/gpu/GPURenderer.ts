@@ -60,9 +60,6 @@ export class GPURenderer implements IRenderer {
   // 边渲染模式
   private edgeRenderMode: EdgeRenderMode = 'gpu';
   
-  // 是否使用新布局系统渲染节点
-  private useLayoutBoxRendering: boolean = true;
-  
   // 批次管理器
   private nodeBatch: NodeBatchManager = new NodeBatchManager();
   private edgeBatch: EdgeBatchManager = new EdgeBatchManager();
@@ -344,13 +341,9 @@ export class GPURenderer implements IRenderer {
       this.backend.renderEdges(this.edgeBatch.getBatch());
     }
     
-    // 选择节点渲染系统
-    if (this.useLayoutBoxRendering && data.layoutBoxes && data.layoutBoxes.size > 0) {
-      // 新布局系统：从 LayoutBox 提取图元，用 GPU 渲染
+    // 使用 LayoutBox 系统渲染节点
+    if (data.layoutBoxes && data.layoutBoxes.size > 0) {
       this.renderNodesFromLayoutBoxes(data);
-    } else {
-      // 旧系统：直接用 data 中的图元
-      this.renderNodesFromPrimitives(data);
     }
     
     this.backend.endFrame();
@@ -378,92 +371,24 @@ export class GPURenderer implements IRenderer {
   }
 
   /**
-   * 使用旧图元系统渲染节点
-   */
-  private renderNodesFromPrimitives(data: RenderData): void {
-    // 渲染节点矩形
-    this.nodeBatch.updateFromRects(data.rects);
-    this.backend!.renderNodes(this.nodeBatch.getBatch());
-    
-    // 渲染文字
-    if (this.textRenderMode === 'gpu') {
-      this.textBatch.updateFromTexts(data.texts);
-      if (this.textBatch.needsTextureUpdate()) {
-        this.backend!.updateTextTexture(this.textBatch.getAtlasCanvas());
-        this.textBatch.clearTextureUpdateFlag();
-      }
-      this.backend!.renderText(this.textBatch.getBatch());
-    } else if (this.textCtx) {
-      // Canvas 模式渲染文字（textCanvas 已在 render() 中清空）
-      const ctx = this.textCtx;
-      ctx.save();
-      ctx.scale(this.dpr, this.dpr);
-      ctx.translate(data.viewport.x, data.viewport.y);
-      ctx.scale(data.viewport.zoom, data.viewport.zoom);
-      this.renderTextToCanvas(ctx, data);
-      ctx.restore();
-    }
-    
-    // 渲染圆形（数据端口）
-    this.circleBatch.updateFromCircles(data.circles);
-    this.backend!.renderCircles(this.circleBatch.getBatch());
-    
-    // 渲染三角形（执行引脚）
-    if (data.triangles && data.triangles.length > 0) {
-      this.triangleBatch.updateFromTriangles(data.triangles);
-      this.backend!.renderTriangles(this.triangleBatch.getBatch());
-    }
-  }
-
-  /**
    * 从 LayoutBox 提取图元渲染节点（GPU 渲染）
    */
   private renderNodesFromLayoutBoxes(data: RenderData): void {
     if (!data.layoutBoxes || !this.backend) return;
     
-    // 构建节点信息映射
-    // 从旧系统的 rects 中提取 headerColor、selected、zIndex
+    // 构建节点信息映射（仅需要 selected 和 zIndex）
     const nodeInfoMap = new Map<string, {
       selected: boolean;
-      headerColor: string;
       zIndex: number;
     }>();
     
-    // 第一遍：从 rect-{nodeId} 获取 selected 和 zIndex
     for (const rect of data.rects) {
       if (rect.id.startsWith('rect-')) {
         const nodeId = rect.id.slice(5);
         nodeInfoMap.set(nodeId, {
           selected: rect.selected,
-          headerColor: tokens.node.bg, // 默认值，后面会被 header 覆盖
           zIndex: rect.zIndex,
         });
-      }
-    }
-    
-    // 第二遍：从 header-{nodeId} 获取 headerColor
-    for (const rect of data.rects) {
-      if (rect.id.startsWith('header-')) {
-        const nodeId = rect.id.slice(7);
-        const existing = nodeInfoMap.get(nodeId);
-        if (existing) {
-          existing.headerColor = rect.fillColor;
-        } else {
-          // 如果没有 rect-{nodeId}，也要创建条目
-          nodeInfoMap.set(nodeId, {
-            selected: false,
-            headerColor: rect.fillColor,
-            zIndex: 0,
-          });
-        }
-      }
-    }
-    
-    // 构建 Handle 颜色映射
-    const handleColorMap = new Map<string, string>();
-    for (const circle of data.circles) {
-      if (circle.id.startsWith('handle-')) {
-        handleColorMap.set(circle.id, circle.fillColor);
       }
     }
     
@@ -483,12 +408,13 @@ export class GPURenderer implements IRenderer {
     // 从 LayoutBox 提取图元
     for (const [nodeId, layoutBox] of sortedEntries) {
       const nodeInfo = nodeInfoMap.get(nodeId);
+      const selected = nodeInfo?.selected ?? false;
       const zIndex = nodeInfo?.zIndex ?? 0;
       
       // LayoutBox 的 x, y 已经是画布坐标（computeNodeLayoutBox 设置的）
       // 所以 offsetX, offsetY 应该是 0
       this.extractPrimitivesFromLayoutBox(
-        layoutBox, 0, 0, nodeId, handleColorMap, zIndex,
+        layoutBox, 0, 0, selected, nodeId, zIndex,
         rects, texts, circles, triangles
       );
     }
@@ -534,8 +460,8 @@ export class GPURenderer implements IRenderer {
     box: LayoutBox,
     offsetX: number,
     offsetY: number,
+    selected: boolean,
     nodeId: string,
-    handleColorMap: Map<string, string>,
     zIndex: number,
     rects: import('../../core/RenderData').RenderRect[],
     texts: import('../../core/RenderData').RenderText[],
@@ -550,18 +476,13 @@ export class GPURenderer implements IRenderer {
       const style = box.style;
       const radius = this.normalizeCornerRadius(style.cornerRadius);
       
-      // typeLabel 特殊处理：使用 handle 颜色的半透明版本
+      // typeLabel 特殊处理：使用 pinColor 的半透明版本
       let fillColor: string = style.fill!;
-      if (box.type === 'typeLabel' && box.interactive?.id) {
-        const id = box.interactive.id;
-        const handleId = id.replace('type-label-', '');
-        const lookupKey = `handle-${nodeId}-${handleId}`;
-        const handleColor = handleColorMap.get(lookupKey);
-        if (handleColor) {
-          fillColor = this.colorWithAlpha(handleColor, 0.3);
-        }
+      if (box.type === 'typeLabel' && box.interactive?.pinColor) {
+        fillColor = this.colorWithAlpha(box.interactive.pinColor, 0.3);
       }
       
+      // 节点背景（不传递 selected，选中边框单独生成）
       rects.push({
         id: `lb-${box.type}-${nodeId}-${absX}-${absY}`,
         x: absX,
@@ -577,6 +498,48 @@ export class GPURenderer implements IRenderer {
       });
     }
     
+    // node 类型：生成选中边框（4 个填充矩形）
+    // 注意：选中边框独立于 fill 条件，因为 node 容器可能没有 fill
+    if (box.type === 'node' && selected) {
+      const borderWidth = layoutConfig.node.selected?.strokeWidth ?? 2;
+      const borderColor = layoutConfig.node.selected?.stroke ?? '#60a5fa';
+      const offset = 2;
+      const x = absX - offset;
+      const y = absY - offset;
+      const w = box.width + offset * 2;
+      const h = box.height + offset * 2;
+      const selectionZIndex = zIndex + 100;
+      
+      // 上边框
+      rects.push({
+        id: `selection-top-${nodeId}`,
+        x: x, y: y, width: w, height: borderWidth,
+        fillColor: borderColor, borderColor: 'transparent', borderWidth: 0,
+        borderRadius: 0, selected: false, zIndex: selectionZIndex,
+      });
+      // 下边框
+      rects.push({
+        id: `selection-bottom-${nodeId}`,
+        x: x, y: y + h - borderWidth, width: w, height: borderWidth,
+        fillColor: borderColor, borderColor: 'transparent', borderWidth: 0,
+        borderRadius: 0, selected: false, zIndex: selectionZIndex,
+      });
+      // 左边框
+      rects.push({
+        id: `selection-left-${nodeId}`,
+        x: x, y: y, width: borderWidth, height: h,
+        fillColor: borderColor, borderColor: 'transparent', borderWidth: 0,
+        borderRadius: 0, selected: false, zIndex: selectionZIndex,
+      });
+      // 右边框
+      rects.push({
+        id: `selection-right-${nodeId}`,
+        x: x + w - borderWidth, y: y, width: borderWidth, height: h,
+        fillColor: borderColor, borderColor: 'transparent', borderWidth: 0,
+        borderRadius: 0, selected: false, zIndex: selectionZIndex,
+      });
+    }
+    
     // 提取 Handle
     if (box.type === 'handle' && box.interactive?.id) {
       const id = box.interactive.id;
@@ -586,26 +549,22 @@ export class GPURenderer implements IRenderer {
       const centerY = absY + box.height / 2;
       
       const isExec = id.includes('exec');
-      const isOutput = id.includes('-out') || id.startsWith('handle-exec-out');
       
       if (isExec) {
         // 执行端口：三角形
-        // 所有执行引脚都朝右 ▶，表示执行流方向（与 UE5 蓝图一致）
         triangles.push({
           id: `lb-${id}-${nodeId}`,
           x: centerX,
           y: centerY,
-          size: size,
+          size: size * 0.6,  // 与 WebGL/WebGPU 渲染器一致
           fillColor: '#ffffff',
           borderColor: '#ffffff',
           borderWidth: 1,
           direction: 'right',
         });
       } else {
-        // 数据端口：圆形
-        const handleId = id.replace('handle-', '');
-        const lookupKey = `handle-${nodeId}-${handleId}`;
-        const color = handleColorMap.get(lookupKey) ?? layoutConfig.nodeType.operation;
+        // 数据端口：圆形，从 LayoutBox.interactive.pinColor 获取颜色
+        const color = box.interactive.pinColor ?? layoutConfig.nodeType.operation;
         
         circles.push({
           id: `lb-${id}-${nodeId}`,
@@ -638,30 +597,13 @@ export class GPURenderer implements IRenderer {
       });
     }
     
-    // 递归处理子节点
+    // 递归处理子节点（子节点不需要选中框）
     for (const child of box.children) {
       this.extractPrimitivesFromLayoutBox(
-        child, absX, absY, nodeId, handleColorMap, zIndex,
+        child, absX, absY, false, nodeId, zIndex,
         rects, texts, circles, triangles
       );
     }
-  }
-
-  /**
-   * 设置是否使用新布局系统渲染
-   */
-  setUseLayoutBoxRendering(enabled: boolean): void {
-    this.useLayoutBoxRendering = enabled;
-    if (this.lastRenderData) {
-      this.render(this.lastRenderData);
-    }
-  }
-
-  /**
-   * 获取是否使用新布局系统渲染
-   */
-  getUseLayoutBoxRendering(): boolean {
-    return this.useLayoutBoxRendering;
   }
 
   /**

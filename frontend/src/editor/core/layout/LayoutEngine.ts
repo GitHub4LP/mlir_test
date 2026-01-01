@@ -322,7 +322,7 @@ export function measure(node: LayoutNode, config?: ContainerConfig): Size {
   const spacing = spacingValue === 'auto' ? 0 : spacingValue;
   const isHorizontal = getFigmaDirection(cfg) === 'horizontal';
 
-  // 1. 测量所有子节点（递归）
+  // 1. 测量所有子节点（递归）- 即使是 overlay 模式也需要测量子节点
   const childSizes: Size[] = [];
   for (const child of node.children) {
     const childConfig = getContainerConfig(child.type);
@@ -330,6 +330,16 @@ export function measure(node: LayoutNode, config?: ContainerConfig): Size {
     child.measuredWidth = childSize.width;
     child.measuredHeight = childSize.height;
     childSizes.push(childSize);
+  }
+
+  // Overlay 模式：只贡献高度，不贡献宽度
+  // 这样 overlay 元素不会撑开父容器的宽度
+  // 但子节点已经被测量，layout 阶段可以正确布局
+  if (cfg.overlay && cfg.overlayHeight !== undefined) {
+    const size = { width: 0, height: cfg.overlayHeight };
+    node.measuredWidth = size.width;
+    node.measuredHeight = size.height;
+    return size;
   }
 
   // 2. 计算内容尺寸
@@ -409,6 +419,37 @@ export function layout(
   const cfg = config ?? getContainerConfig(node.type);
   const padding = getFigmaPadding(cfg);
   const isHorizontal = getFigmaDirection(cfg) === 'horizontal';
+
+  // Overlay 模式：宽度使用可用空间，高度使用 overlayHeight
+  if (cfg.overlay && cfg.overlayHeight !== undefined) {
+    // 递归布局子节点，使用可用宽度
+    const overlayContentWidth = availableWidth - padding.left - padding.right;
+    const overlayContentHeight = cfg.overlayHeight - padding.top - padding.bottom;
+    
+    const children: LayoutBox[] = [];
+    layoutNormal(
+      node.children,
+      isHorizontal,
+      padding.left,
+      padding.top,
+      overlayContentWidth,
+      overlayContentHeight,
+      cfg,
+      children
+    );
+    
+    return {
+      type: node.type,
+      x,
+      y,
+      width: availableWidth,
+      height: cfg.overlayHeight,
+      style: extractStyle(cfg, node.style),
+      text: node.text,
+      interactive: node.interactive,
+      children,
+    };
+  }
 
   // 1. 确定容器最终尺寸
   // 使用 getFigmaWidth/Height 来统一处理 layoutGrow 和显式 fill-parent

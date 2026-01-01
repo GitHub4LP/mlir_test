@@ -279,9 +279,13 @@ function ReactFlowCanvasInner({
         maxZoom={2}
         defaultViewport={initialViewport ?? { x: 0, y: 0, zoom: 0.8 }}
         colorMode="dark"
+        proOptions={{ hideAttribution: true }}
       >
         <Background color="#444" gap={16} />
-        <Controls />
+        <Controls 
+          position="bottom-left"
+          showInteractive={false}
+        />
         <MiniMap
           nodeColor={(node) => {
             switch (node.type) {
@@ -291,6 +295,9 @@ function ReactFlowCanvasInner({
               default: return '#3b82f6';
             }
           }}
+          position="bottom-right"
+          pannable
+          zoomable
         />
       </ReactFlow>
   );

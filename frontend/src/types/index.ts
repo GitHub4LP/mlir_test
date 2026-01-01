@@ -298,6 +298,11 @@ export interface GraphEdge {
   sourceHandle: string;
   target: string;
   targetHandle: string;
+  /** 边数据（可选，包含颜色等信息） */
+  data?: {
+    color?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface FunctionEntryData extends TypePropagationData {

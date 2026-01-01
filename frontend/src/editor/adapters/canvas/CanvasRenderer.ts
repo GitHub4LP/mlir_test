@@ -16,15 +16,12 @@ import type {
   RenderData,
   Viewport,
   RenderRect,
-  RenderText,
   RenderPath,
-  RenderCircle,
-  RenderTriangle,
   InteractionHint,
 } from './types';
 import type { RawInputCallback, MouseButton } from './input';
 import { createPointerInput, createWheelInput, createKeyInput, extractModifiers } from './input';
-import { tokens, LAYOUT, TEXT } from '../shared/styles';
+import { tokens, LAYOUT } from '../shared/styles';
 import type { LayoutBox, CornerRadius } from '../../core/layout/types';
 import { layoutConfig } from '../../core/layout/LayoutConfig';
 
@@ -40,9 +37,6 @@ export class CanvasRenderer implements IRenderer {
   private width: number = 0;
   private height: number = 0;
   private dpr: number = 1;
-
-  // 是否使用新布局系统渲染节点
-  private useLayoutBoxRendering: boolean = true;
 
   // 事件处理器引用（用于清理）
   private boundHandlePointerDown: ((e: PointerEvent) => void) | null = null;
@@ -107,18 +101,14 @@ export class CanvasRenderer implements IRenderer {
     ctx.translate(data.viewport.x, data.viewport.y);
     ctx.scale(data.viewport.zoom, data.viewport.zoom);
     
-    // 渲染边（两套系统共用）
+    // 渲染边
     for (const path of data.paths) {
       this.renderPath(ctx, path);
     }
     
-    // 选择渲染系统
-    if (this.useLayoutBoxRendering && data.layoutBoxes && data.layoutBoxes.size > 0) {
-      // 新布局系统：使用 LayoutBox 渲染节点
+    // 使用 LayoutBox 系统渲染节点
+    if (data.layoutBoxes && data.layoutBoxes.size > 0) {
       this.renderWithLayoutBoxes(ctx, data);
-    } else {
-      // 旧系统：使用图元渲染
-      this.renderWithPrimitives(ctx, data);
     }
     
     // 渲染交互提示
@@ -138,72 +128,24 @@ export class CanvasRenderer implements IRenderer {
   }
 
   /**
-   * 使用旧图元系统渲染
-   */
-  private renderWithPrimitives(ctx: CanvasRenderingContext2D, data: RenderData): void {
-    // 按 zIndex 排序
-    const sortedRects = [...data.rects].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
-    
-    // 渲染节点
-    for (const rect of sortedRects) {
-      this.renderRect(ctx, rect);
-    }
-    
-    // 渲染文字
-    for (const text of data.texts) {
-      this.renderText(ctx, text);
-    }
-    
-    // 渲染端口
-    for (const circle of data.circles) {
-      this.renderCircle(ctx, circle);
-    }
-    
-    // 渲染执行引脚（三角形）
-    for (const triangle of data.triangles) {
-      this.renderTriangle(ctx, triangle);
-    }
-  }
-
-  /**
-   * 使用新 LayoutBox 系统渲染
+   * 使用 LayoutBox 系统渲染节点
    */
   private renderWithLayoutBoxes(ctx: CanvasRenderingContext2D, data: RenderData): void {
     if (!data.layoutBoxes) return;
     
-    // 构建节点信息映射（从旧系统的 rects 中提取）
+    // 构建节点信息映射（仅需要 selected 和 zIndex）
     const nodeInfoMap = new Map<string, {
       selected: boolean;
-      headerColor: string;
       zIndex: number;
     }>();
     
     for (const rect of data.rects) {
-      // 节点背景矩形的 ID 格式为 `rect-{nodeId}`
       if (rect.id.startsWith('rect-')) {
         const nodeId = rect.id.slice(5);
         nodeInfoMap.set(nodeId, {
           selected: rect.selected,
-          headerColor: rect.fillColor, // 节点背景色（暂用）
           zIndex: rect.zIndex,
         });
-      }
-      // 节点头部矩形的 ID 格式为 `header-{nodeId}`
-      if (rect.id.startsWith('header-')) {
-        const nodeId = rect.id.slice(7);
-        const existing = nodeInfoMap.get(nodeId);
-        if (existing) {
-          existing.headerColor = rect.fillColor; // 头部颜色
-        }
-      }
-    }
-    
-    // 构建 Handle 颜色映射（从旧系统的 circles 中提取）
-    const handleColorMap = new Map<string, string>();
-    for (const circle of data.circles) {
-      // Handle 的 ID 格式为 `handle-{nodeId}-{handleId}`
-      if (circle.id.startsWith('handle-')) {
-        handleColorMap.set(circle.id, circle.fillColor);
       }
     }
     
@@ -217,24 +159,9 @@ export class CanvasRenderer implements IRenderer {
     for (const [nodeId, layoutBox] of sortedEntries) {
       const nodeInfo = nodeInfoMap.get(nodeId);
       const selected = nodeInfo?.selected ?? false;
-      const headerColor = nodeInfo?.headerColor ?? tokens.node.bg;
       
-      this.renderLayoutBoxWithContext(ctx, layoutBox, 0, 0, selected, headerColor, nodeId, handleColorMap);
+      this.renderLayoutBoxTree(ctx, layoutBox, 0, 0, selected);
     }
-  }
-
-  /**
-   * 设置是否使用新布局系统渲染
-   */
-  setUseLayoutBoxRendering(enabled: boolean): void {
-    this.useLayoutBoxRendering = enabled;
-  }
-
-  /**
-   * 获取是否使用新布局系统渲染
-   */
-  getUseLayoutBoxRendering(): boolean {
-    return this.useLayoutBoxRendering;
   }
 
   onInput(callback: RawInputCallback): void {
@@ -481,19 +408,6 @@ export class CanvasRenderer implements IRenderer {
     ctx.restore();
   }
 
-  private renderText(ctx: CanvasRenderingContext2D, text: RenderText): void {
-    ctx.save();
-    // 启用高质量文字渲染
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.font = `${text.fontSize ?? TEXT.labelSize}px ${text.fontFamily ?? TEXT.fontFamily}`;
-    ctx.fillStyle = text.color ?? TEXT.labelColor;
-    ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
-    ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;
-    ctx.fillText(text.text, text.x, text.y);
-    ctx.restore();
-  }
-
   private renderPath(ctx: CanvasRenderingContext2D, path: RenderPath): void {
     if (path.points.length < 2) return;
     
@@ -528,61 +442,6 @@ export class CanvasRenderer implements IRenderer {
       const end = path.points[lastIdx];
       const prev = path.points[lastIdx - 1];
       this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? tokens.edge.exec.color);
-    }
-    
-    ctx.restore();
-  }
-
-  private renderCircle(ctx: CanvasRenderingContext2D, circle: RenderCircle): void {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
-    
-    if (circle.fillColor && circle.fillColor !== 'transparent') {
-      ctx.fillStyle = circle.fillColor;
-      ctx.fill();
-    }
-    
-    if (circle.borderWidth && circle.borderWidth > 0 && circle.borderColor) {
-      ctx.strokeStyle = circle.borderColor;
-      ctx.lineWidth = circle.borderWidth;
-      ctx.stroke();
-    }
-    
-    ctx.restore();
-  }
-
-  private renderTriangle(ctx: CanvasRenderingContext2D, triangle: RenderTriangle): void {
-    ctx.save();
-    ctx.beginPath();
-    
-    const { x, y, size, direction } = triangle;
-    
-    if (direction === 'right') {
-      // 向右指的三角形（执行输出引脚）
-      // 三个顶点：左上、左下、右中
-      ctx.moveTo(x - size * 0.5, y - size * 0.6);
-      ctx.lineTo(x - size * 0.5, y + size * 0.6);
-      ctx.lineTo(x + size * 0.7, y);
-    } else {
-      // 向左指的三角形（执行输入引脚）
-      // 三个顶点：右上、右下、左中
-      ctx.moveTo(x + size * 0.5, y - size * 0.6);
-      ctx.lineTo(x + size * 0.5, y + size * 0.6);
-      ctx.lineTo(x - size * 0.7, y);
-    }
-    
-    ctx.closePath();
-    
-    if (triangle.fillColor && triangle.fillColor !== 'transparent') {
-      ctx.fillStyle = triangle.fillColor;
-      ctx.fill();
-    }
-    
-    if (triangle.borderWidth && triangle.borderWidth > 0 && triangle.borderColor) {
-      ctx.strokeStyle = triangle.borderColor;
-      ctx.lineWidth = triangle.borderWidth;
-      ctx.stroke();
     }
     
     ctx.restore();
@@ -667,48 +526,32 @@ export class CanvasRenderer implements IRenderer {
 
   /**
    * 渲染 LayoutBox 树
-   * @param ctx - Canvas 2D 上下文
-   * @param box - 根 LayoutBox
-   * @param offsetX - X 偏移（节点在画布上的位置）
-   * @param offsetY - Y 偏移
-   * @param selected - 是否选中
-   * @param nodeType - 节点类型（用于确定颜色）
-   * @deprecated 使用 renderLayoutBoxWithContext 代替
+   * @deprecated 内部使用 renderLayoutBoxTree
    */
   renderLayoutBox(
     ctx: CanvasRenderingContext2D,
     box: LayoutBox,
     offsetX: number,
     offsetY: number,
-    selected: boolean = false,
-    nodeType?: 'operation' | 'function-entry' | 'function-return' | 'function-call',
-    isMain?: boolean
+    selected: boolean = false
   ): void {
-    // 使用默认颜色调用新方法
-    const headerColor = this.getHandleColor(nodeType, isMain);
-    this.renderLayoutBoxWithContext(ctx, box, offsetX, offsetY, selected, headerColor, '', new Map());
+    this.renderLayoutBoxTree(ctx, box, offsetX, offsetY, selected);
   }
 
   /**
-   * 渲染 LayoutBox 树（带上下文信息）
+   * 渲染 LayoutBox 树
    * @param ctx - Canvas 2D 上下文
    * @param box - LayoutBox
    * @param offsetX - X 偏移
    * @param offsetY - Y 偏移
    * @param selected - 是否选中
-   * @param headerColor - 头部颜色
-   * @param nodeId - 节点 ID（用于查找 Handle 颜色）
-   * @param handleColorMap - Handle 颜色映射
    */
-  private renderLayoutBoxWithContext(
+  private renderLayoutBoxTree(
     ctx: CanvasRenderingContext2D,
     box: LayoutBox,
     offsetX: number,
     offsetY: number,
-    selected: boolean,
-    headerColor: string,
-    nodeId: string,
-    handleColorMap: Map<string, string>
+    selected: boolean
   ): void {
     const absX = offsetX + box.x;
     const absY = offsetY + box.y;
@@ -716,12 +559,12 @@ export class CanvasRenderer implements IRenderer {
     ctx.save();
 
     // 1. 渲染背景和边框
-    if (box.style || box.type === 'headerContent') {
-      this.renderLayoutBoxBackgroundWithColor(ctx, box, absX, absY, selected, headerColor);
+    if (box.style || (selected && box.type === 'node')) {
+      this.renderLayoutBoxBackground(ctx, box, absX, absY, selected);
     }
 
     // 2. 渲染特殊元素（Handle、TypeLabel 等）
-    this.renderLayoutBoxSpecialWithContext(ctx, box, absX, absY, nodeId, handleColorMap);
+    this.renderLayoutBoxSpecial(ctx, box, absX, absY);
 
     // 3. 渲染文本
     if (box.text) {
@@ -730,36 +573,26 @@ export class CanvasRenderer implements IRenderer {
 
     // 4. 递归渲染子节点
     for (const child of box.children) {
-      this.renderLayoutBoxWithContext(ctx, child, absX, absY, false, headerColor, nodeId, handleColorMap);
+      this.renderLayoutBoxTree(ctx, child, absX, absY, false);
     }
 
     ctx.restore();
   }
 
   /**
-   * 渲染 LayoutBox 背景（带颜色参数）
+   * 渲染 LayoutBox 背景
    */
-  private renderLayoutBoxBackgroundWithColor(
+  private renderLayoutBoxBackground(
     ctx: CanvasRenderingContext2D,
     box: LayoutBox,
     x: number,
     y: number,
-    selected: boolean,
-    headerColor: string
+    selected: boolean
   ): void {
     const style = box.style;
     const radius = this.normalizeCornerRadius(style?.cornerRadius);
 
-    // headerContent 特殊处理：使用传入的 headerColor
-    if (box.type === 'headerContent') {
-      const headerRadius = this.normalizeCornerRadius(box.style?.cornerRadius);
-      ctx.fillStyle = headerColor;
-      this.roundRect(ctx, x, y, box.width, box.height, headerRadius);
-      ctx.fill();
-      return;
-    }
-
-    // 其他元素使用 style 中的颜色
+    // 所有元素统一使用 style 中的颜色（包括 headerContent）
     if (style) {
       // 填充背景
       if (style.fill && style.fill !== 'transparent') {
@@ -791,92 +624,76 @@ export class CanvasRenderer implements IRenderer {
   }
 
   /**
-   * 渲染特殊元素（带上下文）
+   * 渲染特殊元素
    */
-  private renderLayoutBoxSpecialWithContext(
+  private renderLayoutBoxSpecial(
     ctx: CanvasRenderingContext2D,
     box: LayoutBox,
     x: number,
-    y: number,
-    nodeId: string,
-    handleColorMap: Map<string, string>
+    y: number
   ): void {
     const id = box.interactive?.id;
 
     // Handle 渲染
     if (box.type === 'handle' && id) {
-      this.renderHandleWithColor(ctx, box, x, y, id, nodeId, handleColorMap);
+      this.renderHandle(ctx, box, x, y, id);
       return;
     }
 
     // TypeLabel 背景渲染
     if (box.type === 'typeLabel') {
-      this.renderTypeLabelWithColor(ctx, box, x, y, nodeId, handleColorMap);
+      this.renderTypeLabel(ctx, box, x, y);
       return;
     }
   }
 
   /**
-   * 渲染 Handle（带颜色映射）
+   * 渲染 Handle
    */
-  private renderHandleWithColor(
+  private renderHandle(
     ctx: CanvasRenderingContext2D,
     box: LayoutBox,
     x: number,
     y: number,
-    id: string,
-    nodeId: string,
-    handleColorMap: Map<string, string>
+    id: string
   ): void {
     const handleConfig = layoutConfig.handle;
     const size = typeof handleConfig.width === 'number' ? handleConfig.width : 12;
-    const strokeWidth = handleConfig.strokeWidth ?? 2;
+    const strokeWidth = handleConfig.strokeWeight ?? 2;
     const centerX = x + box.width / 2;
     const centerY = y + box.height / 2;
 
     // 判断是执行端口还是数据端口
     const isExec = id.includes('exec');
-    const isOutput = id.includes('-out') || id.startsWith('handle-exec-out');
 
     if (isExec) {
       // 执行端口：三角形（白色）
-      // 所有执行引脚都朝右 ▶，表示执行流方向（与 UE5 蓝图一致）
       this.renderExecHandle(ctx, centerX, centerY, size, 'right', strokeWidth);
     } else {
-      // 数据端口：圆形，从 handleColorMap 获取颜色
-      // id 格式: handle-data-in-xxx 或 handle-data-out-xxx
-      // 需要转换为旧系统的格式: handle-{nodeId}-data-in-xxx
-      const handleId = id.replace('handle-', '');
-      const lookupKey = `handle-${nodeId}-${handleId}`;
-      const color = handleColorMap.get(lookupKey) ?? layoutConfig.nodeType.operation;
+      // 数据端口：圆形，从 LayoutBox.interactive.pinColor 获取颜色
+      const color = box.interactive?.pinColor ?? layoutConfig.nodeType.operation;
       this.renderDataHandle(ctx, centerX, centerY, size / 2, color, strokeWidth);
     }
   }
 
   /**
-   * 渲染 TypeLabel（带颜色）
+   * 渲染 TypeLabel
    */
-  private renderTypeLabelWithColor(
+  private renderTypeLabel(
     ctx: CanvasRenderingContext2D,
     box: LayoutBox,
     x: number,
-    y: number,
-    nodeId: string,
-    handleColorMap: Map<string, string>
+    y: number
   ): void {
     const config = layoutConfig.typeLabel;
     const radius = this.normalizeCornerRadius(config.cornerRadius);
 
-    // 从关联的 Handle 获取颜色
-    const id = box.interactive?.id ?? '';
-    // id 格式: type-label-data-in-xxx
-    const handleId = id.replace('type-label-', '');
-    const lookupKey = `handle-${nodeId}-${handleId}`;
-    const handleColor = handleColorMap.get(lookupKey);
+    // 从 LayoutBox.interactive.pinColor 获取颜色
+    const pinColor = box.interactive?.pinColor;
     
     // 背景颜色：使用 Handle 颜色的半透明版本，或默认灰色
-    const bgColor = handleColor 
-      ? this.colorWithAlpha(handleColor, 0.3)
+    const bgColor = pinColor 
+      ? this.colorWithAlpha(pinColor, 0.3)
       : (config.fill ?? 'rgba(100, 100, 100, 0.5)');
 
     ctx.fillStyle = bgColor;
@@ -913,6 +730,7 @@ export class CanvasRenderer implements IRenderer {
 
   /**
    * 渲染执行端口（三角形）
+   * 使用与 renderTriangle 相同的尺寸计算逻辑
    */
   private renderExecHandle(
     ctx: CanvasRenderingContext2D,
@@ -925,15 +743,16 @@ export class CanvasRenderer implements IRenderer {
     ctx.save();
     ctx.beginPath();
 
-    const halfSize = size * 0.5;
+    // 与 renderTriangle 和 WebGL/WebGPU 渲染器一致的尺寸
+    const scaledSize = size * 0.6;
     if (direction === 'right') {
-      ctx.moveTo(x - halfSize * 0.5, y - halfSize * 0.6);
-      ctx.lineTo(x - halfSize * 0.5, y + halfSize * 0.6);
-      ctx.lineTo(x + halfSize * 0.7, y);
+      ctx.moveTo(x - scaledSize * 0.5, y - scaledSize * 0.6);
+      ctx.lineTo(x - scaledSize * 0.5, y + scaledSize * 0.6);
+      ctx.lineTo(x + scaledSize * 0.7, y);
     } else {
-      ctx.moveTo(x + halfSize * 0.5, y - halfSize * 0.6);
-      ctx.lineTo(x + halfSize * 0.5, y + halfSize * 0.6);
-      ctx.lineTo(x - halfSize * 0.7, y);
+      ctx.moveTo(x + scaledSize * 0.5, y - scaledSize * 0.6);
+      ctx.lineTo(x + scaledSize * 0.5, y + scaledSize * 0.6);
+      ctx.lineTo(x - scaledSize * 0.7, y);
     }
     ctx.closePath();
 
@@ -966,30 +785,12 @@ export class CanvasRenderer implements IRenderer {
     ctx.fillStyle = color;
     ctx.fill();
 
-    // 边框
-    ctx.strokeStyle = color;
+    // 边框：使用节点背景色，与 GPURenderer 一致
+    ctx.strokeStyle = tokens.node.bg;
     ctx.lineWidth = strokeWidth;
     ctx.stroke();
 
     ctx.restore();
-  }
-
-  /**
-   * 获取 Handle 颜色（fallback 用）
-   */
-  private getHandleColor(nodeType?: string, isMain?: boolean): string {
-    const colors = layoutConfig.nodeType;
-    switch (nodeType) {
-      case 'function-entry':
-        return isMain ? colors.entryMain : colors.entry;
-      case 'function-return':
-        return isMain ? colors.returnMain : colors.return;
-      case 'function-call':
-        return colors.call;
-      case 'operation':
-      default:
-        return colors.operation;
-    }
   }
 
   /**

@@ -7,6 +7,7 @@
  */
 
 @import './variables.css';
+@import '../../../core/layout/tokens/interactive.css';
 
 /* ============================================================
    节点容器 - Figma: node

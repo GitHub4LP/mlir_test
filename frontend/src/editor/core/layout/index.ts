@@ -88,6 +88,9 @@ export type {
 // figmaToCSS 导出
 export { figmaToCSS, figmaColorToCSS, figmaFillsToCSS, figmaPaintToCSS } from './figmaToCSS';
 
+// configToCSS 导出
+export { configToFlexboxStyle, getFlexboxStyleForType } from './configToCSS';
+
 // 便捷函数：GraphNode → LayoutBox
 import { buildNodeLayoutTree as _buildNodeLayoutTree } from './buildNodeLayoutTree';
 import { computeLayout as _computeLayout } from './LayoutEngine';
@@ -135,3 +138,18 @@ export type { HandlePosition } from './hitTest';
 
 // cache 导出
 export { LayoutCache, layoutCache } from './cache';
+
+// sizeProvider 导出
+export type { SizeProvider, DOMSizeProvider, InteractiveComponentType } from './sizeProvider';
+export {
+  ConfigSizeProvider,
+  configSizeProvider,
+  DOMSizeProviderImpl,
+  domSizeProvider,
+  setSizeProvider,
+  getSizeProvider,
+} from './sizeProvider';
+
+// tokens 导出
+export { containers } from './tokens';
+export * from './tokens';

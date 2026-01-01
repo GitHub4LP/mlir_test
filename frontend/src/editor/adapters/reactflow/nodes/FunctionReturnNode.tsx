@@ -108,7 +108,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const layoutTree = useMemo(() => {
     const tree = buildNodeLayoutTree(graphNode);
     // 设置 header 颜色
-    const headerColor = isMain ? getNodeTypeColor('returnMain') : getNodeTypeColor('return');
+    const headerColor = getNodeTypeColor('return');
     const headerWrapper = tree.children.find(c => c.type === 'headerWrapper');
     if (headerWrapper) {
       const headerContent = headerWrapper.children.find(c => c.type === 'headerContent');
@@ -117,7 +117,7 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
       }
     }
     return tree;
-  }, [graphNode, isMain]);
+  }, [graphNode]);
 
   // Handle 渲染回调
   const renderHandle = useCallback((config: HandleRenderConfig) => {
@@ -227,11 +227,9 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
     },
   }), [handleAddReturnType, handleRemoveReturnType, handleRenameReturnType]);
 
-  // 根节点样式（仅选中时显示边框，与 Canvas 一致）
+  // 根节点样式（选中时使用 box-shadow，不占用布局空间，与 Canvas 一致）
   const rootStyle = useMemo(() => selected ? {
-    borderWidth: 2,
-    borderColor: '#60a5fa',
-    borderStyle: 'solid' as const,
+    boxShadow: '0 0 0 2px #60a5fa',
   } : undefined, [selected]);
 
   return (

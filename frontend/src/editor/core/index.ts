@@ -2,11 +2,9 @@
  * 核心共享层
  * 
  * 包含所有渲染器共享的类型定义、接口和工具。
+ * 
+ * 布局系统已统一使用 LayoutBox，详见 core/layout/
  */
-
-// 样式系统 - 已迁移到 layoutTokens.json
-// 使用 frontend/src/editor/adapters/shared/styles.ts 获取样式
-// 使用 frontend/src/editor/core/layout/LayoutConfig.ts 获取布局配置
 
 // 渲染数据模型
 export type {
@@ -51,18 +49,13 @@ export {
   createKeyInput,
 } from './input';
 
-// 布局引擎
+// 几何工具函数
 export {
-  computeNodeLayout,
   computeEdgePath,
-  computeEdgeLayout,
   distanceToEdge,
   isPointInRect,
   isPointInCircle,
-} from './LayoutEngine';
-export type {
-  HandleLayout,
-  NodeLayout,
-  EdgeLayout,
-  ComputeNodeLayoutFn,
-} from './LayoutEngine';
+} from './geometry';
+
+// 新布局系统
+export * from './layout';

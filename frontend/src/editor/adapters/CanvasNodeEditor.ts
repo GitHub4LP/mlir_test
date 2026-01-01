@@ -1,8 +1,12 @@
 /**
  * Canvas 节点编辑器
  * 
- * 实现 INodeEditor 接口，封装 GraphController 和 CanvasRenderer。
+ * 实现 INodeEditor 接口，封装 GraphController 和渲染器。
  * 将旧架构的图元级别 API 适配为 Node Editor 语义级别。
+ * 
+ * 支持多种渲染后端：
+ * - CanvasRenderer: Canvas 2D 渲染
+ * - GPURenderer: WebGL/WebGPU 渲染
  * 
  * 覆盖层支持：
  * - 使用 OverlayManager 管理 HTML 覆盖层
@@ -20,17 +24,32 @@ import type {
   EdgeChange,
 } from '../types';
 import type { FunctionTrait } from '../../types';
+import type { IRenderer } from '../core/IRenderer';
+import type { Viewport } from './canvas/types';
 import { CanvasRenderer } from './canvas/CanvasRenderer';
 import { GraphController } from './canvas/GraphController';
-import { UIManager, type TypeSelectorState } from './canvas/UIManager';
+import { UIManager, type TypeSelectorState, type EditableNameState, type AttributeEditorState } from './canvas/UIManager';
 import type { TypeOption, ConstraintData } from './canvas/ui/TypeSelector';
-import { extendRenderData, type RenderExtensionConfig } from './canvas/RenderExtensions';
+import type { AttributeDefinition } from './canvas/ui/AttributeEditor';
 import type { GraphState, GraphNode, FunctionEntryData, FunctionReturnData } from '../../types';
 // 新布局系统
 import { 
   hitTestLayoutBox, 
   parseInteractiveId, 
 } from '../core/layout';
+
+/**
+ * 扩展渲染器接口
+ * 
+ * 在 IRenderer 基础上添加 Canvas 系编辑器需要的额外方法
+ */
+export interface IExtendedRenderer extends IRenderer {
+  setDropCallback(callback: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null): void;
+  setUIRenderCallback(callback: ((ctx: CanvasRenderingContext2D) => void) | null): void;
+  getViewport(): Viewport;
+  waitForReady?(): Promise<void>;
+  isReady?(): boolean;
+}
 
 /**
  * 将 EditorNode/EditorEdge 转换为 GraphState
@@ -48,6 +67,7 @@ function toGraphState(nodes: EditorNode[], edges: EditorEdge[]): GraphState {
       sourceHandle: e.sourceHandle,
       target: e.target,
       targetHandle: e.targetHandle,
+      data: e.data as { color?: string; [key: string]: unknown } | undefined,
     })),
   };
 }
@@ -55,10 +75,11 @@ function toGraphState(nodes: EditorNode[], edges: EditorEdge[]): GraphState {
 /**
  * Canvas 节点编辑器
  * 
- * 实现 INodeEditor 接口，使用 Canvas 2D 渲染。
+ * 实现 INodeEditor 接口，支持多种渲染后端。
  */
 export class CanvasNodeEditor implements INodeEditor {
-  private renderer: CanvasRenderer | null = null;
+  private renderer: IExtendedRenderer | null = null;
+  private rendererFactory: (() => IExtendedRenderer) | null = null;
   private controller: GraphController | null = null;
   private uiManager: UIManager | null = null;
   private container: HTMLElement | null = null;
@@ -93,6 +114,8 @@ export class CanvasNodeEditor implements INodeEditor {
   
   // 覆盖层回调
   onTypeSelectorChange: ((state: TypeSelectorState | null) => void) | null = null;
+  onEditableNameChange: ((state: EditableNameState | null) => void) | null = null;
+  onAttributeEditorChange: ((state: AttributeEditorState | null) => void) | null = null;
   onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null = null;
   onParamNameClick: ((nodeId: string, paramIndex: number, currentName: string, canvasX: number, canvasY: number) => void) | null = null;
   onReturnNameClick: ((nodeId: string, returnIndex: number, currentName: string, canvasX: number, canvasY: number) => void) | null = null;
@@ -106,11 +129,16 @@ export class CanvasNodeEditor implements INodeEditor {
   private hoveredReturnIndex: number | null = null;
   private hoveredNodeId: string | null = null;
 
-  // Traits 展开状态
-  private traitsExpandedMap: Map<string, boolean> = new Map();
-
   // Summary 展开状态
   private summaryExpandedMap: Map<string, boolean> = new Map();
+
+  /**
+   * 构造函数
+   * @param rendererFactory 渲染器工厂函数，延迟到 mount 时创建渲染器
+   */
+  constructor(rendererFactory?: () => IExtendedRenderer) {
+    this.rendererFactory = rendererFactory ?? (() => new CanvasRenderer() as IExtendedRenderer);
+  }
 
   // ============================================================
   // 生命周期
@@ -118,13 +146,35 @@ export class CanvasNodeEditor implements INodeEditor {
 
   mount(container: HTMLElement): void {
     this.container = container;
-    this.renderer = new CanvasRenderer();
+    this.renderer = this.rendererFactory!();
     this.controller = new GraphController();
     this.uiManager = new UIManager();
     
     this.renderer.mount(container);
     this.uiManager.mount(container);
     this.controller.setRenderer(this.renderer);
+    
+    // 如果是 GPU 渲染器，等待就绪后再初始化
+    const initAfterReady = () => {
+      this.setupCallbacks();
+      this.controller?.requestRender();
+    };
+    
+    if (this.renderer.waitForReady) {
+      this.renderer.waitForReady().then(initAfterReady);
+    } else {
+      initAfterReady();
+    }
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', this.handleResize);
+  }
+  
+  /**
+   * 设置所有回调
+   */
+  private setupCallbacks(): void {
+    if (!this.renderer || !this.controller || !this.uiManager) return;
     
     // 设置 UIManager 回调
     this.uiManager.setCallbacks({
@@ -141,31 +191,7 @@ export class CanvasNodeEditor implements INodeEditor {
     // 设置图数据提供者
     this.controller.setGraphDataProvider(() => toGraphState(this.nodes, this.edges));
     
-    // 设置渲染扩展回调
-    this.controller.onExtendRenderData = (data, nodeLayouts) => {
-      const nodesMap = new Map<string, GraphNode>();
-      for (const node of this.nodes) {
-        nodesMap.set(node.id, {
-          id: node.id,
-          type: node.type as GraphNode['type'],
-          position: node.position,
-          data: node.data as GraphNode['data'],
-        });
-      }
-      
-      const config: RenderExtensionConfig = {
-        nodes: nodesMap,
-        nodeList: this.nodes,
-        edgeList: this.edges,
-        hoveredNodeId: this.hoveredNodeId,
-        hoveredParamIndex: this.hoveredParamIndex,
-        hoveredReturnIndex: this.hoveredReturnIndex,
-        traitsExpandedMap: this.traitsExpandedMap,
-        summaryExpandedMap: this.summaryExpandedMap,
-      };
-      
-      extendRenderData(data, nodeLayouts, config);
-    };
+    // 渲染扩展已移至 LayoutBox 系统，不再需要 onExtendRenderData 回调
     
     // 设置 UI 渲染回调
     this.renderer.setUIRenderCallback((ctx) => {
@@ -255,12 +281,6 @@ export class CanvasNodeEditor implements INodeEditor {
     this.controller.onPreKeyDown = (key, code, ctrlKey, shiftKey, altKey) => {
       return this.uiManager?.handleKeyDown({ key, code, ctrlKey, shiftKey, altKey }) ?? false;
     };
-    
-    // 初始渲染
-    this.controller.requestRender();
-    
-    // 监听窗口大小变化
-    window.addEventListener('resize', this.handleResize);
   }
 
   unmount(): void {
@@ -373,6 +393,30 @@ export class CanvasNodeEditor implements INodeEditor {
   }
 
   // ============================================================
+  // 渲染模式控制（仅 GPU 渲染器有效）
+  // ============================================================
+
+  /**
+   * 设置文字渲染模式（仅 GPU 渲染器有效）
+   */
+  setTextRenderMode(mode: 'gpu' | 'canvas'): void {
+    const renderer = this.renderer as unknown as { setTextRenderMode?: (m: 'gpu' | 'canvas') => void };
+    if (typeof renderer?.setTextRenderMode === 'function') {
+      renderer.setTextRenderMode(mode);
+    }
+  }
+
+  /**
+   * 设置边渲染模式（仅 GPU 渲染器有效）
+   */
+  setEdgeRenderMode(mode: 'gpu' | 'canvas'): void {
+    const renderer = this.renderer as unknown as { setEdgeRenderMode?: (m: 'gpu' | 'canvas') => void };
+    if (typeof renderer?.setEdgeRenderMode === 'function') {
+      renderer.setEdgeRenderMode(mode);
+    }
+  }
+
+  // ============================================================
   // 类型选择器管理（原生 Canvas UI）
   // ============================================================
 
@@ -433,6 +477,102 @@ export class CanvasNodeEditor implements INodeEditor {
    */
   handleVariadicButtonClick(screenX: number, screenY: number): boolean {
     return this.handleExtendedHitTest(screenX, screenY);
+  }
+
+  // ============================================================
+  // 可编辑名称管理（原生 Canvas UI）
+  // ============================================================
+
+  /**
+   * 显示可编辑名称
+   */
+  showEditableName(
+    nodeId: string,
+    fieldId: string,
+    screenX: number,
+    screenY: number,
+    width: number,
+    value: string,
+    placeholder?: string
+  ): void {
+    if (!this.uiManager) return;
+    
+    this.uiManager.showEditableName(nodeId, fieldId, screenX, screenY, width, value, placeholder);
+    this.onEditableNameChange?.(this.uiManager.getEditableNameState());
+    this.controller?.requestRender();
+  }
+
+  /**
+   * 隐藏可编辑名称
+   */
+  hideEditableName(): void {
+    this.uiManager?.hideEditableName();
+    this.onEditableNameChange?.(null);
+    this.controller?.requestRender();
+  }
+
+  /**
+   * 可编辑名称是否可见
+   */
+  isEditableNameVisible(): boolean {
+    return this.uiManager?.isEditableNameVisible() ?? false;
+  }
+
+  /**
+   * 设置名称提交回调
+   */
+  setNameSubmitCallback(callback: (nodeId: string, fieldId: string, value: string) => void): void {
+    this.uiManager?.setCallbacks({
+      ...this.uiManager?.['callbacks'],
+      onNameSubmit: callback,
+    });
+  }
+
+  // ============================================================
+  // 属性编辑器管理（原生 Canvas UI）
+  // ============================================================
+
+  /**
+   * 显示属性编辑器
+   */
+  showAttributeEditor(
+    nodeId: string,
+    screenX: number,
+    screenY: number,
+    attributes: AttributeDefinition[],
+    title?: string
+  ): void {
+    if (!this.uiManager) return;
+    
+    this.uiManager.showAttributeEditor(nodeId, screenX, screenY, attributes, title);
+    this.onAttributeEditorChange?.(this.uiManager.getAttributeEditorState());
+    this.controller?.requestRender();
+  }
+
+  /**
+   * 隐藏属性编辑器
+   */
+  hideAttributeEditor(): void {
+    this.uiManager?.hideAttributeEditor();
+    this.onAttributeEditorChange?.(null);
+    this.controller?.requestRender();
+  }
+
+  /**
+   * 属性编辑器是否可见
+   */
+  isAttributeEditorVisible(): boolean {
+    return this.uiManager?.isAttributeEditorVisible() ?? false;
+  }
+
+  /**
+   * 设置属性变更回调
+   */
+  setAttributeChangeCallback(callback: (nodeId: string, attrName: string, value: unknown) => void): void {
+    this.uiManager?.setCallbacks({
+      ...this.uiManager?.['callbacks'],
+      onAttributeChange: callback,
+    });
   }
 
   // ============================================================
@@ -643,7 +783,8 @@ export class CanvasNodeEditor implements INodeEditor {
 
 /**
  * 创建 Canvas 节点编辑器实例
+ * @param rendererFactory 可选的渲染器工厂函数，用于创建自定义渲染器
  */
-export function createCanvasNodeEditor(): INodeEditor {
-  return new CanvasNodeEditor();
+export function createCanvasNodeEditor(rendererFactory?: () => IExtendedRenderer): INodeEditor {
+  return new CanvasNodeEditor(rendererFactory);
 }

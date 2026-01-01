@@ -289,6 +289,8 @@ export interface HandlePosition {
   x: number;  // 绝对 X 坐标（Handle 中心）
   y: number;  // 绝对 Y 坐标（Handle 中心）
   isOutput: boolean;
+  /** 引脚颜色（仅 data 引脚，用于连线颜色） */
+  pinColor?: string;
 }
 
 /**
@@ -314,6 +316,7 @@ function extractHandlesRecursive(
         x: absX + box.width / 2,  // Handle 中心
         y: absY + box.height / 2,
         isOutput: isOutputHandle(handleId),
+        pinColor: box.interactive.pinColor,
       });
     }
   }

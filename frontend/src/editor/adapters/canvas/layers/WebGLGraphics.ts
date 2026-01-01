@@ -259,7 +259,11 @@ export class WebGLGraphics implements IGraphicsRenderer {
   renderRects(rects: RenderRect[]): void {
     if (!this.gl || !this.shapeProgram || rects.length === 0) return;
     
-    const batch = this.buildShapeBatch(rects);
+    // 按 zIndex 排序，确保正确的渲染顺序
+    const sortedRects = [...rects].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    
+    // 所有矩形都作为填充矩形渲染（包括选中边框矩形）
+    const batch = this.buildShapeBatch(sortedRects);
     this.drawShapeBatch(batch);
   }
 

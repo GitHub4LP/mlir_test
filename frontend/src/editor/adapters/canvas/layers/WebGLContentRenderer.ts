@@ -12,12 +12,17 @@
 import type {
   RenderData,
   RenderText,
+  RenderRect,
+  RenderCircle,
+  RenderTriangle,
   Viewport,
 } from '../../../core/RenderData';
+import type { LayoutBox } from '../../../core/layout/types';
 import type { IContentRenderer } from './IContentRenderer';
 import { WebGLGraphics } from './WebGLGraphics';
 import { TextLODManager, type TextStrategy } from './TextLOD';
 import { tokens } from '../../shared/styles';
+import { layoutConfig } from '../../../core/layout/LayoutConfig';
 
 /**
  * WebGL 内容层渲染器
@@ -198,11 +203,318 @@ export class WebGLContentRenderer implements IContentRenderer {
     this.webglGraphics.setViewport(this.viewport);
     this.webglGraphics.clear();
     
-    // 渲染顺序：路径 → 矩形 → 圆形 → 三角形
+    // 渲染连线（paths）
     this.webglGraphics.renderPaths(data.paths);
-    this.webglGraphics.renderRects(data.rects);
-    this.webglGraphics.renderCircles(data.circles);
-    this.webglGraphics.renderTriangles(data.triangles);
+    
+    // 从 LayoutBox 提取图形元素并渲染
+    this.renderWithLayoutBoxes(data);
+  }
+
+  /**
+   * 使用新 LayoutBox 系统渲染
+   */
+  private renderWithLayoutBoxes(data: RenderData): void {
+    if (!data.layoutBoxes) return;
+    
+    // 构建节点信息映射（仅需要 selected 和 zIndex）
+    const nodeInfoMap = new Map<string, {
+      selected: boolean;
+      zIndex: number;
+    }>();
+    
+    for (const rect of data.rects) {
+      if (rect.id.startsWith('rect-')) {
+        const nodeId = rect.id.slice(5);
+        nodeInfoMap.set(nodeId, {
+          selected: rect.selected,
+          zIndex: rect.zIndex,
+        });
+      }
+    }
+    
+    // 收集所有图形元素
+    const rects: RenderRect[] = [];
+    const circles: RenderCircle[] = [];
+    const triangles: RenderTriangle[] = [];
+    
+    // 按 zIndex 排序
+    const sortedEntries = [...data.layoutBoxes.entries()].sort((a, b) => {
+      const aInfo = nodeInfoMap.get(a[0]);
+      const bInfo = nodeInfoMap.get(b[0]);
+      return (aInfo?.zIndex ?? 0) - (bInfo?.zIndex ?? 0);
+    });
+    
+    for (const [nodeId, layoutBox] of sortedEntries) {
+      const nodeInfo = nodeInfoMap.get(nodeId);
+      const selected = nodeInfo?.selected ?? false;
+      const zIndex = nodeInfo?.zIndex ?? 0;
+      
+      // 从 LayoutBox 提取图形元素（颜色已在 LayoutBox 中）
+      this.extractGraphicsFromLayoutBox(
+        layoutBox, 0, 0, selected, nodeId, zIndex,
+        rects, circles, triangles
+      );
+    }
+    
+    // 渲染提取的图形元素
+    this.webglGraphics.renderRects(rects);
+    this.webglGraphics.renderCircles(circles);
+    this.webglGraphics.renderTriangles(triangles);
+  }
+
+  /**
+   * 从 LayoutBox 树提取图形元素
+   */
+  private extractGraphicsFromLayoutBox(
+    box: LayoutBox,
+    offsetX: number,
+    offsetY: number,
+    selected: boolean,
+    nodeId: string,
+    zIndex: number,
+    rects: RenderRect[],
+    circles: RenderCircle[],
+    triangles: RenderTriangle[]
+  ): void {
+    const absX = offsetX + box.x;
+    const absY = offsetY + box.y;
+    
+    // 根据 box.type 提取不同的图形元素
+    switch (box.type) {
+      case 'node': {
+        // 节点背景（先渲染）
+        if (box.style?.fill) {
+          rects.push({
+            id: `lb-rect-${nodeId}`,
+            x: absX,
+            y: absY,
+            width: box.width,
+            height: box.height,
+            fillColor: box.style.fill,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: this.normalizeCornerRadius(box.style.cornerRadius),
+            selected: false,
+            zIndex,
+          });
+        }
+        
+        // 选中边框（后渲染，在节点背景上面）
+        if (selected) {
+          const borderWidth = layoutConfig.node.selected?.strokeWidth ?? 2;
+          const borderColor = layoutConfig.node.selected?.stroke ?? '#60a5fa';
+          const offset = 2;
+          const x = absX - offset;
+          const y = absY - offset;
+          const w = box.width + offset * 2;
+          const h = box.height + offset * 2;
+          const selectionZIndex = zIndex + 100; // 确保在节点所有内容之上
+          
+          // 上边框
+          rects.push({
+            id: `selection-top-${nodeId}`,
+            x: x,
+            y: y,
+            width: w,
+            height: borderWidth,
+            fillColor: borderColor,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: 0,
+            selected: false,
+            zIndex: selectionZIndex,
+          });
+          // 下边框
+          rects.push({
+            id: `selection-bottom-${nodeId}`,
+            x: x,
+            y: y + h - borderWidth,
+            width: w,
+            height: borderWidth,
+            fillColor: borderColor,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: 0,
+            selected: false,
+            zIndex: selectionZIndex,
+          });
+          // 左边框
+          rects.push({
+            id: `selection-left-${nodeId}`,
+            x: x,
+            y: y,
+            width: borderWidth,
+            height: h,
+            fillColor: borderColor,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: 0,
+            selected: false,
+            zIndex: selectionZIndex,
+          });
+          // 右边框
+          rects.push({
+            id: `selection-right-${nodeId}`,
+            x: x + w - borderWidth,
+            y: y,
+            width: borderWidth,
+            height: h,
+            fillColor: borderColor,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: 0,
+            selected: false,
+            zIndex: selectionZIndex,
+          });
+        }
+        break;
+      }
+      
+      case 'headerContent': {
+        // 节点头部（颜色已在 box.style.fill 中）
+        if (box.style?.fill) {
+          rects.push({
+            id: `lb-header-${nodeId}`,
+            x: absX,
+            y: absY,
+            width: box.width,
+            height: box.height,
+            fillColor: box.style.fill,
+            borderColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: this.normalizeCornerRadius(box.style?.cornerRadius),
+            selected: false,
+            zIndex: zIndex + 1,
+          });
+        }
+        break;
+      }
+      
+      case 'handle': {
+        const id = box.interactive?.id ?? '';
+        const isExec = id.includes('exec');
+        const handleConfig = layoutConfig.handle;
+        const size = typeof handleConfig.width === 'number' ? handleConfig.width : 12;
+        const centerX = absX + box.width / 2;
+        const centerY = absY + box.height / 2;
+        
+        if (isExec) {
+          // 执行端口：三角形
+          triangles.push({
+            id: `lb-${id}`,
+            x: centerX,
+            y: centerY,
+            size: size * 0.6,
+            direction: 'right',
+            fillColor: '#ffffff',
+            borderColor: '#ffffff',
+            borderWidth: 1,
+          });
+        } else {
+          // 数据端口：圆形，从 LayoutBox.interactive.pinColor 获取颜色
+          const color = box.interactive?.pinColor ?? layoutConfig.nodeType.operation;
+          
+          circles.push({
+            id: `lb-${id}`,
+            x: centerX,
+            y: centerY,
+            radius: size / 2,
+            fillColor: color,
+            borderColor: tokens.node.bg,  // 使用节点背景色作为边框
+            borderWidth: 2,
+          });
+        }
+        break;
+      }
+      
+      case 'typeLabel': {
+        // 类型标签背景，从 LayoutBox.interactive.pinColor 获取颜色
+        const id = box.interactive?.id ?? '';
+        const pinColor = box.interactive?.pinColor;
+        const bgColor = pinColor 
+          ? this.colorWithAlpha(pinColor, 0.3)
+          : (layoutConfig.typeLabel.fill ?? 'rgba(100, 100, 100, 0.5)');
+        
+        rects.push({
+          id: `lb-${id}`,
+          x: absX,
+          y: absY,
+          width: box.width,
+          height: box.height,
+          fillColor: bgColor,
+          borderColor: 'transparent',
+          borderWidth: 0,
+          borderRadius: this.normalizeCornerRadius(layoutConfig.typeLabel.cornerRadius),
+          selected: false,
+          zIndex: zIndex + 2,
+        });
+        break;
+      }
+      
+      default: {
+        // 其他有背景的元素
+        if (box.style?.fill && box.style.fill !== 'transparent') {
+          rects.push({
+            id: `lb-${box.type}-${nodeId}-${absX}-${absY}`,
+            x: absX,
+            y: absY,
+            width: box.width,
+            height: box.height,
+            fillColor: box.style.fill,
+            borderColor: box.style.stroke ?? 'transparent',
+            borderWidth: box.style.strokeWidth ?? 0,
+            borderRadius: this.normalizeCornerRadius(box.style.cornerRadius),
+            selected: false,
+            zIndex: zIndex + 2,
+          });
+        }
+        break;
+      }
+    }
+    
+    // 递归处理子节点
+    for (const child of box.children) {
+      this.extractGraphicsFromLayoutBox(
+        child, absX, absY, false, nodeId, zIndex,
+        rects, circles, triangles
+      );
+    }
+  }
+
+  /**
+   * 规范化圆角配置
+   */
+  private normalizeCornerRadius(
+    radius: number | [number, number, number, number] | undefined
+  ): number | { topLeft: number; topRight: number; bottomLeft: number; bottomRight: number } {
+    if (radius === undefined) return 0;
+    if (typeof radius === 'number') return radius;
+    return {
+      topLeft: radius[0],
+      topRight: radius[1],
+      bottomRight: radius[2],
+      bottomLeft: radius[3],
+    };
+  }
+
+  /**
+   * 将颜色转换为带透明度的版本
+   */
+  private colorWithAlpha(color: string, alpha: number): string {
+    if (color.startsWith('#')) {
+      const hex = color.slice(1);
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    if (color.startsWith('rgb')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (match) {
+        return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+      }
+    }
+    return color;
   }
 
   private renderTexts(texts: RenderText[], strategy: TextStrategy): void {

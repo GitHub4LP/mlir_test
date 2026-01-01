@@ -23,17 +23,16 @@ import type {
 import { createEmptyRenderData, createDefaultViewport, createDefaultHint } from './types';
 import type { GraphNode, GraphState } from '../../../types';
 import {
-  computeNodeLayout,
   computeEdgePath,
   distanceToEdge,
   isPointInRect,
   isPointInCircle,
   NODE_LAYOUT,
   EDGE_LAYOUT,
-  type NodeLayout,
 } from './layout';
-// 新布局系统
+// 统一布局系统 - 所有尺寸和位置信息都从 LayoutBox 获取
 import { computeNodeLayoutBox, extractHandlePositions, type LayoutBox, type HandlePosition } from '../../core/layout';
+import { performanceMonitor } from './PerformanceMonitor';
 
 // ============================================================
 // 控制器状态类型
@@ -166,8 +165,7 @@ export class GraphController {
   /** 节点位置变化回调 */
   onNodePositionChange: ((nodeId: string, x: number, y: number) => void) | null = null;
 
-  /** 渲染数据扩展回调（用于添加额外的渲染元素，如类型标签、按钮等） */
-  onExtendRenderData: ((data: RenderData, nodeLayouts: Map<string, NodeLayout>) => void) | null = null;
+  // 渲染扩展已移至 LayoutBox 系统，不再需要 onExtendRenderData 回调
 
   /** 连接尝试回调 */
   onConnectionAttempt: ((
@@ -511,15 +509,15 @@ export class GraphController {
             this.selectNode(hit.nodeId, false);
           }
           
-          // 收集所有选中节点的初始位置
+          // 收集所有选中节点的初始位置（直接使用节点的 position）
           const nodeStartPositions = new Map<string, { x: number; y: number }>();
           const graphData = this.getGraphData();
           if (graphData) {
             for (const nodeId of this.selectedNodeIds) {
               const node = graphData.nodes.find(n => n.id === nodeId);
               if (node) {
-                const layout = this.getNodeLayout(node);
-                nodeStartPositions.set(nodeId, { x: layout.x, y: layout.y });
+                // 直接使用节点的 position，不需要通过布局系统
+                nodeStartPositions.set(nodeId, { x: node.position.x, y: node.position.y });
               }
             }
           }
@@ -624,10 +622,11 @@ export class GraphController {
       
       this.viewport.x = this.state.viewportStartX + deltaX;
       this.viewport.y = this.state.viewportStartY + deltaY;
+      // 实时通知视口变化，让 MiniMap 能够实时更新
+      this.onViewportChange?.(this.viewport);
       this.requestRender();
     } else if (data.type === 'up') {
-      // 拖拽结束，通知视口变化
-      this.onViewportChange?.(this.viewport);
+      // 拖拽结束
       this.state = { kind: 'idle' };
       // 通知拖拽结束
       this.onDragStateChange?.(false);
@@ -697,15 +696,15 @@ export class GraphController {
       const minY = Math.min(this.state.startY, this.state.currentY);
       const maxY = Math.max(this.state.startY, this.state.currentY);
       
-      // 选择框内的节点
+      // 选择框内的节点（使用 LayoutBox 尺寸）
       const graphData = this.getGraphData();
       if (graphData) {
         this.selectedNodeIds.clear();
         for (const node of graphData.nodes) {
-          const layout = this.getNodeLayout(node);
+          const layoutBox = this.getLayoutBox(node);
           // 检查节点是否与选择框相交
-          if (layout.x < maxX && layout.x + layout.width > minX &&
-              layout.y < maxY && layout.y + layout.height > minY) {
+          if (layoutBox.x < maxX && layoutBox.x + layoutBox.width > minX &&
+              layoutBox.y < maxY && layoutBox.y + layoutBox.height > minY) {
             this.selectedNodeIds.add(node.id);
           }
         }
@@ -880,6 +879,7 @@ export class GraphController {
 
   /**
    * 命中测试
+   * 统一使用 LayoutBox 系统，确保命中区域与渲染区域一致
    * @param x - 画布坐标 X
    * @param y - 画布坐标 Y
    * @returns 命中结果
@@ -897,88 +897,55 @@ export class GraphController {
       return bSelected - aSelected;
     });
 
-    // 获取 LayoutBox 数据（如果有）
-    const layoutBoxes = this.cachedRenderData?.layoutBoxes;
-
     // 1. 首先检查端口（优先级最高）
     for (const node of sortedNodes) {
-      const layoutBox = layoutBoxes?.get(node.id);
+      const layoutBox = this.getLayoutBox(node);
+      const handles = extractHandlePositions(layoutBox);
       
-      if (layoutBox) {
-        // 使用 LayoutBox 提取的 Handle 位置
-        const handles = extractHandlePositions(layoutBox);
-        for (const handle of handles) {
-          const hitRadius = NODE_LAYOUT.HANDLE_RADIUS + 4;
-          if (isPointInCircle(x, y, handle.x, handle.y, hitRadius)) {
-            return {
-              kind: 'handle',
-              nodeId: node.id,
-              handleId: handle.handleId,
-              isOutput: handle.isOutput,
-            };
-          }
-        }
-      } else {
-        // 回退到旧布局
-        const layout = this.getNodeLayout(node);
-        for (const handle of layout.handles) {
-          const handleX = layout.x + handle.x;
-          const handleY = layout.y + handle.y;
-          const hitRadius = NODE_LAYOUT.HANDLE_RADIUS + 4;
-          
-          if (isPointInCircle(x, y, handleX, handleY, hitRadius)) {
-            return {
-              kind: 'handle',
-              nodeId: node.id,
-              handleId: handle.handleId,
-              isOutput: handle.isOutput,
-            };
-          }
+      for (const handle of handles) {
+        const hitRadius = NODE_LAYOUT.HANDLE_RADIUS + 4;
+        if (isPointInCircle(x, y, handle.x, handle.y, hitRadius)) {
+          return {
+            kind: 'handle',
+            nodeId: node.id,
+            handleId: handle.handleId,
+            isOutput: handle.isOutput,
+          };
         }
       }
     }
 
-    // 2. 然后检查节点（优先使用 LayoutBox 尺寸）
+    // 2. 然后检查节点（使用 LayoutBox 尺寸）
     for (const node of sortedNodes) {
-      const layoutBox = layoutBoxes?.get(node.id);
+      const layoutBox = this.getLayoutBox(node);
       
-      if (layoutBox) {
-        // 使用 LayoutBox 的尺寸（更准确）
-        if (isPointInRect(x, y, layoutBox.x, layoutBox.y, layoutBox.width, layoutBox.height)) {
-          return {
-            kind: 'node',
-            nodeId: node.id,
-          };
-        }
-      } else {
-        // 回退到旧布局
-        const layout = this.getNodeLayout(node);
-        if (isPointInRect(x, y, layout.x, layout.y, layout.width, layout.height)) {
-          return {
-            kind: 'node',
-            nodeId: node.id,
-          };
-        }
+      if (isPointInRect(x, y, layoutBox.x, layoutBox.y, layoutBox.width, layoutBox.height)) {
+        return {
+          kind: 'node',
+          nodeId: node.id,
+        };
       }
     }
 
-    // 3. 最后检查边
+    // 3. 最后检查边（使用 LayoutBox 的 Handle 位置）
     for (const edge of graphData.edges) {
       const sourceNode = graphData.nodes.find(n => n.id === edge.source);
       const targetNode = graphData.nodes.find(n => n.id === edge.target);
       
       if (!sourceNode || !targetNode) continue;
 
-      const sourceLayout = this.getNodeLayout(sourceNode);
-      const targetLayout = this.getNodeLayout(targetNode);
+      const sourceBox = this.getLayoutBox(sourceNode);
+      const targetBox = this.getLayoutBox(targetNode);
+      const sourceHandles = extractHandlePositions(sourceBox);
+      const targetHandles = extractHandlePositions(targetBox);
 
-      const sourceHandle = sourceLayout.handles.find(h => h.handleId === edge.sourceHandle);
-      const targetHandle = targetLayout.handles.find(h => h.handleId === edge.targetHandle);
+      const sourceHandle = sourceHandles.find(h => h.handleId === edge.sourceHandle);
+      const targetHandle = targetHandles.find(h => h.handleId === edge.targetHandle);
 
-      const sourceX = sourceLayout.x + (sourceHandle?.x ?? sourceLayout.width);
-      const sourceY = sourceLayout.y + (sourceHandle?.y ?? sourceLayout.height / 2);
-      const targetX = targetLayout.x + (targetHandle?.x ?? 0);
-      const targetY = targetLayout.y + (targetHandle?.y ?? targetLayout.height / 2);
+      const sourceX = sourceHandle?.x ?? sourceBox.x + sourceBox.width;
+      const sourceY = sourceHandle?.y ?? sourceBox.y + sourceBox.height / 2;
+      const targetX = targetHandle?.x ?? targetBox.x;
+      const targetY = targetHandle?.y ?? targetBox.y + targetBox.height / 2;
 
       const points = computeEdgePath(sourceX, sourceY, targetX, targetY);
       const distance = distanceToEdge(x, y, points);
@@ -1018,15 +985,21 @@ export class GraphController {
   }
 
   // ============================================================
-  // 节点布局缓存
+  // 节点布局 - 统一使用 LayoutBox 系统
   // ============================================================
 
   /**
-   * 获取节点布局
-   * 每次调用都重新计算，确保数据一致性
+   * 获取节点的 LayoutBox
+   * 优先从缓存获取，否则实时计算
    */
-  private getNodeLayout(node: GraphNode): NodeLayout {
-    return computeNodeLayout(node, this.selectedNodeIds.has(node.id));
+  private getLayoutBox(node: GraphNode): LayoutBox {
+    // 优先从缓存获取
+    const cached = this.cachedRenderData?.layoutBoxes?.get(node.id);
+    if (cached) {
+      return cached;
+    }
+    // 实时计算
+    return computeNodeLayoutBox(node, node.position.x, node.position.y);
   }
 
   /**
@@ -1059,80 +1032,7 @@ export class GraphController {
     const triangles: RenderTriangle[] = [];
     const overlays: OverlayInfo[] = [];
 
-    // 计算所有节点布局（仅用于获取 selected、zIndex 等元信息，以及边的连接点）
-    const nodeLayouts = new Map<string, NodeLayout>();
-    for (const node of graphData.nodes) {
-      const layout = this.getNodeLayout(node);
-      nodeLayouts.set(node.id, layout);
-      
-      // 注意：节点的矩形、文字、端口图元由新的 LayoutBox 系统生成
-      // 这里只生成 selected 和 zIndex 信息供新系统使用
-      // 以及 overlays 信息供 UI 层使用
-      
-      // 生成节点矩形（仅用于传递 selected/zIndex 信息给新系统）
-      rects.push({
-        id: `rect-${node.id}`,
-        x: layout.x,
-        y: layout.y,
-        width: layout.width,
-        height: layout.height,
-        fillColor: 'transparent', // 不渲染背景，由新系统负责
-        borderColor: 'transparent',
-        borderWidth: 0,
-        borderRadius: NODE_LAYOUT.BORDER_RADIUS,
-        selected: layout.selected,
-        zIndex: layout.zIndex,
-      });
-
-      // 生成节点头部矩形（仅用于传递 headerColor 信息给新系统）
-      rects.push({
-        id: `header-${node.id}`,
-        x: layout.x,
-        y: layout.y,
-        width: layout.width,
-        height: layout.headerHeight,
-        fillColor: layout.headerColor, // 传递颜色信息
-        borderColor: 'transparent',
-        borderWidth: 0,
-        borderRadius: {
-          topLeft: NODE_LAYOUT.BORDER_RADIUS,
-          topRight: NODE_LAYOUT.BORDER_RADIUS,
-          bottomLeft: 0,
-          bottomRight: 0,
-        },
-        selected: false,
-        zIndex: layout.zIndex + 1,
-      });
-
-      // 生成端口颜色信息（供新系统使用）
-      for (const handle of layout.handles) {
-        if (handle.kind === 'data') {
-          circles.push({
-            id: `handle-${node.id}-${handle.handleId}`,
-            x: layout.x + handle.x,
-            y: layout.y + handle.y,
-            radius: NODE_LAYOUT.HANDLE_RADIUS,
-            fillColor: handle.color,
-            borderColor: handle.color,
-            borderWidth: 1,
-          });
-        }
-      }
-
-      // 生成覆盖层信息（选中节点）
-      if (layout.selected) {
-        const screenPos = this.canvasToScreen(layout.x, layout.y);
-        overlays.push({
-          nodeId: node.id,
-          screenX: screenPos.x,
-          screenY: screenPos.y,
-          width: layout.width * this.viewport.zoom,
-          height: layout.height * this.viewport.zoom,
-        });
-      }
-    }
-
-    // 计算新布局系统的 LayoutBox 和 Handle 位置
+    // 首先计算所有节点的 LayoutBox（统一布局系统）
     const layoutBoxes = new Map<string, LayoutBox>();
     const layoutBoxHandles = new Map<string, HandlePosition[]>();
     for (const node of graphData.nodes) {
@@ -1147,54 +1047,68 @@ export class GraphController {
       }
     }
 
-    // 计算所有边
+    // 生成节点相关的渲染数据（基于 LayoutBox）
+    for (const node of graphData.nodes) {
+      const layoutBox = layoutBoxes.get(node.id);
+      if (!layoutBox) continue;
+      
+      const selected = this.selectedNodeIds.has(node.id);
+      const zIndex = selected ? 100 : 0;
+      
+      // 生成节点矩形（仅用于传递 selected/zIndex 信息给渲染器）
+      rects.push({
+        id: `rect-${node.id}`,
+        x: layoutBox.x,
+        y: layoutBox.y,
+        width: layoutBox.width,
+        height: layoutBox.height,
+        fillColor: 'transparent', // 不渲染背景，由 LayoutBox 系统负责
+        borderColor: 'transparent',
+        borderWidth: 0,
+        borderRadius: NODE_LAYOUT.BORDER_RADIUS,
+        selected,
+        zIndex,
+      });
+
+      // 生成覆盖层信息（选中节点）
+      if (selected) {
+        const screenPos = this.canvasToScreen(layoutBox.x, layoutBox.y);
+        overlays.push({
+          nodeId: node.id,
+          screenX: screenPos.x,
+          screenY: screenPos.y,
+          width: layoutBox.width * this.viewport.zoom,
+          height: layoutBox.height * this.viewport.zoom,
+        });
+      }
+    }
+
+    // 计算所有边（完全使用 LayoutBox 系统）
     for (const edge of graphData.edges) {
-      // 优先使用新系统的 Handle 位置
       const sourceHandles = layoutBoxHandles.get(edge.source);
       const targetHandles = layoutBoxHandles.get(edge.target);
+      const sourceBox = layoutBoxes.get(edge.source);
+      const targetBox = layoutBoxes.get(edge.target);
       
-      let sourceX: number, sourceY: number, targetX: number, targetY: number;
-      let sourceColor: string | undefined;
-      let isExec = false;
+      if (!sourceBox || !targetBox) continue;
       
-      if (sourceHandles && targetHandles) {
-        // 新系统：从 LayoutBox 获取 Handle 位置
-        const sourceHandle = sourceHandles.find(h => h.handleId === edge.sourceHandle);
-        const targetHandle = targetHandles.find(h => h.handleId === edge.targetHandle);
-        
-        const sourceBox = layoutBoxes.get(edge.source);
-        const targetBox = layoutBoxes.get(edge.target);
-        
-        sourceX = sourceHandle?.x ?? (sourceBox?.x ?? 0) + (sourceBox?.width ?? 0);
-        sourceY = sourceHandle?.y ?? (sourceBox?.y ?? 0) + (sourceBox?.height ?? 0) / 2;
-        targetX = targetHandle?.x ?? (targetBox?.x ?? 0);
-        targetY = targetHandle?.y ?? (targetBox?.y ?? 0) + (targetBox?.height ?? 0) / 2;
-        
-        // 判断是否为执行流边
-        isExec = edge.sourceHandle?.includes('exec') || edge.targetHandle?.includes('exec') || false;
-        
-        // 从旧系统获取颜色（暂时）
-        const oldSourceLayout = nodeLayouts.get(edge.source);
-        const oldSourceHandle = oldSourceLayout?.handles.find(h => h.handleId === edge.sourceHandle);
-        sourceColor = oldSourceHandle?.color;
-      } else {
-        // 回退到旧系统
-        const sourceLayout = nodeLayouts.get(edge.source);
-        const targetLayout = nodeLayouts.get(edge.target);
-        
-        if (!sourceLayout || !targetLayout) continue;
-
-        const sourceHandle = sourceLayout.handles.find(h => h.handleId === edge.sourceHandle);
-        const targetHandle = targetLayout.handles.find(h => h.handleId === edge.targetHandle);
-
-        sourceX = sourceLayout.x + (sourceHandle?.x ?? sourceLayout.width);
-        sourceY = sourceLayout.y + (sourceHandle?.y ?? sourceLayout.height / 2);
-        targetX = targetLayout.x + (targetHandle?.x ?? 0);
-        targetY = targetLayout.y + (targetHandle?.y ?? targetLayout.height / 2);
-        
-        isExec = sourceHandle?.kind === 'exec' || targetHandle?.kind === 'exec';
-        sourceColor = sourceHandle?.color;
-      }
+      // 从 LayoutBox 获取 Handle 位置
+      const sourceHandle = sourceHandles?.find(h => h.handleId === edge.sourceHandle);
+      const targetHandle = targetHandles?.find(h => h.handleId === edge.targetHandle);
+      
+      const sourceX = sourceHandle?.x ?? sourceBox.x + sourceBox.width;
+      const sourceY = sourceHandle?.y ?? sourceBox.y + sourceBox.height / 2;
+      const targetX = targetHandle?.x ?? targetBox.x;
+      const targetY = targetHandle?.y ?? targetBox.y + targetBox.height / 2;
+      
+      // 判断是否为执行流边
+      const isExec = edge.sourceHandle?.includes('exec') || edge.targetHandle?.includes('exec') || false;
+      
+      // 边颜色：执行流用白色，数据流优先从 edge.data.color 获取，其次从源 Handle 的 pinColor 获取
+      const edgeDataColor = edge.data?.color;
+      const edgeColor = isExec 
+        ? EDGE_LAYOUT.EXEC_COLOR 
+        : edgeDataColor ?? sourceHandle?.pinColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR;
 
       // 计算贝塞尔曲线路径
       const points = computeEdgePath(sourceX, sourceY, targetX, targetY);
@@ -1205,7 +1119,7 @@ export class GraphController {
       paths.push({
         id: `edge-${edgeId}`,
         points,
-        color: isExec ? EDGE_LAYOUT.EXEC_COLOR : (sourceColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR),
+        color: edgeColor,
         width: selected ? EDGE_LAYOUT.SELECTED_WIDTH : EDGE_LAYOUT.WIDTH,
         dashed: false,
         animated: false,
@@ -1228,8 +1142,7 @@ export class GraphController {
       layoutBoxes,
     };
 
-    // 调用扩展回调，允许外部添加额外的渲染元素
-    this.onExtendRenderData?.(renderData, nodeLayouts);
+    // 调用扩展回调已废弃，渲染扩展已移至 LayoutBox 系统
 
     return renderData;
   }
@@ -1255,21 +1168,26 @@ export class GraphController {
         
       case 'connecting': {
         hint.cursor = 'crosshair';
-        // 添加连接预览线
+        // 添加连接预览线（使用 LayoutBox 系统）
         const connectingState = this.state;
         const graphData = this.getGraphData();
         const sourceNode = graphData?.nodes.find(n => n.id === connectingState.sourceNodeId);
         if (sourceNode) {
-          const sourceLayout = this.getNodeLayout(sourceNode);
-          const sourceHandle = sourceLayout.handles.find(h => h.handleId === connectingState.sourceHandleId);
+          const sourceBox = this.getLayoutBox(sourceNode);
+          const sourceHandles = extractHandlePositions(sourceBox);
+          const sourceHandle = sourceHandles.find(h => h.handleId === connectingState.sourceHandleId);
           if (sourceHandle) {
-            const sourceX = sourceLayout.x + sourceHandle.x;
-            const sourceY = sourceLayout.y + sourceHandle.y;
-            const points = computeEdgePath(sourceX, sourceY, connectingState.currentX, connectingState.currentY);
+            const points = computeEdgePath(sourceHandle.x, sourceHandle.y, connectingState.currentX, connectingState.currentY);
+            // 判断是否为执行流
+            const isExec = connectingState.sourceHandleId.includes('exec');
+            // 连接预览颜色：执行流用白色，数据流用源 Handle 的 pinColor
+            const previewColor = isExec 
+              ? EDGE_LAYOUT.EXEC_COLOR 
+              : sourceHandle.pinColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR;
             hint.connectionPreview = {
               id: 'connection-preview',
               points,
-              color: sourceHandle.color,
+              color: previewColor,
               width: 2,
               dashed: true,
               dashPattern: [5, 5],
@@ -1332,8 +1250,13 @@ export class GraphController {
   private render(): void {
     if (!this.renderer) return;
     
+    const startTime = performance.now();
+    
     this.cachedRenderData = this.computeRenderData();
     this.renderer.render(this.cachedRenderData);
+    
+    const endTime = performance.now();
+    performanceMonitor.recordFrame(endTime - startTime);
   }
 
   /**

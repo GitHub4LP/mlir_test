@@ -152,9 +152,7 @@ export function toCSSVariables(config: LayoutConfig): Record<string, string> {
   // Node Types
   // ============================================================
   vars['--node-type-entry'] = config.nodeType.entry;
-  vars['--node-type-entry-main'] = config.nodeType.entryMain;
   vars['--node-type-return'] = config.nodeType.return;
-  vars['--node-type-return-main'] = config.nodeType.returnMain;
   vars['--node-type-call'] = config.nodeType.call;
   vars['--node-type-operation'] = config.nodeType.operation;
 
