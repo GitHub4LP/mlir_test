@@ -94,6 +94,9 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     setViewport,
   } = graphEditor;
   
+  // 从 editorStore 获取选择状态
+  const selection = useEditorStore(state => state.selection);
+  
   // 渲染器切换处理
   const handleRendererChange = useCallback((newRenderer: typeof renderer) => {
     setCurrentRenderer(newRenderer);
@@ -110,6 +113,27 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       if (typeof (editor as unknown as { setEdgeRenderMode?: (m: string) => void }).setEdgeRenderMode === 'function') {
         (editor as unknown as { setEdgeRenderMode: (m: string) => void }).setEdgeRenderMode(edgeRenderMode);
       }
+    }
+  }, [renderer, canvasBackend, textRenderMode, edgeRenderMode]);
+  
+  // 监听渲染模式变化，同步到编辑器实例
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    
+    // 仅 GPU 后端需要同步
+    if (renderer !== 'canvas' || (canvasBackend !== 'webgl' && canvasBackend !== 'webgpu')) {
+      return;
+    }
+    
+    // 同步文字渲染模式
+    if (typeof (editor as unknown as { setTextRenderMode?: (m: string) => void }).setTextRenderMode === 'function') {
+      (editor as unknown as { setTextRenderMode: (m: string) => void }).setTextRenderMode(textRenderMode);
+    }
+    
+    // 同步边渲染模式
+    if (typeof (editor as unknown as { setEdgeRenderMode?: (m: string) => void }).setEdgeRenderMode === 'function') {
+      (editor as unknown as { setEdgeRenderMode: (m: string) => void }).setEdgeRenderMode(edgeRenderMode);
     }
   }, [renderer, canvasBackend, textRenderMode, edgeRenderMode]);
   
@@ -294,6 +318,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       getCurrentFunction,
       getConstraintElements,
       pickConstraintName,
+      findSubsetConstraints: useTypeConstraintStore.getState().findSubsetConstraints,
     };
     
     // 处理类型变更
@@ -434,9 +459,12 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
         </div>
 
         {/* Right Panel - Properties */}
-        {effectiveSelectedNode && (
+        {(effectiveSelectedNode || selection.nodeIds.length > 1) && (
           <div className="w-72 bg-gray-800 border-l border-gray-700 flex-shrink-0 overflow-hidden">
-            <PropertiesPanel selectedNode={effectiveSelectedNode} />
+            <PropertiesPanel 
+              selectedNode={effectiveSelectedNode} 
+              selectedCount={selection.nodeIds.length}
+            />
           </div>
         )}
       </div>
@@ -446,7 +474,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
         className="flex-shrink-0 absolute bottom-0 left-64"
         style={{
           height: executionPanelHeight,
-          right: effectiveSelectedNode ? 288 : 0,
+          right: (effectiveSelectedNode || selection.nodeIds.length > 1) ? 288 : 0,
         }}
       >
         <ExecutionPanel

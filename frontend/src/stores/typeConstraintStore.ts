@@ -60,6 +60,7 @@ export interface TypeConstraintState {
   getAllConstraintNames: () => string[];
   getEquivalentConstraints: (types: string[]) => string[];  // 新增
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;  // 新增
+  findSubsetConstraints: (E: string[]) => string[];  // 找出所有元素集合是 E 子集的具名约束
 }
 
 export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => ({
@@ -200,12 +201,43 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
       if (upperMatch) return upperMatch;
     }
     
-    // 4. 无前缀的内置约束
+    // 4. 优先选择通用约束名（AnyType 等）
+    const preferredNames = ['AnyType', 'AnyInteger', 'AnyFloat', 'AnySignlessInteger', 'AnySignedInteger', 'AnyUnsignedInteger'];
+    for (const name of preferredNames) {
+      if (equivalents.includes(name)) {
+        return name;
+      }
+    }
+    
+    // 5. 无前缀的内置约束
     const builtin = equivalents.find(n => !n.includes('_'));
     if (builtin) return builtin;
     
-    // 5. 兜底
+    // 6. 兜底
     return equivalents[0];
+  },
+
+  findSubsetConstraints: (E: string[]) => {
+    const { constraintEquivalences } = get();
+    
+    if (E.length === 0) return [];
+    
+    const ESet = new Set(E);
+    const result: string[] = [];
+    
+    // 遍历 constraintEquivalences，找出所有元素集合是 E 子集的约束名
+    // key 是排序后的类型集合字符串（如 'I1,I128,I16,I32,I64,I8'）
+    // value 是等价的约束名列表
+    for (const [key, names] of constraintEquivalences) {
+      // 解析 key 为类型数组
+      const types = key.split(',');
+      // 检查是否是 E 的非空子集
+      if (types.length > 0 && types.every(t => ESet.has(t))) {
+        result.push(...names);
+      }
+    }
+    
+    return result;
   },
 }));
 

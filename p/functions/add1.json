@@ -56,15 +56,15 @@
         "data": {
           "fullName": "arith.addi",
           "attributes": {},
+          "execOuts": [],
+          "regionPins": [],
           "inputTypes": {
             "lhs": "SignlessIntegerOrIndexLike",
             "rhs": "SignlessIntegerOrIndexLike"
           },
           "outputTypes": {
             "result": "SignlessIntegerOrIndexLike"
-          },
-          "execOuts": [],
-          "regionPins": []
+          }
         }
       },
       {
@@ -79,12 +79,11 @@
           "attributes": {
             "value": 1
           },
-          "inputTypes": {},
+          "execOuts": [],
+          "regionPins": [],
           "outputTypes": {
             "result": "AnySignlessIntegerOrIndex"
-          },
-          "execOuts": [],
-          "regionPins": []
+          }
         }
       }
     ],

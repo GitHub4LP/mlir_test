@@ -105,6 +105,7 @@ const IntegerInput = memo(function IntegerInput({
   name: string;
 }) {
   const [error, setError] = useState<string>();
+  // 直接使用 prop 作为显示值
   const displayValue = value !== undefined && value !== null ? String(value) : '';
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,6 +152,7 @@ const FloatInput = memo(function FloatInput({
   name: string;
 }) {
   const [error, setError] = useState<string>();
+  // 直接使用 prop 作为显示值
   const displayValue = value !== undefined && value !== null ? String(value) : '';
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -274,9 +276,15 @@ const EnumInput = memo(function EnumInput({
   name: string;
 }) {
   // 从 value 中提取 symbol 用于显示当前选中项
-  const currentSymbol = typeof value === 'object' && value !== null
-    ? (value as EnumOptionValue).symbol
-    : '';
+  // 兼容对象格式和字符串格式
+  let currentSymbol = '';
+  if (typeof value === 'object' && value !== null) {
+    currentSymbol = (value as EnumOptionValue).symbol ?? '';
+  } else if (typeof value === 'string') {
+    // 尝试匹配 symbol 或 str
+    const match = options.find(opt => opt.symbol === value || opt.str === value);
+    currentSymbol = match?.symbol ?? '';
+  }
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedSymbol = e.target.value;
@@ -359,6 +367,8 @@ const ArrayInput = memo(function ArrayInput({
  * 
  * 存储为字符串以保留用户输入格式（如 "2.0" vs "2"）
  * 后端根据 outputTypes 决定最终格式
+ * 
+ * 需要内部状态来处理中间输入状态（如 "-"、"."）
  */
 const TypedAttrInput = memo(function TypedAttrInput({
   value,
@@ -372,7 +382,7 @@ const TypedAttrInput = memo(function TypedAttrInput({
   name: string;
 }) {
   const [error, setError] = useState<string>();
-  // 保持字符串格式显示
+  // 直接使用 prop 作为显示值
   const displayValue = value !== undefined && value !== null ? String(value) : '';
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

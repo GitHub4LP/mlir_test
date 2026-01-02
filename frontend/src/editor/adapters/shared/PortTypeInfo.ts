@@ -19,6 +19,16 @@ export interface PortTypeInfo {
 }
 
 /**
+ * 从有效集合（string[]）提取显示类型
+ */
+function getTypeFromEffectiveSet(effectiveSet: string[] | undefined, fallback: string): string {
+  if (effectiveSet && effectiveSet.length > 0) {
+    return effectiveSet[0];
+  }
+  return fallback;
+}
+
+/**
  * 从节点数据中提取端口的类型信息
  * 
  * @param nodes - 节点列表
@@ -42,11 +52,13 @@ export function getPortTypeInfo(
       
       if (isOutput) {
         const result = data.operation.results.find(r => r.name === portName);
-        const currentType = data.pinnedTypes?.[handleId] || data.outputTypes?.[portName] || result?.typeConstraint || 'AnyType';
+        const fallback = result?.typeConstraint || 'AnyType';
+        const currentType = data.pinnedTypes?.[handleId] || getTypeFromEffectiveSet(data.outputTypes?.[portName], fallback);
         return { currentType, constraint: result?.typeConstraint };
       } else {
         const operand = data.operation.arguments.find(a => a.kind === 'operand' && a.name === portName);
-        const currentType = data.pinnedTypes?.[handleId] || data.inputTypes?.[portName] || operand?.typeConstraint || 'AnyType';
+        const fallback = operand?.typeConstraint || 'AnyType';
+        const currentType = data.pinnedTypes?.[handleId] || getTypeFromEffectiveSet(data.inputTypes?.[portName], fallback);
         return { currentType, constraint: operand?.typeConstraint };
       }
     }
@@ -55,7 +67,8 @@ export function getPortTypeInfo(
       const data = node.data as FunctionEntryData;
       const portName = handleId.replace('data-out-', '');
       const param = data.outputs?.find(o => o.name === portName);
-      const currentType = data.pinnedTypes?.[handleId] || data.outputTypes?.[portName] || param?.typeConstraint || 'AnyType';
+      const fallback = param?.typeConstraint || 'AnyType';
+      const currentType = data.pinnedTypes?.[handleId] || getTypeFromEffectiveSet(data.outputTypes?.[portName], fallback);
       return { currentType, constraint: param?.typeConstraint };
     }
     
@@ -63,7 +76,8 @@ export function getPortTypeInfo(
       const data = node.data as FunctionReturnData;
       const portName = handleId.replace('data-in-', '');
       const ret = data.inputs?.find(i => i.name === portName);
-      const currentType = data.pinnedTypes?.[handleId] || data.inputTypes?.[portName] || ret?.typeConstraint || 'AnyType';
+      const fallback = ret?.typeConstraint || 'AnyType';
+      const currentType = data.pinnedTypes?.[handleId] || getTypeFromEffectiveSet(data.inputTypes?.[portName], fallback);
       return { currentType, constraint: ret?.typeConstraint };
     }
     
@@ -74,11 +88,13 @@ export function getPortTypeInfo(
       
       if (isOutput) {
         const output = data.outputs?.find(o => o.name === portName);
-        const currentType = data.pinnedTypes?.[handleId] || data.outputTypes?.[portName] || output?.typeConstraint || 'AnyType';
+        const fallback = output?.typeConstraint || 'AnyType';
+        const currentType = data.pinnedTypes?.[handleId] || getTypeFromEffectiveSet(data.outputTypes?.[portName], fallback);
         return { currentType, constraint: output?.typeConstraint };
       } else {
         const input = data.inputs?.find(i => i.name === portName);
-        const currentType = data.pinnedTypes?.[handleId] || data.inputTypes?.[portName] || input?.typeConstraint || 'AnyType';
+        const fallback = input?.typeConstraint || 'AnyType';
+        const currentType = data.pinnedTypes?.[handleId] || getTypeFromEffectiveSet(data.inputTypes?.[portName], fallback);
         return { currentType, constraint: input?.typeConstraint };
       }
     }

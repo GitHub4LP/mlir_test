@@ -133,7 +133,9 @@ function convertOperationNode(node: GraphNode): BackendGraphNode {
   // 收集结果类型（按顺序）
   const resultTypes: string[] = [];
   for (const result of operation.results) {
-    const resultType = data.outputTypes?.[result.name];
+    const effectiveSet = data.outputTypes?.[result.name];
+    // 从有效集合中提取第一个元素作为类型
+    const resultType = effectiveSet && effectiveSet.length > 0 ? effectiveSet[0] : undefined;
     if (!resultType) {
       throw new Error(`Missing type for result '${result.name}' in node '${node.id}'`);
     }

@@ -36,7 +36,6 @@ export interface VueFlowBridgeProps {
   onSelectionChange?: (selection: EditorSelection) => void;
   onViewportChange?: (viewport: EditorViewport) => void;
   onConnect?: (request: ConnectionRequest) => void;
-  onNodeDoubleClick?: (nodeId: string) => void;
   onEdgeDoubleClick?: (edgeId: string) => void;
   onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void;
   onDeleteRequest?: (nodeIds: string[], edgeIds: string[]) => void;
@@ -59,6 +58,7 @@ export const VueFlowBridge = forwardRef<VueFlowBridgeHandle, VueFlowBridgeProps>
       onSelectionChange,
       onViewportChange,
       onConnect,
+      onEdgeDoubleClick,
       onDrop,
       onDeleteRequest,
     } = props;
@@ -140,6 +140,7 @@ export const VueFlowBridge = forwardRef<VueFlowBridgeHandle, VueFlowBridgeProps>
           onSelectionChange={onSelectionChange}
           onViewportChange={onViewportChange}
           onConnect={onConnect}
+          onEdgeDoubleClick={onEdgeDoubleClick}
           onDrop={onDrop}
           onDeleteRequest={onDeleteRequest}
         />

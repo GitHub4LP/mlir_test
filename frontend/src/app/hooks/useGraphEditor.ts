@@ -20,7 +20,7 @@ import { useProjectStore } from '../../stores/projectStore';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import type { EditorNode, EditorEdge, EditorViewport, NodeChange, ConnectionRequest } from '../../editor/types';
 import type { OperationDef, BlueprintNodeData, GraphState, FunctionEntryData, FunctionReturnData, DataPin } from '../../types';
-import { validatePorts, type ConnectionValidationResult } from '../../editor/adapters/shared/ConnectionValidator';
+import { validateConnection } from '../../editor/adapters/reactflow/connectionUtils';
 import { triggerTypePropagationWithSignature } from '../../services/typePropagation';
 import { dataInHandle, dataOutHandle } from '../../services/port';
 import { getDisplayType } from '../../services/typeSelectorRenderer';
@@ -110,6 +110,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
   // Type constraint store
   const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
+  const findSubsetConstraints = useTypeConstraintStore(state => state.findSubsetConstraints);
   
   // 剪贴板
   const clipboardRef = useRef<ClipboardData | null>(null);
@@ -163,14 +164,18 @@ export function useGraphEditor(): UseGraphEditorReturn {
   const triggerTypePropagation = useCallback(() => {
     if (!currentFunction) return;
     
+    // 从 store 获取最新状态，避免闭包捕获旧值
+    const latestNodes = useEditorStore.getState().nodes;
+    const latestEdges = useEditorStore.getState().edges;
+    
     const result = triggerTypePropagationWithSignature(
-      nodes, edges, currentFunction, getConstraintElements, pickConstraintName
+      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints
     );
     
     setNodesStore(result.nodes);
-    const updatedEdges = updateEdgeColors(result.nodes, edges);
+    const updatedEdges = updateEdgeColors(result.nodes, latestEdges);
     setEdgesStore(updatedEdges);
-  }, [nodes, edges, currentFunction, getConstraintElements, pickConstraintName, setNodesStore, setEdgesStore]);
+  }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, setNodesStore, setEdgesStore]);
   
   // ============================================================
   // 保存/加载图
@@ -193,7 +198,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
     const graphEdges = func.graph.edges.map(convertGraphEdgeToReactFlowEdge);
     
     const result = triggerTypePropagationWithSignature(
-      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName
+      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints
     );
     
     const edgesWithColors = updateEdgeColors(result.nodes, graphEdges);
@@ -203,7 +208,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
     queueMicrotask(() => {
       isLoadingFromStoreRef.current = false;
     });
-  }, [getFunctionById, getConstraintElements, pickConstraintName, loadGraph]);
+  }, [getFunctionById, getConstraintElements, pickConstraintName, findSubsetConstraints, loadGraph]);
   
   // ============================================================
   // 函数切换
@@ -229,91 +234,6 @@ export function useGraphEditor(): UseGraphEditorReturn {
   // 连接处理
   // ============================================================
   
-  /**
-   * 获取端口类型约束（用于连接验证）
-   */
-  const getPortType = useCallback((nodeId: string, portId: string): string | null => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return null;
-    
-    const data = node.data as BlueprintNodeData | FunctionEntryData | FunctionReturnData;
-    
-    // 根据节点类型获取端口类型
-    if (node.type === 'function-entry') {
-      const entryData = data as FunctionEntryData;
-      if (portId.startsWith('data-out-') && Array.isArray(entryData.outputs)) {
-        const portName = portId.replace('data-out-', '');
-        const port = entryData.outputs.find(p => p.name === portName);
-        return port ? (entryData.outputTypes?.[portName] || port.typeConstraint) : null;
-      }
-    } else if (node.type === 'function-return') {
-      const returnData = data as FunctionReturnData;
-      if (portId.startsWith('data-in-') && Array.isArray(returnData.inputs)) {
-        const portName = portId.replace('data-in-', '');
-        const port = returnData.inputs.find(p => p.name === portName);
-        return port ? (returnData.inputTypes?.[portName] || port.typeConstraint) : null;
-      }
-    } else if (node.type === 'function-call') {
-      const callData = data as { inputs?: Array<{ name: string; typeConstraint: string }>; outputs?: Array<{ name: string; typeConstraint: string }>; inputTypes?: Record<string, string>; outputTypes?: Record<string, string> };
-      if (portId.startsWith('data-in-') && Array.isArray(callData.inputs)) {
-        const portName = portId.replace('data-in-', '');
-        const port = callData.inputs.find(p => p.name === portName);
-        return port ? (callData.inputTypes?.[portName] || port.typeConstraint) : null;
-      } else if (portId.startsWith('data-out-') && Array.isArray(callData.outputs)) {
-        const portName = portId.replace('data-out-', '');
-        const port = callData.outputs.find(p => p.name === portName);
-        return port ? (callData.outputTypes?.[portName] || port.typeConstraint) : null;
-      }
-    } else {
-      // Operation 节点
-      const opData = data as { inputTypes?: Record<string, string>; outputTypes?: Record<string, string> };
-      const portName = portId.replace(/^data-(in|out)-/, '').replace(/_\d+$/, '');
-      
-      if (portId.startsWith('data-out-')) {
-        return opData.outputTypes?.[portName] || null;
-      } else if (portId.startsWith('data-in-')) {
-        return opData.inputTypes?.[portName] || null;
-      }
-    }
-    
-    return null;
-  }, [nodes]);
-  
-  /**
-   * 验证连接计数约束
-   */
-  const validateConnectionCount = useCallback((
-    connection: ConnectionRequest,
-    existingEdges: EditorEdge[]
-  ): { isValid: boolean; errorMessage?: string } => {
-    const { source, sourceHandle, target, targetHandle } = connection;
-    
-    const isSourceExec = sourceHandle.startsWith('exec-');
-    const isTargetExec = targetHandle.startsWith('exec-');
-    
-    // 执行输出只能有 1 个连接
-    if (isSourceExec) {
-      const existingFromSource = existingEdges.filter(
-        e => e.source === source && e.sourceHandle === sourceHandle
-      );
-      if (existingFromSource.length >= 1) {
-        return { isValid: false, errorMessage: '执行输出只能有一个连接' };
-      }
-    }
-    
-    // 数据输入只能有 1 个连接
-    if (!isTargetExec) {
-      const existingToTarget = existingEdges.filter(
-        e => e.target === target && e.targetHandle === targetHandle
-      );
-      if (existingToTarget.length >= 1) {
-        return { isValid: false, errorMessage: '数据输入只能有一个连接' };
-      }
-    }
-    
-    return { isValid: true };
-  }, []);
-  
   const handleConnect = useCallback((connection: ConnectionRequest): { success: boolean; error?: string } => {
     const { source, sourceHandle, target, targetHandle } = connection;
     
@@ -322,19 +242,24 @@ export function useGraphEditor(): UseGraphEditorReturn {
       return { success: false, error: '连接信息不完整' };
     }
     
-    // 2. 连接计数验证
-    const countResult = validateConnectionCount(connection, edges);
-    if (!countResult.isValid) {
-      return { success: false, error: countResult.errorMessage };
-    }
+    // 2. 使用 validateConnection 进行完整验证（包括类型和计数）
+    // 将 EditorNode 转换为 React Flow Node 格式
+    const rfNodes = nodes.map(n => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: n.data as Record<string, unknown>,
+    }));
     
-    // 3. 使用 validatePorts 进行类型验证
-    const validationResult: ConnectionValidationResult = validatePorts(
-      source,
-      sourceHandle,
-      target,
-      targetHandle,
-      getPortType
+    const validationResult = validateConnection(
+      { source, sourceHandle, target, targetHandle },
+      rfNodes,
+      edges.map(e => ({
+        source: e.source,
+        sourceHandle: e.sourceHandle,
+        target: e.target,
+        targetHandle: e.targetHandle,
+      }))
     );
     
     if (!validationResult.isValid) {
@@ -364,7 +289,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
     }
     
     return { success: true };
-  }, [edges, getPortType, validateConnectionCount, isExecHandle, getEdgeColorForPort, addEdge, triggerTypePropagation]);
+  }, [nodes, edges, isExecHandle, getEdgeColorForPort, addEdge, triggerTypePropagation]);
   
   // ============================================================
   // 拖放处理
@@ -383,6 +308,10 @@ export function useGraphEditor(): UseGraphEditorReturn {
           data: functionCallData,
         };
         setNodesStore([...nodes, newNode]);
+        // 触发类型传播，更新 portStateStore
+        queueMicrotask(() => {
+          triggerTypePropagation();
+        });
         return;
       } catch (err) {
         console.error('Failed to parse dropped function:', err);
@@ -402,10 +331,14 @@ export function useGraphEditor(): UseGraphEditorReturn {
         data: createBlueprintNodeData(operation),
       };
       setNodesStore([...nodes, newNode]);
+      // 触发类型传播，更新 portStateStore
+      queueMicrotask(() => {
+        triggerTypePropagation();
+      });
     } catch (err) {
       console.error('Failed to parse dropped operation:', err);
     }
-  }, [nodes, setNodesStore]);
+  }, [nodes, setNodesStore, triggerTypePropagation]);
   
   // ============================================================
   // 边双击删除

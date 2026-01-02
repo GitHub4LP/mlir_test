@@ -3,7 +3,8 @@
  *
  * 所有节点类型（Operation、Call、Entry、Return）使用完全相同的逻辑：
  * 1. 计算可选集 = computeOptionsExcludingSelf(...)
- * 2. canEdit = options.length > 1
+ * 2. 从可选集中找出所有元素集合是其子集的约束名
+ * 3. canEdit = options.length > 1
  *
  * 唯一区别（通过 extractPortConstraints 内部处理）：
  * - Operation/Call：原始约束来自操作定义
@@ -24,7 +25,7 @@ import { computeOptionsExcludingSelf } from './typePropagation/propagator';
 import { PortRef } from './port';
 
 export interface TypeSelectionResult {
-  /** 可选的具体类型列表 */
+  /** 可选的约束名列表（元素集合是有效集合子集的约束） */
   options: string[];
   /** 是否可编辑 */
   canEdit: boolean;
@@ -39,6 +40,7 @@ export interface TypeSelectionResult {
  * @param edges - 当前图的所有边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义
  * @param getConstraintElements - 获取约束映射到的类型约束集合元素
+ * @param findSubsetConstraints - 找出所有元素集合是有效集合子集的约束名
  */
 export function computeTypeSelectionState(
   nodeId: string,
@@ -46,11 +48,12 @@ export function computeTypeSelectionState(
   nodes: EditorNode[],
   edges: EditorEdge[],
   currentFunction: FunctionDef | undefined,
-  getConstraintElements: (constraint: string) => string[]
+  getConstraintElements: (constraint: string) => string[],
+  findSubsetConstraints: (E: string[]) => string[]
 ): TypeSelectionResult {
-  // 计算可选集（排除自己的影响）
+  // 计算有效集合（排除自己的影响）
   const portRef = PortRef.fromHandle(nodeId, portId);
-  const options = portRef
+  const effectiveSet = portRef
     ? computeOptionsExcludingSelf(
         portRef.key,
         nodes,
@@ -59,6 +62,9 @@ export function computeTypeSelectionState(
         getConstraintElements
       )
     : [];
+
+  // 从有效集合中找出所有元素集合是其子集的约束名
+  const options = effectiveSet.length > 0 ? findSubsetConstraints(effectiveSet) : [];
 
   // canEdit = options.length > 1
   return {

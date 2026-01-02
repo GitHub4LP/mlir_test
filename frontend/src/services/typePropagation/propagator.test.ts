@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { extractTypeSources, buildPropagationGraph, propagateTypes } from './propagator';
+import { extractTypeSources, buildPropagationGraph, propagateTypes, extractPortConstraints } from './propagator';
 import type { BlueprintNodeData, OperationDef } from '../../types';
 import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
@@ -83,16 +83,16 @@ function createOperationNode(
   operation: OperationDef,
   pinnedTypes: Record<string, string> = {}
 ): EditorNode {
-  const inputTypes: Record<string, string> = {};
-  const outputTypes: Record<string, string> = {};
+  const inputTypes: Record<string, string[]> = {};
+  const outputTypes: Record<string, string[]> = {};
 
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand') {
-      inputTypes[arg.name] = arg.typeConstraint;
+      inputTypes[arg.name] = [arg.typeConstraint];
     }
   }
   for (const result of operation.results) {
-    outputTypes[result.name] = result.typeConstraint;
+    outputTypes[result.name] = [result.typeConstraint];
   }
 
   const data: BlueprintNodeData = {
@@ -190,6 +190,8 @@ describe('extractTypeSources', () => {
 
 describe('type propagation with auto-resolved types', () => {
   it('should propagate auto-resolved BoolLike type through connections', () => {
+    const { getConstraintElements } = useTypeConstraintStore.getState();
+    
     // arith.cmpi 输出 BoolLike，连接到另一个节点
     const cmpiOp = createMockOperation(
       'arith.cmpi',
@@ -220,11 +222,12 @@ describe('type propagation with auto-resolved types', () => {
     // 构建传播图并传播
     const graph = buildPropagationGraph(nodes, edges);
     const sources = extractTypeSources(nodes);
-    const result = propagateTypes(graph, sources);
+    const portConstraints = extractPortConstraints(nodes);
+    const result = propagateTypes(graph, sources, portConstraints, getConstraintElements);
 
-    // cmpi 的输出应该是 I1（自动解析）
-    expect(result.types.get('cmpi:data-out:result')).toBe('I1');
-    // select 的 condition 输入应该通过连接传播得到 I1
-    expect(result.types.get('select:data-in:condition')).toBe('I1');
+    // cmpi 的输出应该是 [I1]（自动解析）
+    expect(result.effectiveSets.get('cmpi:data-out:result')).toEqual(['I1']);
+    // select 的 condition 输入应该通过连接传播得到 [I1]
+    expect(result.effectiveSets.get('select:data-in:condition')).toEqual(['I1']);
   });
 });

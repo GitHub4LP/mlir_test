@@ -193,9 +193,6 @@ export class GraphController {
   /** 双击边删除回调 */
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
 
-  /** 双击节点回调 */
-  onNodeDoubleClick: ((nodeId: string) => void) | null = null;
-
   /** 拖放回调 */
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
 
@@ -473,12 +470,6 @@ export class GraphController {
     // 双击边 → 删除边
     if (isDoubleClick && hit.kind === 'edge') {
       this.onEdgeDoubleClick?.(hit.edgeId);
-      return;
-    }
-
-    // 双击节点
-    if (isDoubleClick && hit.kind === 'node') {
-      this.onNodeDoubleClick?.(hit.nodeId);
       return;
     }
 

@@ -11,7 +11,7 @@
 
 import type { Node, Connection } from '@xyflow/react';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, PortConfig } from '../../../types';
-import { getConstraintElements, getTypeIntersectionCount } from '../../../services/typeSystem';
+import { getConstraintElements } from '../../../services/typeSystem';
 import { PortRef, PortKind, PortKindUtils } from '../../../services/port';
 
 // ============================================================
@@ -39,34 +39,100 @@ export interface ConnectionValidationResult {
 // ============================================================
 
 /**
- * 从 React Flow 节点获取端口类型约束
+ * 从 React Flow 节点获取端口的有效集合
+ * 
+ * 有效集合是传播后求交集的结果，存储在 inputTypes/outputTypes 中。
+ * 连线验证应该直接使用有效集合计算交集。
  * 
  * @param node - React Flow 节点
  * @param handleId - 端口 ID
- * @param resolvedTypes - 已解析的具体类型映射
- * @returns 类型约束字符串，或 null
+ * @returns 有效集合（具体类型数组），或 null
  */
-export function getPortTypeConstraint(
+export function getPortEffectiveSet(
   node: Node,
-  handleId: string,
-  resolvedTypes?: Map<string, Map<string, string>>
-): string | null {
-  // 优先使用已解析的类型
-  if (resolvedTypes) {
-    const nodeTypes = resolvedTypes.get(node.id);
-    if (nodeTypes) {
-      const resolvedType = nodeTypes.get(handleId);
-      if (resolvedType) {
-        return resolvedType;
-      }
-    }
-  }
-
+  handleId: string
+): string[] | null {
   // 解析端口 ID
   const parsed = PortRef.parseHandleId(handleId);
   if (!parsed) return null;
 
-  // 根据节点类型获取端口类型
+  const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
+
+  // 根据节点类型获取有效集合
+  if (node.type === 'function-entry') {
+    const data = node.data as FunctionEntryData & { outputTypes?: Record<string, string[]> };
+    if (parsed.kind === PortKind.DataOut) {
+      // 优先使用有效集合
+      if (data.outputTypes?.[portName]) {
+        return data.outputTypes[portName];
+      }
+      // 回退：从端口定义获取原始约束，返回 null 让调用方展开
+      return null;
+    }
+  } else if (node.type === 'function-return') {
+    const data = node.data as FunctionReturnData & { inputTypes?: Record<string, string[]> };
+    if (parsed.kind === PortKind.DataIn) {
+      if (data.inputTypes?.[portName]) {
+        return data.inputTypes[portName];
+      }
+      return null;
+    }
+  } else if (node.type === 'function-call') {
+    const data = node.data as FunctionCallData & { inputTypes?: Record<string, string[]>; outputTypes?: Record<string, string[]> };
+    if (parsed.kind === PortKind.DataIn) {
+      if (data.inputTypes?.[portName]) {
+        return data.inputTypes[portName];
+      }
+      return null;
+    } else if (parsed.kind === PortKind.DataOut) {
+      if (data.outputTypes?.[portName]) {
+        return data.outputTypes[portName];
+      }
+      return null;
+    }
+  } else {
+    // Operation 节点
+    const data = node.data as { 
+      inputTypes?: Record<string, string[]>; 
+      outputTypes?: Record<string, string[]>;
+    };
+
+    if (parsed.kind === PortKind.DataOut) {
+      if (data.outputTypes?.[portName]) {
+        return data.outputTypes[portName];
+      }
+      return null;
+    } else if (parsed.kind === PortKind.DataIn) {
+      if (data.inputTypes?.[portName]) {
+        return data.inputTypes[portName];
+      }
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 从 React Flow 节点获取端口的原始约束
+ * 
+ * 当有效集合不存在时（节点刚创建），使用原始约束。
+ * 
+ * @param node - React Flow 节点
+ * @param handleId - 端口 ID
+ * @returns 原始约束名，或 null
+ */
+export function getPortOriginalConstraint(
+  node: Node,
+  handleId: string
+): string | null {
+  // 解析端口 ID
+  const parsed = PortRef.parseHandleId(handleId);
+  if (!parsed) return null;
+
+  const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
+
+  // 根据节点类型获取原始约束
   if (node.type === 'function-entry') {
     const data = node.data as FunctionEntryData;
     if (parsed.kind === PortKind.DataOut && Array.isArray(data.outputs)) {
@@ -90,13 +156,18 @@ export function getPortTypeConstraint(
     }
   } else {
     // Operation 节点
-    const data = node.data as { inputTypes?: Record<string, string>; outputTypes?: Record<string, string> };
-    const portName = parsed.name.replace(/_\d+$/, '');  // 移除 variadic 索引
+    const data = node.data as { 
+      operation?: { arguments: { name: string; typeConstraint: string; kind: string }[]; results: { name: string; typeConstraint: string }[] };
+    };
 
-    if (parsed.kind === PortKind.DataOut) {
-      return data.outputTypes?.[portName] || null;
-    } else if (parsed.kind === PortKind.DataIn) {
-      return data.inputTypes?.[portName] || null;
+    if (data.operation) {
+      if (parsed.kind === PortKind.DataOut) {
+        const result = data.operation.results.find(r => r.name === portName);
+        return result?.typeConstraint || null;
+      } else if (parsed.kind === PortKind.DataIn) {
+        const arg = data.operation.arguments.find(a => a.name === portName && a.kind === 'operand');
+        return arg?.typeConstraint || null;
+      }
     }
   }
 
@@ -174,14 +245,12 @@ export function validateConnectionCount(
  * 
  * @param connection - React Flow 连接对象
  * @param nodes - 所有节点
- * @param resolvedTypes - 已解析的具体类型映射
  * @param existingEdges - 现有连线（用于计数验证）
  * @returns 验证结果
  */
 export function validateConnection(
   connection: Connection,
   nodes: Node[],
-  resolvedTypes?: Map<string, Map<string, string>>,
   existingEdges?: { source: string; sourceHandle: string | null; target: string; targetHandle: string | null }[]
 ): ConnectionValidationResult {
   const { source, sourceHandle, target, targetHandle } = connection;
@@ -256,54 +325,64 @@ export function validateConnection(
     return { isValid: false, errorMessage: '目标节点不存在' };
   }
 
-  // 8. 获取端口类型
-  const sourceType = getPortTypeConstraint(sourceNode, sourceHandle, resolvedTypes);
-  const targetType = getPortTypeConstraint(targetNode, targetHandle, resolvedTypes);
+  // 8. 获取端口的有效集合（优先）或原始约束
+  // 有效集合是传播后求交集的结果，直接用于连线验证
+  let sourceSet = getPortEffectiveSet(sourceNode, sourceHandle);
+  let targetSet = getPortEffectiveSet(targetNode, targetHandle);
+  
+  // 如果有效集合不存在（节点刚创建），从原始约束展开
+  if (!sourceSet) {
+    const sourceConstraint = getPortOriginalConstraint(sourceNode, sourceHandle);
+    if (sourceConstraint) {
+      sourceSet = getConstraintElements(sourceConstraint);
+    }
+  }
+  if (!targetSet) {
+    const targetConstraint = getPortOriginalConstraint(targetNode, targetHandle);
+    if (targetConstraint) {
+      targetSet = getConstraintElements(targetConstraint);
+    }
+  }
 
   // 无法获取类型时，允许连接（宽松模式）
-  if (!sourceType || !targetType) {
+  if (!sourceSet || sourceSet.length === 0 || !targetSet || targetSet.length === 0) {
     return {
       isValid: true,
-      sourceType: sourceType || 'unknown',
-      targetType: targetType || 'unknown',
+      sourceType: 'unknown',
+      targetType: 'unknown',
       intersectionCount: 1,
     };
   }
 
-  // 9. 使用 typeSystem 计算类型交集
-  const intersectionCount = getTypeIntersectionCount(sourceType, targetType);
+  // 9. 直接计算两个有效集合的交集
+  const targetSetLookup = new Set(targetSet);
+  const intersection = sourceSet.filter(t => targetSetLookup.has(t));
+  const intersectionCount = intersection.length;
 
   if (intersectionCount > 0) {
     return {
       isValid: true,
-      sourceType,
-      targetType,
+      sourceType: sourceSet.length === 1 ? sourceSet[0] : `${sourceSet.length} types`,
+      targetType: targetSet.length === 1 ? targetSet[0] : `${targetSet.length} types`,
       intersectionCount,
     };
   }
 
   // 10. 生成错误信息
-  const sourceElements = getConstraintElements(sourceType);
-  const targetElements = getConstraintElements(targetType);
+  const sourceTypesStr = sourceSet.length > 3
+    ? `${sourceSet.slice(0, 3).join(', ')}...`
+    : sourceSet.join(', ');
+  const targetTypesStr = targetSet.length > 3
+    ? `${targetSet.slice(0, 3).join(', ')}...`
+    : targetSet.join(', ');
 
-  let errorMessage = `类型不兼容: '${sourceType}' 与 '${targetType}' 没有交集`;
-
-  if (sourceElements.length > 1 || targetElements.length > 1) {
-    const sourceTypesStr = sourceElements.length > 3
-      ? `${sourceElements.slice(0, 3).join(', ')}...`
-      : sourceElements.join(', ');
-    const targetTypesStr = targetElements.length > 3
-      ? `${targetElements.slice(0, 3).join(', ')}...`
-      : targetElements.join(', ');
-
-    errorMessage += `。源类型 [${sourceTypesStr}]，目标类型 [${targetTypesStr}]`;
-  }
+  const errorMessage = `类型不兼容: [${sourceTypesStr}] 与 [${targetTypesStr}] 没有交集`;
 
   return {
     isValid: false,
     errorMessage,
-    sourceType,
-    targetType,
+    sourceType: sourceSet.length === 1 ? sourceSet[0] : `${sourceSet.length} types`,
+    targetType: targetSet.length === 1 ? targetSet[0] : `${targetSet.length} types`,
     intersectionCount: 0,
   };
 }
@@ -316,11 +395,10 @@ export function validateConnection(
  * 创建 React Flow isValidConnection 回调
  */
 export function createConnectionValidator(
-  nodes: Node[],
-  resolvedTypes?: Map<string, Map<string, string>>
+  nodes: Node[]
 ): (connection: Connection) => boolean {
   return (connection: Connection) => {
-    const result = validateConnection(connection, nodes, resolvedTypes);
+    const result = validateConnection(connection, nodes);
     return result.isValid;
   };
 }

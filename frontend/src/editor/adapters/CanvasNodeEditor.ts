@@ -95,7 +95,6 @@ export class CanvasNodeEditor implements INodeEditor {
   onSelectionChange: ((selection: EditorSelection) => void) | null = null;
   onViewportChange: ((viewport: EditorViewport) => void) | null = null;
   onConnect: ((request: ConnectionRequest) => void) | null = null;
-  onNodeDoubleClick: ((nodeId: string) => void) | null = null;
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
   onDeleteRequest: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
@@ -236,10 +235,6 @@ export class CanvasNodeEditor implements INodeEditor {
     
     this.controller.onEdgeDoubleClick = (edgeId) => {
       this.onEdgeDoubleClick?.(edgeId);
-    };
-    
-    this.controller.onNodeDoubleClick = (nodeId) => {
-      this.onNodeDoubleClick?.(nodeId);
     };
     
     this.controller.onViewportChange = (viewport) => {

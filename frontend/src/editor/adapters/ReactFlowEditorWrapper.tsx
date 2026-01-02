@@ -65,7 +65,6 @@ export interface ReactFlowEditorWrapperProps {
   onSelectionChange?: (selection: EditorSelection) => void;
   onViewportChange?: (viewport: EditorViewport) => void;
   onConnect?: (request: ConnectionRequest) => void;
-  onNodeDoubleClick?: (nodeId: string) => void;
   onEdgeDoubleClick?: (edgeId: string) => void;
   onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void;
   onDeleteRequest?: (nodeIds: string[], edgeIds: string[]) => void;
@@ -99,7 +98,6 @@ function ReactFlowEditorInner({
   onSelectionChange,
   onViewportChange,
   onConnect,
-  onNodeDoubleClick,
   onEdgeDoubleClick,
   onDrop,
   onDeleteRequest,
@@ -116,7 +114,6 @@ function ReactFlowEditorInner({
     onSelectionChange,
     onViewportChange,
     onConnect,
-    onNodeDoubleClick,
     onEdgeDoubleClick,
     onDrop,
     onDeleteRequest,
@@ -129,18 +126,77 @@ function ReactFlowEditorInner({
       onSelectionChange,
       onViewportChange,
       onConnect,
-      onNodeDoubleClick,
       onEdgeDoubleClick,
       onDrop,
       onDeleteRequest,
     };
-  }, [onNodesChange, onEdgesChange, onSelectionChange, onViewportChange, onConnect, onNodeDoubleClick, onEdgeDoubleClick, onDrop, onDeleteRequest]);
+  }, [onNodesChange, onEdgesChange, onSelectionChange, onViewportChange, onConnect, onEdgeDoubleClick, onDrop, onDeleteRequest]);
 
   // 暴露命令式 API
   useEffect(() => {
     const handle: ReactFlowEditorHandle = {
       setNodes: (editorNodes: EditorNode[]) => {
-        setNodes(editorNodes.map(toReactFlowNode));
+        // 分离关注点：
+        // - position 由 React Flow 内部管理（拖动等交互）
+        // - data/type 由外部管理（类型传播等业务逻辑）
+        // 只更新 data/type，保留 React Flow 的所有内部状态
+        setNodes(currentNodes => {
+          const currentNodesMap = new Map(currentNodes.map(n => [n.id, n]));
+          const editorNodesMap = new Map(editorNodes.map(n => [n.id, n]));
+          
+          // 检查是否有实质性变化（节点增删或 data 变化）
+          let hasChanges = false;
+          
+          // 检查节点数量变化
+          if (currentNodes.length !== editorNodes.length) {
+            hasChanges = true;
+          } else {
+            // 检查是否有新节点或 data 变化
+            for (const editorNode of editorNodes) {
+              const existing = currentNodesMap.get(editorNode.id);
+              if (!existing) {
+                hasChanges = true;
+                break;
+              }
+              // 比较 data 引用（类型传播会创建新的 data 对象）
+              if (existing.data !== editorNode.data || existing.type !== editorNode.type) {
+                hasChanges = true;
+                break;
+              }
+            }
+          }
+          
+          // 没有实质性变化，返回原数组避免触发 React Flow 更新
+          if (!hasChanges) {
+            return currentNodes;
+          }
+          
+          // 有变化时，构建新数组
+          const result: Node[] = [];
+          
+          for (const editorNode of editorNodes) {
+            const existing = currentNodesMap.get(editorNode.id);
+            if (existing) {
+              // 已存在的节点：只更新 data 和 type，保留 React Flow 所有内部状态
+              // 包括 position、measured、width、height、dragging、positionAbsolute 等
+              if (existing.data !== editorNode.data || existing.type !== editorNode.type) {
+                result.push({
+                  ...existing,
+                  data: editorNode.data as Record<string, unknown>,
+                  type: editorNode.type,
+                });
+              } else {
+                result.push(existing);
+              }
+            } else {
+              // 新节点：使用完整数据（包括 position）
+              result.push(toReactFlowNode(editorNode));
+            }
+          }
+          
+          // 处理删除：只保留 editorNodes 中存在的节点
+          return result.filter(n => editorNodesMap.has(n.id));
+        });
       },
       setEdges: (editorEdges: EditorEdge[]) => {
         setEdges(editorEdges.map(toReactFlowEdge));
@@ -231,11 +287,6 @@ function ReactFlowEditorInner({
     callbacksRef.current.onEdgeDoubleClick?.(edge.id);
   }, []);
 
-  // 处理节点双击
-  const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    callbacksRef.current.onNodeDoubleClick?.(node.id);
-  }, []);
-
   // 处理拖放
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -268,7 +319,6 @@ function ReactFlowEditorInner({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onEdgeDoubleClick={handleEdgeDoubleClick}
-      onNodeDoubleClick={handleNodeDoubleClick}
       onMoveEnd={handleMoveEnd}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}

@@ -24,7 +24,6 @@ import type {
 import { EditorOverlay } from '../../editor/adapters/shared/EditorOverlay';
 import { overlayReducer, type OverlayState } from '../../editor/adapters/shared/overlayTypes';
 import { getPortTypeInfo } from '../../editor/adapters/shared/PortTypeInfo';
-import { usePortStateStore } from '../../stores/portStateStore';
 import { UnifiedTypeSelector } from '../../components/UnifiedTypeSelector';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import { computeTypeSelectorData, computeTypeGroups } from '../../services/typeSelectorService';
@@ -60,9 +59,6 @@ export interface EditorContainerProps {
   /** 边双击处理 */
   onEdgeDoubleClick?: (edgeId: string) => void;
   
-  /** 节点双击处理 */
-  onNodeDoubleClick?: (nodeId: string) => void;
-  
   /** 选择变化处理 */
   onSelectionChange?: (selection: EditorSelection) => void;
   
@@ -95,7 +91,6 @@ export function EditorContainer({
   onDrop,
   onDeleteRequest,
   onEdgeDoubleClick,
-  onNodeDoubleClick,
   onSelectionChange: onSelectionChangeProp,
   onViewportChange: onViewportChangeProp,
   onEditorReady,
@@ -116,7 +111,6 @@ export function EditorContainer({
     onDrop,
     onDeleteRequest,
     onEdgeDoubleClick,
-    onNodeDoubleClick,
     onSelectionChangeProp,
     onViewportChangeProp,
     onEditorReady,
@@ -132,7 +126,6 @@ export function EditorContainer({
       onDrop,
       onDeleteRequest,
       onEdgeDoubleClick,
-      onNodeDoubleClick,
       onSelectionChangeProp,
       onViewportChangeProp,
       onEditorReady,
@@ -167,14 +160,16 @@ export function EditorContainer({
   // 对于 Canvas 渲染器，使用原生 Canvas TypeSelector
   // 对于 ReactFlow/VueFlow，使用 DOM overlay
   const handleTypeLabelClick = useCallback((nodeId: string, handleId: string, canvasX: number, canvasY: number) => {
-    // 先检查端口是否可编辑
-    const portState = usePortStateStore.getState().getPortState(nodeId, handleId);
+    // 从节点的 data.portStates 检查端口是否可编辑（统一数据源）
+    const state = useEditorStore.getState();
+    const node = state.nodes.find(n => n.id === nodeId);
+    const portStates = (node?.data as { portStates?: Record<string, { canEdit?: boolean }> })?.portStates;
+    const portState = portStates?.[handleId];
     if (portState && !portState.canEdit) {
       // 不可编辑，不弹出选择器
       return;
     }
     
-    const state = useEditorStore.getState();
     const typeInfo = getPortTypeInfo(state.nodes, nodeId, handleId);
     if (!typeInfo) return;
     
@@ -378,10 +373,6 @@ export function EditorContainer({
     callbacksRef.current.onEdgeDoubleClick?.(edgeId);
   }, []);
   
-  const handleNodeDoubleClick = useCallback((nodeId: string) => {
-    callbacksRef.current.onNodeDoubleClick?.(nodeId);
-  }, []);
-  
   // 创建/切换编辑器 - 依赖 rendererType 和 canvasBackend
   useEffect(() => {
     if (!containerRef.current) return;
@@ -421,7 +412,6 @@ export function EditorContainer({
     editor.onDrop = handleDrop;
     editor.onDeleteRequest = handleDeleteRequest;
     editor.onEdgeDoubleClick = handleEdgeDoubleClick;
-    editor.onNodeDoubleClick = handleNodeDoubleClick;
     editor.onTypeLabelClick = handleTypeLabelClick;
     
     // Canvas 渲染器特有的回调
@@ -481,13 +471,52 @@ export function EditorContainer({
     return { name: 'Unknown', supportsFps: false };
   }, [rendererType, canvasBackend]);
   
+  // 跟踪上次同步的节点 data，用于检测是否需要同步
+  // 对于 ReactFlow/VueFlow，只在 data 变化时同步，避免 position 变化导致的循环更新
+  const lastNodesDataRef = useRef<Map<string, unknown>>(new Map());
+  
   // 同步节点到编辑器，并更新性能监控统计
   useEffect(() => {
-    editorRef.current?.setNodes(nodes);
+    const editor = editorRef.current;
+    if (!editor) return;
+    
     // 更新性能监控统计
     const info = getRendererInfo();
     performanceMonitor.updateStats(nodes.length, edges.length, info.name, info.supportsFps);
-  }, [nodes, edges, getRendererInfo]);
+    
+    // Canvas 渲染器：直接同步所有数据（包括 position）
+    // ReactFlow/VueFlow：只在 data 变化或节点增删时同步
+    if (rendererType === 'canvas') {
+      editor.setNodes(nodes);
+      return;
+    }
+    
+    // ReactFlow/VueFlow：检测是否有实质性变化
+    let hasDataChanges = false;
+    const currentDataMap = new Map<string, unknown>();
+    
+    for (const node of nodes) {
+      currentDataMap.set(node.id, node.data);
+    }
+    
+    // 检查节点数量变化
+    if (currentDataMap.size !== lastNodesDataRef.current.size) {
+      hasDataChanges = true;
+    } else {
+      // 检查 data 引用变化（类型传播会创建新的 data 对象）
+      for (const [id, data] of currentDataMap) {
+        if (lastNodesDataRef.current.get(id) !== data) {
+          hasDataChanges = true;
+          break;
+        }
+      }
+    }
+    
+    if (hasDataChanges) {
+      editor.setNodes(nodes);
+      lastNodesDataRef.current = currentDataMap;
+    }
+  }, [nodes, edges, getRendererInfo, rendererType]);
   
   // 同步边到编辑器
   useEffect(() => {

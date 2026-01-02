@@ -64,11 +64,17 @@ function createOperationNode(
   outputTypes: Record<string, string>,
   attributes: Record<string, string> = {}
 ): GraphNode {
+  // 将 string 转换为 string[]（有效集合格式）
+  const outputTypesArray: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(outputTypes)) {
+    outputTypesArray[k] = [v];
+  }
+  
   const data: BlueprintNodeData = {
     operation,
     attributes,
     inputTypes: {},
-    outputTypes,
+    outputTypes: outputTypesArray,
     execOuts: [],
     regionPins: [],
   };

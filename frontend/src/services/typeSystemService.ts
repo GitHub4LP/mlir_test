@@ -454,6 +454,16 @@ export function getExternalConnectedConstraints(
 }
 
 /**
+ * 从有效集合（string[]）提取显示类型
+ */
+function getTypeFromEffectiveSet(effectiveSet: string[] | undefined, fallback: string | null): string | null {
+  if (effectiveSet && effectiveSet.length > 0) {
+    return effectiveSet[0];
+  }
+  return fallback;
+}
+
+/**
  * 获取源端口的类型/约束
  * 优先返回具体类型，否则返回约束
  */
@@ -466,10 +476,10 @@ function getSourcePortType(node: EditorNode, portId: string): string | null {
       if (parsed && parsed.kind === PortKind.DataOut) {
         const name = parsed.name.replace(/_\d+$/, '');
         // 优先使用传播后的类型，否则使用原始约束
-        const propagatedType = data.outputTypes?.[name];
+        const result = data.operation.results.find(r => r.name === name);
+        const propagatedType = getTypeFromEffectiveSet(data.outputTypes?.[name], null);
         if (propagatedType) return propagatedType;
         // 回退到原始约束
-        const result = data.operation.results.find(r => r.name === name);
         return result?.typeConstraint || null;
       }
       break;

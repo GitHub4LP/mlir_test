@@ -20,6 +20,8 @@ export interface PortState {
   constraint: string;
   /** 是否可编辑 */
   canEdit: boolean;
+  /** 可选的约束名列表（所有元素集合是有效集合子集的约束） */
+  options: string[];
 }
 
 /** 端口状态 Store */
@@ -90,3 +92,27 @@ export const usePortStateStore = create<PortStateStore>((set, get) => ({
     set({ states: new Map() });
   },
 }));
+
+/**
+ * Hook: 订阅特定端口的状态
+ * 
+ * 当该端口的状态变化时，组件会重渲染。
+ */
+export function usePortState(nodeId: string, handleId: string): PortState | undefined {
+  const key = makePortKey(nodeId, handleId);
+  return usePortStateStore(state => state.states.get(key));
+}
+
+/**
+ * Hook: 订阅节点的端口状态版本号
+ * 
+ * 返回 getPortState 函数，当该节点的任何端口状态变化时触发重渲染。
+ * 通过订阅 states Map 的引用来检测变化。
+ */
+export function useNodePortStates(nodeId: string): (handleId: string) => PortState | undefined {
+  // 订阅 states Map 引用，当 Map 变化时重渲染
+  const states = usePortStateStore(state => state.states);
+  
+  // 返回一个获取函数，从最新的 states 中读取
+  return (handleId: string) => states.get(makePortKey(nodeId, handleId));
+}

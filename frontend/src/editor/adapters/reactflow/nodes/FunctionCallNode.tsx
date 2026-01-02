@@ -10,7 +10,6 @@ import { memo, useCallback, useMemo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import type { FunctionCallData, GraphNode } from '../../../../types';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
-import { useReactStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { useTypeChangeHandler } from '../../../../hooks';
 import {
   buildNodeLayoutTree,
@@ -35,11 +34,9 @@ export const FunctionCallNode = memo(function FunctionCallNode({
   data,
   selected,
 }: FunctionCallNodeProps) {
-  const { inputTypes = {}, outputTypes = {} } = data;
+  const { portStates = {} } = data;
   const headerColor = getNodeTypeColor('call');
 
-  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
-  const getPortState = usePortStateStore(state => state.getPortState);
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
   // 将 ReactFlow Node 转换为 GraphNode 格式
@@ -88,11 +85,12 @@ export const FunctionCallNode = memo(function FunctionCallNode({
 
   // TypeSelector 渲染回调
   const renderTypeSelector = useCallback((config: TypeSelectorRenderConfig) => {
-    const displayType = inputTypes[config.pinId] || outputTypes[config.pinId] || config.typeConstraint;
-    const portState = getPortState(id, config.pinId);
+    // 从 data.portStates 读取端口状态（包含 displayType、options、canEdit）
+    const portState = portStates[config.pinId];
+    const displayType = portState?.displayType ?? config.typeConstraint;
     const canEdit = portState?.canEdit ?? false;
-    const constraint = portState?.constraint ?? config.typeConstraint;
-    const options = getConstraintElements(constraint);
+    // options 已经是排除自己后的可选集，直接使用
+    const options = portState?.options ?? [];
 
     return (
       <UnifiedTypeSelector
@@ -103,7 +101,7 @@ export const FunctionCallNode = memo(function FunctionCallNode({
         disabled={!canEdit}
       />
     );
-  }, [id, inputTypes, outputTypes, getPortState, getConstraintElements, handleTypeChange]);
+  }, [portStates, handleTypeChange]);
 
   // 交互元素渲染器
   const interactiveRenderers: InteractiveRenderers = useMemo(() => ({

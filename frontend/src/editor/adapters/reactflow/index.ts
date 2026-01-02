@@ -49,7 +49,8 @@ export {
 // Connection utilities
 export {
   type ConnectionValidationResult,
-  getPortTypeConstraint,
+  getPortEffectiveSet,
+  getPortOriginalConstraint,
   validateConnectionCount,
   validateConnection,
   createConnectionValidator,

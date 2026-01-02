@@ -58,14 +58,15 @@ const props = defineProps<{
   selection?: EditorSelection;
 }>();
 
-// Emits
+// Emits - 使用 kebab-case 以兼容 veaury 的事件转换
 const emit = defineEmits<{
-  (e: 'nodesChange', changes: Array<{ type: string; id: string; position?: { x: number; y: number } }>): void;
-  (e: 'selectionChange', selection: EditorSelection): void;
-  (e: 'viewportChange', viewport: EditorViewport): void;
+  (e: 'nodes-change', changes: Array<{ type: string; id: string; position?: { x: number; y: number } }>): void;
+  (e: 'selection-change', selection: EditorSelection): void;
+  (e: 'viewport-change', viewport: EditorViewport): void;
   (e: 'connect', request: { source: string; sourceHandle: string; target: string; targetHandle: string }): void;
   (e: 'drop', x: number, y: number, dataTransfer: DataTransfer): void;
-  (e: 'deleteRequest', nodeIds: string[], edgeIds: string[]): void;
+  (e: 'delete-request', nodeIds: string[], edgeIds: string[]): void;
+  (e: 'edge-double-click', edgeId: string): void;
   (e: 'ready', handle: { setViewport: (vp: EditorViewport) => void; fitView: () => void }): void;
 }>();
 
@@ -103,17 +104,45 @@ const initialNodes = computed(() => toVueFlowNodes(props.nodes));
 const initialEdges = computed(() => toVueFlowEdges(props.edges));
 
 // 监听 props.nodes 变化，使用 setNodes 更新 Vue Flow
-// 这是因为 Vue 的 computed 不会检测到数组内部对象的深层属性变化（如 node.data.inputTypes）
+// 分离关注点：
+// - position 由 Vue Flow 内部管理（拖动等交互）
+// - data/type 由外部管理（类型传播等业务逻辑）
+// 只在 data 变化或节点增删时同步，避免 position 变化导致的循环更新
+const lastNodesDataMap = new Map<string, unknown>();
+
 watch(
   () => props.nodes,
   (newNodes) => {
-    // 使用 nextTick 确保 Vue Flow 已经准备好
-    nextTick(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setNodes(toVueFlowNodes(newNodes) as any);
-    });
-  },
-  { deep: true }
+    // 检测是否有实质性变化（节点增删或 data 变化）
+    let hasDataChanges = false;
+    
+    // 检查节点数量变化
+    if (newNodes.length !== lastNodesDataMap.size) {
+      hasDataChanges = true;
+    } else {
+      // 检查 data 引用变化
+      for (const node of newNodes) {
+        if (lastNodesDataMap.get(node.id) !== node.data) {
+          hasDataChanges = true;
+          break;
+        }
+      }
+    }
+    
+    if (hasDataChanges) {
+      // 更新缓存
+      lastNodesDataMap.clear();
+      for (const node of newNodes) {
+        lastNodesDataMap.set(node.id, node.data);
+      }
+      
+      // 使用 nextTick 确保 Vue Flow 已经准备好
+      nextTick(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setNodes(toVueFlowNodes(newNodes) as any);
+      });
+    }
+  }
 );
 
 // 监听 props.edges 变化
@@ -146,9 +175,16 @@ function getPortType(nodeId: string, portId: string): string | null {
     return 'exec';
   }
   
-  // 从 inputTypes/outputTypes 获取传播后的类型
-  const inputTypes = (data.inputTypes as Record<string, string>) || {};
-  const outputTypes = (data.outputTypes as Record<string, string>) || {};
+  // 优先从 portStates 获取 displayType（统一数据源）
+  const portStates = (data.portStates as Record<string, { displayType?: string }>) || {};
+  const portState = portStates[portId];
+  if (portState?.displayType) {
+    return portState.displayType;
+  }
+  
+  // 回退：从 inputTypes/outputTypes 获取（向后兼容）
+  const inputTypes = (data.inputTypes as Record<string, string[]>) || {};
+  const outputTypes = (data.outputTypes as Record<string, string[]>) || {};
   
   // 解析端口名称
   const match = portId.match(/^data-(in|out)-(.+)$/);
@@ -158,9 +194,11 @@ function getPortType(nodeId: string, portId: string): string | null {
   const baseName = portName.replace(/_\d+$/, ''); // 移除 variadic 索引
   
   if (direction === 'in') {
-    return inputTypes[baseName] || null;
+    const types = inputTypes[baseName];
+    return types && types.length > 0 ? types[0] : null;
   } else {
-    return outputTypes[baseName] || null;
+    const types = outputTypes[baseName];
+    return types && types.length > 0 ? types[0] : null;
   }
 }
 
@@ -170,7 +208,7 @@ const isValidConnection = createVueFlowValidator(getPortType) as any;
 
 // 节点拖拽结束
 function handleNodeDragStop(event: NodeDragEvent) {
-  emit('nodesChange', [{
+  emit('nodes-change', [{
     type: 'position',
     id: event.node.id,
     position: { x: event.node.position.x, y: event.node.position.y },
@@ -178,11 +216,22 @@ function handleNodeDragStop(event: NodeDragEvent) {
 }
 
 // 选择变化 - 使用 @selection-change 事件
+// Vue Flow 的 selection-change 事件参数是 { nodes: GraphNode[], edges: GraphEdge[] }
 function handleSelectionChange(params: { nodes: Array<{ id: string }>; edges: Array<{ id: string }> }) {
-  emit('selectionChange', {
-    nodeIds: params.nodes.map(n => n.id),
-    edgeIds: params.edges.map(e => e.id),
-  });
+  // 确保 params 存在且有正确的结构
+  const nodeIds = params?.nodes?.map(n => n.id) ?? [];
+  const edgeIds = params?.edges?.map(e => e.id) ?? [];
+  emit('selection-change', { nodeIds, edgeIds });
+}
+
+// 节点点击 - 选中单个节点
+function handleNodeClick({ node }: { event: MouseEvent; node: { id: string } }) {
+  emit('selection-change', { nodeIds: [node.id], edgeIds: [] });
+}
+
+// 画布点击 - 取消选择
+function handlePaneClick() {
+  emit('selection-change', { nodeIds: [], edgeIds: [] });
 }
 
 // 连接
@@ -199,7 +248,7 @@ function handleConnect(connection: Connection) {
 
 // 视口变化
 function handleMoveEnd(event: { flowTransform: ViewportTransform }) {
-  emit('viewportChange', {
+  emit('viewport-change', {
     x: event.flowTransform.x,
     y: event.flowTransform.y,
     zoom: event.flowTransform.zoom,
@@ -228,7 +277,7 @@ function handleKeyDown(event: KeyboardEvent) {
     const selectedNodes = props.nodes.filter(n => n.selected).map(n => n.id);
     const selectedEdges = props.edges.filter(e => e.selected).map(e => e.id || '');
     if (selectedNodes.length > 0 || selectedEdges.length > 0) {
-      emit('deleteRequest', selectedNodes, selectedEdges);
+      emit('delete-request', selectedNodes, selectedEdges);
       event.preventDefault();
     }
     return;
@@ -243,12 +292,17 @@ function handleKeyDown(event: KeyboardEvent) {
   
   // 取消选择
   if (matchesAction(event, 'cancel', keyBindings)) {
-    emit('selectionChange', { nodeIds: [], edgeIds: [] });
+    emit('selection-change', { nodeIds: [], edgeIds: [] });
     event.preventDefault();
     return;
   }
   
   // TODO: 其他快捷键（复制、粘贴、撤销、重做等）需要在上层实现
+}
+
+// 边双击
+function handleEdgeDoubleClick({ edge }: { event: MouseEvent; edge: { id: string } }) {
+  emit('edge-double-click', edge.id);
 }
 
 // MiniMap 节点颜色
@@ -286,8 +340,11 @@ function getNodeColor(node: { type?: string }): string {
       class="vue-flow-editor"
       @node-drag-stop="handleNodeDragStop"
       @selection-change="handleSelectionChange"
+      @node-click="handleNodeClick"
+      @pane-click="handlePaneClick"
       @connect="handleConnect"
       @move-end="handleMoveEnd"
+      @edge-double-click="handleEdgeDoubleClick"
     >
       <template #node-operation="nodeProps">
         <OperationNode v-bind="nodeProps" />

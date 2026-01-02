@@ -371,10 +371,11 @@ class ProjectBuilder:
         从调用点推断输入和输出类型
         
         优先级：
-        1. inputTypes/outputTypes（类型传播结果，最可靠）
-        2. narrowedConstraints（收窄后的约束）
-        3. 从连接的节点推断
-        4. 端口原始约束（fallback）
+        1. inputTypes/outputTypes（有效集合，string[]）
+           - 单一元素：直接使用
+           - 多元素：结合连接节点推断
+        2. 从连接的节点推断
+        3. 端口原始约束（fallback）
         
         返回: {
             'input_types': [参数类型列表],
@@ -422,10 +423,28 @@ class ProjectBuilder:
                         ]
                         print(f"  [DEBUG] Rebuilt outputs: {outputs}")
         
+        # inputTypes/outputTypes 现在是 string[]（有效集合）
         input_types_data = data.get('inputTypes', {})
         output_types_data = data.get('outputTypes', {})
-        narrowed = data.get('narrowedConstraints', {})
         buildable = self._get_buildable_types_set()
+        
+        def get_type_from_effective_set(effective_set: list[str] | str | None) -> str | None:
+            """从有效集合中获取具体类型"""
+            if effective_set is None:
+                return None
+            # 兼容旧格式（string）
+            if isinstance(effective_set, str):
+                return effective_set if effective_set in buildable else None
+            # 新格式（string[]）
+            if isinstance(effective_set, list) and len(effective_set) > 0:
+                # 过滤出 BuildableType
+                buildable_types = [t for t in effective_set if t in buildable]
+                if len(buildable_types) == 1:
+                    return buildable_types[0]
+                elif len(buildable_types) > 1:
+                    # 多个类型，返回第一个（后续可以结合上下文优化）
+                    return buildable_types[0]
+            return None
         
         # 推断输入类型
         input_types: list[str] = []
@@ -433,19 +452,11 @@ class ProjectBuilder:
             port_name = port['name']
             inferred_type = None
             
-            # 优先级1: 从 inputTypes 获取（类型传播结果）
+            # 优先级1: 从 inputTypes 获取（有效集合）
             if port_name in input_types_data:
-                type_from_input_types = input_types_data[port_name]
-                if type_from_input_types in buildable:
-                    inferred_type = type_from_input_types
+                inferred_type = get_type_from_effective_set(input_types_data[port_name])
             
-            # 优先级2: 从 narrowedConstraints 获取
-            if not inferred_type and port_name in narrowed:
-                narrowed_type = narrowed[port_name]
-                if narrowed_type in buildable:
-                    inferred_type = narrowed_type
-            
-            # 优先级3: 从连接的源节点推断
+            # 优先级2: 从连接的源节点推断
             if not inferred_type:
                 source_type = self._infer_port_type_from_edge(
                     call_node.id, port['id'], graph, is_input=True
@@ -453,7 +464,7 @@ class ProjectBuilder:
                 if source_type and source_type in buildable:
                     inferred_type = source_type
             
-            # 优先级4: 使用端口原始约束（fallback）
+            # 优先级3: 使用端口原始约束（fallback）
             if not inferred_type:
                 inferred_type = port.get('typeConstraint', 'AnyType')
             
@@ -465,19 +476,11 @@ class ProjectBuilder:
             port_name = port['name']
             inferred_type = None
             
-            # 优先级1: 从 outputTypes 获取（类型传播结果）
+            # 优先级1: 从 outputTypes 获取（有效集合）
             if port_name in output_types_data:
-                type_from_output_types = output_types_data[port_name]
-                if type_from_output_types in buildable:
-                    inferred_type = type_from_output_types
+                inferred_type = get_type_from_effective_set(output_types_data[port_name])
             
-            # 优先级2: 从 narrowedConstraints 获取
-            if not inferred_type and port_name in narrowed:
-                narrowed_type = narrowed[port_name]
-                if narrowed_type in buildable:
-                    inferred_type = narrowed_type
-            
-            # 优先级3: 从连接的后续节点推断
+            # 优先级2: 从连接的后续节点推断
             if not inferred_type:
                 target_type = self._infer_port_type_from_edge(
                     call_node.id, port['id'], graph, is_input=False
@@ -485,7 +488,7 @@ class ProjectBuilder:
                 if target_type and target_type in buildable:
                     inferred_type = target_type
             
-            # 优先级4: 使用端口原始约束（fallback）
+            # 优先级3: 使用端口原始约束（fallback）
             if not inferred_type:
                 inferred_type = port.get('typeConstraint', 'AnyType')
             
@@ -502,7 +505,27 @@ class ProjectBuilder:
     def _infer_port_type_from_edge(
         self, node_id: str, port_id: str, graph: FunctionGraph, is_input: bool
     ) -> str | None:
-        """从连接的边推断端口类型"""
+        """从连接的边推断端口类型
+        
+        注意：outputTypes/inputTypes 现在是 string[]（有效集合）
+        """
+        buildable = self._get_buildable_types_set()
+        
+        def get_type_from_effective_set(effective_set: list[str] | str | None) -> str | None:
+            """从有效集合中获取具体类型"""
+            if effective_set is None:
+                return None
+            # 兼容旧格式（string）
+            if isinstance(effective_set, str):
+                return effective_set if effective_set in buildable else None
+            # 新格式（string[]）
+            if isinstance(effective_set, list) and len(effective_set) > 0:
+                # 过滤出 BuildableType
+                buildable_types = [t for t in effective_set if t in buildable]
+                if len(buildable_types) >= 1:
+                    return buildable_types[0]
+            return None
+        
         # 查找连接到该端口的边
         if is_input:
             # 输入端口：查找源节点
@@ -517,25 +540,10 @@ class ProjectBuilder:
                     port_name = edge.sourceHandle.replace('data-out-', '')
                     type_from_output = output_types.get(port_name)
                     
-                    buildable = self._get_buildable_types_set()
-                    
-                    # 如果 outputTypes 有值，检查是否是 BuildableType
-                    if type_from_output:
-                        if type_from_output in buildable:
-                            return type_from_output
-                        # 如果是约束，尝试从 narrowedConstraints 获取
-                        narrowed = source_node.data.get('narrowedConstraints', {})
-                        if port_name in narrowed:
-                            narrowed_type = narrowed[port_name]
-                            if narrowed_type in buildable:
-                                return narrowed_type
-                    else:
-                        # outputTypes 没有值，尝试从 narrowedConstraints 获取
-                        narrowed = source_node.data.get('narrowedConstraints', {})
-                        if port_name in narrowed:
-                            narrowed_type = narrowed[port_name]
-                            if narrowed_type in buildable:
-                                return narrowed_type
+                    # 从有效集合获取类型
+                    inferred = get_type_from_effective_set(type_from_output)
+                    if inferred:
+                        return inferred
         else:
             # 输出端口：查找目标节点
             edges = [e for e in graph.edges if e.source == node_id and e.sourceHandle == port_id]
@@ -549,25 +557,10 @@ class ProjectBuilder:
                     port_name = edge.targetHandle.replace('data-in-', '')
                     type_from_input = input_types.get(port_name)
                     
-                    buildable = self._get_buildable_types_set()
-                    
-                    # 如果 inputTypes 有值，检查是否是 BuildableType
-                    if type_from_input:
-                        if type_from_input in buildable:
-                            return type_from_input
-                        # 如果是约束，尝试从 narrowedConstraints 获取
-                        narrowed = target_node.data.get('narrowedConstraints', {})
-                        if port_name in narrowed:
-                            narrowed_type = narrowed[port_name]
-                            if narrowed_type in buildable:
-                                return narrowed_type
-                    else:
-                        # inputTypes 没有值，尝试从 narrowedConstraints 获取
-                        narrowed = target_node.data.get('narrowedConstraints', {})
-                        if port_name in narrowed:
-                            narrowed_type = narrowed[port_name]
-                            if narrowed_type in buildable:
-                                return narrowed_type
+                    # 从有效集合获取类型
+                    inferred = get_type_from_effective_set(type_from_input)
+                    if inferred:
+                        return inferred
         
         return None
     
@@ -1073,7 +1066,24 @@ class ProjectBuilder:
             return reachable
         
         # 构建端口约束映射（使用 outputTypes/inputTypes 作为当前约束）
+        # 注意：前端发送的 inputTypes/outputTypes 现在是 string[]（有效集合）
         port_constraints: dict[str, str] = {}
+        
+        def get_constraint_from_effective_set(effective_set: list[str] | str | None) -> str | None:
+            """从有效集合中获取约束（用于传播计算）"""
+            if effective_set is None:
+                return None
+            # 兼容旧格式（string）
+            if isinstance(effective_set, str):
+                return effective_set
+            # 新格式（string[]）
+            if isinstance(effective_set, list) and len(effective_set) > 0:
+                # 如果只有一个元素，直接返回
+                if len(effective_set) == 1:
+                    return effective_set[0]
+                # 多个元素，返回第一个（后续会通过交集计算收窄）
+                return effective_set[0]
+            return None
         
         for node in graph.nodes:
             data = node.data
@@ -1081,14 +1091,18 @@ class ProjectBuilder:
             
             # 收集所有端口的当前约束
             input_types = data.get('inputTypes', {})
-            for port_name, type_name in input_types.items():
+            for port_name, type_value in input_types.items():
                 port_key = f"{node_id}:data-in-{port_name}"
-                port_constraints[port_key] = type_name
+                constraint = get_constraint_from_effective_set(type_value)
+                if constraint:
+                    port_constraints[port_key] = constraint
             
             output_types = data.get('outputTypes', {})
-            for port_name, type_name in output_types.items():
+            for port_name, type_value in output_types.items():
                 port_key = f"{node_id}:data-out-{port_name}"
-                port_constraints[port_key] = type_name
+                constraint = get_constraint_from_effective_set(type_value)
+                if constraint:
+                    port_constraints[port_key] = constraint
             
             # 如果没有 outputTypes/inputTypes，尝试从操作定义获取原始约束
             if node.type == 'operation' and not input_types and not output_types:
@@ -1163,6 +1177,8 @@ class ProjectBuilder:
         
         1. 如果操作有 SameOperandsAndResultType trait，输出类型与输入类型相同
         2. 否则，使用 outputTypes 中的类型约束（如果已经是 BuildableType）
+        
+        注意：inputTypes/outputTypes 现在是 string[]（有效集合）
         """
         data = node.data.copy()
         full_name = data.get('fullName', '')
@@ -1175,16 +1191,33 @@ class ProjectBuilder:
         op_def = self._get_operation_def(full_name)
         buildable = self._get_buildable_types_set()
         
+        def get_type_from_effective_set(effective_set: list[str] | str | None) -> str | None:
+            """从有效集合中获取具体类型"""
+            if effective_set is None:
+                return None
+            # 兼容旧格式（string）
+            if isinstance(effective_set, str):
+                return effective_set if effective_set in buildable else None
+            # 新格式（string[]）
+            if isinstance(effective_set, list) and len(effective_set) > 0:
+                # 过滤出 BuildableType
+                buildable_types = [t for t in effective_set if t in buildable]
+                if len(buildable_types) >= 1:
+                    return buildable_types[0]
+            return None
+        
         # 检查操作是否有 SameOperandsAndResultType trait
         if op_def and 'SameOperandsAndResultType' in op_def.traits:
-            # 如果所有输入类型相同，且是 BuildableType，输出类型也相同
-            input_type_values = list(input_types.values())
-            if len(input_type_values) > 0:
-                first_input_type = input_type_values[0]
-                all_same = all(t == first_input_type for t in input_type_values)
+            # 从有效集合中提取具体类型
+            input_concrete_types = [get_type_from_effective_set(v) for v in input_types.values()]
+            input_concrete_types = [t for t in input_concrete_types if t is not None]
+            
+            if len(input_concrete_types) > 0:
+                first_input_type = input_concrete_types[0]
+                all_same = all(t == first_input_type for t in input_concrete_types)
                 
                 if all_same and first_input_type in buildable:
-                    # 更新所有输出端口为相同类型
+                    # 更新所有输出端口为相同类型（保持 string 格式，后端内部使用）
                     for result_name in output_types.keys():
                         output_types[result_name] = first_input_type
                     data['outputTypes'] = output_types
@@ -1194,8 +1227,9 @@ class ProjectBuilder:
         # 如果没有 trait 或输入类型不一致，确保 outputTypes 是 BuildableType
         # 如果 outputTypes 中的类型不是 BuildableType，尝试从约束解析
         updated = False
-        for result_name, type_name in output_types.items():
-            if type_name not in buildable:
+        for result_name, type_value in output_types.items():
+            concrete_type = get_type_from_effective_set(type_value)
+            if not concrete_type or concrete_type not in buildable:
                 # 尝试从操作定义获取约束并解析
                 if op_def:
                     for result in op_def.results:
@@ -1219,7 +1253,10 @@ class ProjectBuilder:
         # function-entry 和 function-return 在 _build_function 中特殊处理
     
     def _build_operation_node(self, node: GraphNode, graph: FunctionGraph) -> None:
-        """构建 MLIR 操作节点"""
+        """构建 MLIR 操作节点
+        
+        注意：outputTypes 现在是 string[]（有效集合）
+        """
         data = node.data
         
         # 新格式：直接使用 fullName
@@ -1233,17 +1270,36 @@ class ProjectBuilder:
         buildable = self._get_buildable_types_set()
         resolved_output_types = []
         
-        for port_name, type_name in output_types.items():
-            if type_name in buildable:
+        def get_type_from_effective_set(effective_set: list[str] | str | None) -> str | None:
+            """从有效集合中获取具体类型"""
+            if effective_set is None:
+                return None
+            # 兼容旧格式（string）
+            if isinstance(effective_set, str):
+                return effective_set if effective_set in buildable else None
+            # 新格式（string[]）
+            if isinstance(effective_set, list) and len(effective_set) > 0:
+                # 过滤出 BuildableType
+                buildable_types = [t for t in effective_set if t in buildable]
+                if len(buildable_types) >= 1:
+                    return buildable_types[0]
+            return None
+        
+        for port_name, type_value in output_types.items():
+            # 从有效集合获取类型
+            type_name = get_type_from_effective_set(type_value)
+            
+            if type_name and type_name in buildable:
                 resolved_output_types.append(type_name)
             else:
-                # 约束，需要解析为具体类型
-                concrete_types = self._get_concrete_types(type_name)
+                # 如果是约束或无法解析，尝试展开
+                constraint = type_value if isinstance(type_value, str) else (type_value[0] if isinstance(type_value, list) and len(type_value) > 0 else 'AnyType')
+                concrete_types = self._get_concrete_types(constraint)
                 if not concrete_types:
-                    raise ValueError(f"Cannot resolve constraint '{type_name}' for {op_name}.{port_name}")
+                    raise ValueError(f"Cannot resolve constraint '{constraint}' for {op_name}.{port_name}")
                 if len(concrete_types) > 1:
                     # 多个类型，选择第一个（后续可以改进）
-                    print(f"[BUILD] {op_name}.{port_name}: {type_name} -> {concrete_types[0]} (from {len(concrete_types)} options)")
+                    print(f"[BUILD] {op_name}.{port_name}: {constraint} -> {concrete_types[0]} (from {len(concrete_types)} options)")
                 resolved_output_types.append(concrete_types[0])
         
         result_types = self._parse_types(resolved_output_types)

@@ -9,11 +9,6 @@
 <script setup lang="ts">
 import { computed, h, type VNode } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
-import { 
-  useVueStore, 
-  typeConstraintStore,
-  usePortStateStore,
-} from '../../../../stores';
 import UnifiedTypeSelector from '../components/UnifiedTypeSelector.vue';
 import DOMRenderer, {
   type HandleRenderConfig,
@@ -25,6 +20,7 @@ import {
   layoutConfig,
 } from '../../../core/layout';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import { useTypeChangeHandler } from '../useTypeChangeHandler';
 import type { GraphNode, FunctionCallData } from '../../../../types';
 import {
   getExecHandleStyle,
@@ -41,18 +37,12 @@ const props = defineProps<{
 // 直接更新 editorStore
 const { updateNodeData } = useEditorStoreUpdate(props.id);
 
-// 订阅 stores
-const getConstraintElements = useVueStore(typeConstraintStore, state => state.getConstraintElements);
-
-// 获取 portStateStore（直接使用 getState，不是 React hook）
-function getPortState(nodeId: string, pinId: string) {
-  return usePortStateStore.getState().getPortState(nodeId, pinId);
-}
+// 使用统一的类型变更处理（与 ReactFlow 一致）
+const { handleTypeChange } = useTypeChangeHandler(props.id);
 
 // 获取节点数据
 const nodeData = computed(() => props.data as FunctionCallData);
-const inputTypes = computed(() => nodeData.value.inputTypes || {});
-const outputTypes = computed(() => nodeData.value.outputTypes || {});
+const portStates = computed(() => nodeData.value.portStates || {});
 
 // 将 props 转换为 GraphNode 格式
 const graphNode = computed<GraphNode>(() => ({
@@ -76,13 +66,7 @@ const layoutTree = computed(() => {
   return tree;
 });
 
-// 类型选择处理
-function handleTypeChange(pinId: string, type: string) {
-  updateNodeData(data => ({
-    ...data,
-    pinnedTypes: { ...(data.pinnedTypes as Record<string, string> || {}), [pinId]: type },
-  }));
-}
+// 类型选择处理已由 useTypeChangeHandler 提供
 
 // Handle 渲染回调
 function renderHandle(config: HandleRenderConfig): VNode {
@@ -109,20 +93,15 @@ function renderHandle(config: HandleRenderConfig): VNode {
 
 // TypeSelector 渲染回调
 function renderTypeSelector(config: TypeSelectorRenderConfig): VNode {
-  // 从 data 中获取显示类型
-  const displayType = inputTypes.value[config.pinId] || outputTypes.value[config.pinId] || config.typeConstraint;
-  
-  // 从 portStateStore 读取端口状态
-  const portState = getPortState(props.id, config.pinId);
+  // 从 data.portStates 读取端口状态（与 ReactFlow 一致）
+  const portState = portStates.value[config.pinId];
+  const displayType = portState?.displayType ?? config.typeConstraint;
   const canEdit = portState?.canEdit ?? false;
-  
-  // 计算可选类型
-  const constraint = portState?.constraint ?? config.typeConstraint;
-  const options = getConstraintElements.value(constraint);
+  const options = portState?.options ?? [];
 
   return h(UnifiedTypeSelector, {
     selectedType: displayType,
-    onSelect: (type: string) => handleTypeChange(config.pinId, type),
+    onSelect: (type: string) => handleTypeChange(config.pinId, type, config.typeConstraint),
     constraint: config.typeConstraint,
     allowedTypes: options.length > 0 ? options : undefined,
     disabled: !canEdit,

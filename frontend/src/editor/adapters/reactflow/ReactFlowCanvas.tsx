@@ -72,7 +72,6 @@ export interface ReactFlowCanvasProps {
   onSelectionChange?: (selection: EditorSelection) => void;
   onViewportChange?: (viewport: EditorViewport) => void;
   onConnect?: (request: ConnectionRequest) => void;
-  onNodeDoubleClick?: (nodeId: string) => void;
   onEdgeDoubleClick?: (edgeId: string) => void;
   onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void;
   onDeleteRequest?: (nodeIds: string[], edgeIds: string[]) => void;
@@ -96,7 +95,6 @@ function ReactFlowCanvasInner({
   onSelectionChange,
   onViewportChange,
   onConnect,
-  onNodeDoubleClick,
   onEdgeDoubleClick,
   onDrop,
   onDeleteRequest,
@@ -116,7 +114,6 @@ function ReactFlowCanvasInner({
     onSelectionChange,
     onViewportChange,
     onConnect,
-    onNodeDoubleClick,
     onEdgeDoubleClick,
     onDrop,
     onDeleteRequest,
@@ -129,12 +126,11 @@ function ReactFlowCanvasInner({
       onSelectionChange,
       onViewportChange,
       onConnect,
-      onNodeDoubleClick,
       onEdgeDoubleClick,
       onDrop,
       onDeleteRequest,
     };
-  }, [onNodesChange, onEdgesChange, onSelectionChange, onViewportChange, onConnect, onNodeDoubleClick, onEdgeDoubleClick, onDrop, onDeleteRequest]);
+  }, [onNodesChange, onEdgesChange, onSelectionChange, onViewportChange, onConnect, onEdgeDoubleClick, onDrop, onDeleteRequest]);
 
   // 暴露命令式 API
   useEffect(() => {
@@ -227,11 +223,6 @@ function ReactFlowCanvasInner({
     callbacksRef.current.onEdgeDoubleClick?.(edge.id);
   }, []);
 
-  // 处理节点双击
-  const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    callbacksRef.current.onNodeDoubleClick?.(node.id);
-  }, []);
-
   // 处理拖放
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -263,7 +254,6 @@ function ReactFlowCanvasInner({
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onEdgeDoubleClick={handleEdgeDoubleClick}
-        onNodeDoubleClick={handleNodeDoubleClick}
         onMoveEnd={handleMoveEnd}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

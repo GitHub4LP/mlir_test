@@ -82,9 +82,6 @@ export interface INodeEditor {
   /** 连接请求回调（用户尝试创建连接） */
   onConnect: ((request: ConnectionRequest) => void) | null;
   
-  /** 节点双击回调 */
-  onNodeDoubleClick: ((nodeId: string) => void) | null;
-  
   /** 边双击回调 */
   onEdgeDoubleClick: ((edgeId: string) => void) | null;
   
@@ -161,7 +158,6 @@ export function createEmptyCallbacks(): Pick<
   | 'onSelectionChange'
   | 'onViewportChange'
   | 'onConnect'
-  | 'onNodeDoubleClick'
   | 'onEdgeDoubleClick'
   | 'onDrop'
   | 'onDeleteRequest'
@@ -184,7 +180,6 @@ export function createEmptyCallbacks(): Pick<
     onSelectionChange: null,
     onViewportChange: null,
     onConnect: null,
-    onNodeDoubleClick: null,
     onEdgeDoubleClick: null,
     onDrop: null,
     onDeleteRequest: null,

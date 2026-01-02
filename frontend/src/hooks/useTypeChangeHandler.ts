@@ -41,6 +41,7 @@ export function useTypeChangeHandler(options: UseTypeChangeHandlerOptions): UseT
   const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
   const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
   const pickConstraintName = useReactStore(typeConstraintStore, state => state.pickConstraintName);
+  const findSubsetConstraints = useReactStore(typeConstraintStore, state => state.findSubsetConstraints);
 
   // 从 editorStore 获取 edges（作为权威数据源）
   const edges = useEditorStore(state => state.edges);
@@ -52,8 +53,9 @@ export function useTypeChangeHandler(options: UseTypeChangeHandlerOptions): UseT
       getCurrentFunction,
       getConstraintElements,
       pickConstraintName,
+      findSubsetConstraints,
     };
-  }, [edges, getCurrentFunction, getConstraintElements, pickConstraintName]);
+  }, [edges, getCurrentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints]);
 
   // 类型变更处理回调
   // 只更新 editorStore，ReactFlow/VueFlow 通过订阅自动更新

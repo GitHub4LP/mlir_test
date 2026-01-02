@@ -11,7 +11,6 @@ import { memo, useCallback, useMemo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import type { BlueprintNodeData, GraphNode } from '../../../../types';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
-import { useReactStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
 import { useTypeChangeHandler } from '../../../../hooks';
 import { getDialectColor } from '../../shared/figmaStyles';
 import {
@@ -32,11 +31,9 @@ export type BlueprintNodeType = Node<BlueprintNodeData, 'operation'>;
 export type BlueprintNodeProps = NodeProps<BlueprintNodeType>;
 
 export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }: BlueprintNodeProps) {
-  const { operation, inputTypes = {}, outputTypes = {} } = data;
+  const { operation, portStates = {} } = data;
   const dialectColor = getDialectColor(operation.dialect);
 
-  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
-  const getPortState = usePortStateStore(state => state.getPortState);
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
   // 将 ReactFlow Node 转换为 GraphNode 格式
@@ -86,16 +83,11 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
 
   // TypeSelector 渲染回调
   const renderTypeSelector = useCallback((config: TypeSelectorRenderConfig) => {
-    // 从 data 中获取显示类型
-    const displayType = inputTypes[config.pinId] || outputTypes[config.pinId] || config.typeConstraint;
-    
-    // 从 portStateStore 读取端口状态
-    const portState = getPortState(id, config.pinId);
+    // 从 data.portStates 读取端口状态（包含 displayType、options、canEdit）
+    const portState = portStates[config.pinId];
+    const displayType = portState?.displayType ?? config.typeConstraint;
     const canEdit = portState?.canEdit ?? false;
-    
-    // 计算可选类型
-    const constraint = portState?.constraint ?? config.typeConstraint;
-    const options = getConstraintElements(constraint);
+    const options = portState?.options ?? [];
 
     return (
       <UnifiedTypeSelector
@@ -106,7 +98,7 @@ export const BlueprintNode = memo(function BlueprintNode({ id, data, selected }:
         disabled={!canEdit}
       />
     );
-  }, [id, inputTypes, outputTypes, getPortState, getConstraintElements, handleTypeChange]);
+  }, [portStates, handleTypeChange]);
 
   // 交互元素渲染器
   const interactiveRenderers: InteractiveRenderers = useMemo(() => ({

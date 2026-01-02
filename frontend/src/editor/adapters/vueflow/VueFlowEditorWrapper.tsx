@@ -31,7 +31,6 @@ export interface VueFlowEditorWrapperProps {
   onSelectionChange?: (selection: EditorSelection) => void;
   onViewportChange?: (viewport: EditorViewport) => void;
   onConnect?: (request: ConnectionRequest) => void;
-  onNodeDoubleClick?: (nodeId: string) => void;
   onEdgeDoubleClick?: (edgeId: string) => void;
   onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void;
   onDeleteRequest?: (nodeIds: string[], edgeIds: string[]) => void;
@@ -56,7 +55,6 @@ export function VueFlowEditorWrapper({
   onSelectionChange,
   onViewportChange,
   onConnect,
-  onNodeDoubleClick,
   onEdgeDoubleClick,
   onDrop,
   onDeleteRequest,
@@ -102,7 +100,6 @@ export function VueFlowEditorWrapper({
         onSelectionChange={onSelectionChange}
         onViewportChange={handleViewportChange}
         onConnect={onConnect}
-        onNodeDoubleClick={onNodeDoubleClick}
         onEdgeDoubleClick={onEdgeDoubleClick}
         onDrop={onDrop}
         onDeleteRequest={onDeleteRequest}

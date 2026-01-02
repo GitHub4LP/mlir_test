@@ -14,8 +14,6 @@ import { getTypeColor } from '../../../../services/typeSystem';
 import { 
   useVueStore, 
   projectStore, 
-  typeConstraintStore,
-  usePortStateStore,
 } from '../../../../stores';
 import { dataOutHandle } from '../../../../services/port';
 import { generateParameterName } from '../../../../services/parameterService';
@@ -34,6 +32,7 @@ import {
   buildNodeLayoutTree,
 } from '../../../core/layout';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import { useTypeChangeHandler } from '../useTypeChangeHandler';
 import type { GraphNode, FunctionEntryData, FunctionTrait } from '../../../../types';
 import {
   getExecHandleStyleRight,
@@ -50,13 +49,8 @@ const props = defineProps<{
 // 直接更新 editorStore
 const { updateNodeData } = useEditorStoreUpdate(props.id);
 
-// 订阅 stores
-const getConstraintElements = useVueStore(typeConstraintStore, state => state.getConstraintElements);
-
-// 获取 portStateStore（直接使用 getState，不是 React hook）
-function getPortState(nodeId: string, pinId: string) {
-  return usePortStateStore.getState().getPortState(nodeId, pinId);
-}
+// 使用统一的类型变更处理（与 ReactFlow 一致）
+const { handleTypeChange } = useTypeChangeHandler(props.id);
 
 // 订阅 projectStore 获取当前函数
 const currentFunction = useVueStore(
@@ -73,7 +67,7 @@ const currentFunction = useVueStore(
 const nodeData = computed(() => props.data as FunctionEntryData);
 const functionId = computed(() => nodeData.value.functionId);
 const isMain = computed(() => nodeData.value.isMain || false);
-const outputTypes = computed(() => nodeData.value.outputTypes || {});
+const portStates = computed(() => nodeData.value.portStates || {});
 
 const parameters = computed(() => currentFunction.value?.parameters || []);
 const returnTypes = computed(() => currentFunction.value?.returnTypes || []);
@@ -123,13 +117,7 @@ watch(parameters, (newParams) => {
   }
 }, { immediate: true });
 
-// 类型选择处理
-function handleTypeChange(pinId: string, type: string) {
-  updateNodeData(data => ({
-    ...data,
-    pinnedTypes: { ...(data.pinnedTypes as Record<string, string> || {}), [pinId]: type },
-  }));
-}
+// 类型选择处理已由 useTypeChangeHandler 提供
 
 // 参数操作
 function handleAddParameter() {
@@ -189,20 +177,15 @@ function renderHandle(config: HandleRenderConfig): VNode {
 
 // TypeSelector 渲染回调
 function renderTypeSelector(config: TypeSelectorRenderConfig): VNode {
-  // 从 data 中获取显示类型
-  const displayType = outputTypes.value[config.pinId] || config.typeConstraint;
-  
-  // 从 portStateStore 读取端口状态
-  const portState = getPortState(props.id, config.pinId);
+  // 从 data.portStates 读取端口状态（与 ReactFlow 一致）
+  const portState = portStates.value[config.pinId];
+  const displayType = portState?.displayType ?? config.typeConstraint;
   const canEdit = portState?.canEdit ?? false;
-  
-  // 计算可选类型
-  const constraint = portState?.constraint ?? config.typeConstraint;
-  const options = getConstraintElements.value(constraint);
+  const options = portState?.options ?? [];
 
   return h(UnifiedTypeSelector, {
     selectedType: displayType,
-    onSelect: (type: string) => handleTypeChange(config.pinId, type),
+    onSelect: (type: string) => handleTypeChange(config.pinId, type, config.typeConstraint),
     constraint: config.typeConstraint,
     allowedTypes: options.length > 0 ? options : undefined,
     disabled: !canEdit,

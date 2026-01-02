@@ -209,8 +209,8 @@ export interface ReturnTypeDef {
  */
 export interface TypeStateData {
   pinnedTypes?: Record<string, string>;
-  inputTypes?: Record<string, string>;
-  outputTypes?: Record<string, string>;
+  inputTypes?: Record<string, string[]>;
+  outputTypes?: Record<string, string[]>;
 }
 
 /**
@@ -232,8 +232,11 @@ export function buildEntryDataPins(
   return parameters.map((param) => {
     const portId = dataOutHandle(param.name);
     const constraint = param.constraint;
-    // 优先级：outputTypes > pinnedTypes > constraint
-    const displayType = outputTypes[param.name] || pinnedTypes[portId] || constraint;
+    // 优先级：outputTypes[0] > pinnedTypes > constraint
+    const effectiveSet = outputTypes[param.name];
+    const displayType = (effectiveSet && effectiveSet.length > 0) 
+      ? (effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0])
+      : (pinnedTypes[portId] || constraint);
     
     return {
       id: portId,
@@ -268,8 +271,11 @@ export function buildReturnDataPins(
     const name = ret.name || `result_${idx}`;
     const portId = dataInHandle(name);
     const constraint = ret.constraint;
-    // 优先级：inputTypes > pinnedTypes > constraint
-    const displayType = inputTypes[name] || pinnedTypes[portId] || constraint;
+    // 优先级：inputTypes[0] > pinnedTypes > constraint
+    const effectiveSet = inputTypes[name];
+    const displayType = (effectiveSet && effectiveSet.length > 0)
+      ? (effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0])
+      : (pinnedTypes[portId] || constraint);
 
     return {
       id: portId,
@@ -328,7 +334,10 @@ export function buildOperationDataPins(
 
   const inputs: DataPin[] = operands.map((operand) => {
     const portId = dataInHandle(operand.name);
-    const displayType = inputTypes[operand.name] || operand.typeConstraint;
+    const effectiveSet = inputTypes[operand.name];
+    const displayType = (effectiveSet && effectiveSet.length > 0)
+      ? (effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0])
+      : operand.typeConstraint;
     
     return {
       id: portId,
@@ -345,7 +354,10 @@ export function buildOperationDataPins(
   const outputs: DataPin[] = results.map((result, idx) => {
     const name = result.name || `result_${idx}`;
     const portId = dataOutHandle(name);
-    const displayType = outputTypes[name] || result.typeConstraint;
+    const effectiveSet = outputTypes[name];
+    const displayType = (effectiveSet && effectiveSet.length > 0)
+      ? (effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0])
+      : result.typeConstraint;
     
     return {
       id: portId,
@@ -384,21 +396,33 @@ export function buildCallDataPins(
 ): { inputs: DataPin[]; outputs: DataPin[] } {
   const { inputTypes = {}, outputTypes = {} } = typeState;
 
-  const dataInputs: DataPin[] = inputs.map((port) => ({
-    id: dataInHandle(port.name),
-    label: port.name,
-    typeConstraint: port.typeConstraint,
-    displayName: port.typeConstraint,
-    color: getTypeColor(inputTypes[port.name] || port.typeConstraint),
-  }));
+  const dataInputs: DataPin[] = inputs.map((port) => {
+    const effectiveSet = inputTypes[port.name];
+    const displayType = (effectiveSet && effectiveSet.length > 0)
+      ? (effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0])
+      : port.typeConstraint;
+    return {
+      id: dataInHandle(port.name),
+      label: port.name,
+      typeConstraint: port.typeConstraint,
+      displayName: port.typeConstraint,
+      color: getTypeColor(displayType),
+    };
+  });
 
-  const dataOutputs: DataPin[] = outputs.map((port) => ({
-    id: dataOutHandle(port.name),
-    label: port.name,
-    typeConstraint: port.typeConstraint,
-    displayName: port.typeConstraint,
-    color: getTypeColor(outputTypes[port.name] || port.typeConstraint),
-  }));
+  const dataOutputs: DataPin[] = outputs.map((port) => {
+    const effectiveSet = outputTypes[port.name];
+    const displayType = (effectiveSet && effectiveSet.length > 0)
+      ? (effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0])
+      : port.typeConstraint;
+    return {
+      id: dataOutHandle(port.name),
+      label: port.name,
+      typeConstraint: port.typeConstraint,
+      displayName: port.typeConstraint,
+      color: getTypeColor(displayType),
+    };
+  });
 
   return { inputs: dataInputs, outputs: dataOutputs };
 }

@@ -77,17 +77,17 @@ export function convertGraphNodeToReactFlowNode(node: GraphNode): EditorNode {
  */
 export function createBlueprintNodeData(operation: OperationDef): BlueprintNodeData {
   const attributes: Record<string, string> = {};
-  const inputTypes: Record<string, string> = {};
-  const outputTypes: Record<string, string> = {};
+  const inputTypes: Record<string, string[]> = {};
+  const outputTypes: Record<string, string[]> = {};
 
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand') {
-      inputTypes[arg.name] = arg.typeConstraint;
+      inputTypes[arg.name] = [arg.typeConstraint];
     }
   }
 
   for (const result of operation.results) {
-    outputTypes[result.name] = result.typeConstraint;
+    outputTypes[result.name] = [result.typeConstraint];
   }
 
   // Generate execution pin configuration based on operation classification

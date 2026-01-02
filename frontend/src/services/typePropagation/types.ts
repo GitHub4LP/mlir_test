@@ -16,7 +16,7 @@ export type VariableId = string;
  */
 export interface TypeSource {
   portRef: PortRef;
-  type: string;  // 具体类型，如 "I32"
+  type: string;  // 具体类型或约束名，如 "I32" 或 "SignlessIntegerLike"
 }
 
 /**
@@ -29,16 +29,16 @@ export type PropagationGraph = Map<VariableId, Set<VariableId>>;
 
 /**
  * 传播结果
+ * 
+ * effectiveSets: 每个端口的有效集合（具体类型数组）
+ * sources: 传播路径（用于调试）
  */
 export interface PropagationResult {
-  /** 所有端口的类型（包括源和派生） */
-  types: Map<VariableId, string>;
+  /** 所有端口的有效集合：varId → 具体类型数组 */
+  effectiveSets: Map<VariableId, string[]>;
   
   /** 传播路径（用于调试）：varId → 从哪个 varId 传播来的 */
   sources: Map<VariableId, VariableId | null>;
-  
-  /** 收窄后的约束名：varId → constraintName（连接导致的约束收窄） */
-  narrowedConstraints: Map<VariableId, string>;
 }
 
 /**

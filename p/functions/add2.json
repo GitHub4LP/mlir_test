@@ -56,14 +56,13 @@
         "data": {
           "fullName": "arith.constant",
           "attributes": {
-            "value": "52.3"
-          },
-          "inputTypes": {},
-          "outputTypes": {
-            "result": "AnyFloat"
+            "value": "2"
           },
           "execOuts": [],
-          "regionPins": []
+          "regionPins": [],
+          "outputTypes": {
+            "result": "AnyFloat"
+          }
         }
       },
       {
@@ -76,15 +75,15 @@
         "data": {
           "fullName": "arith.addf",
           "attributes": {},
+          "execOuts": [],
+          "regionPins": [],
           "inputTypes": {
             "lhs": "FloatLike",
             "rhs": "FloatLike"
           },
           "outputTypes": {
             "result": "FloatLike"
-          },
-          "execOuts": [],
-          "regionPins": []
+          }
         }
       }
     ],

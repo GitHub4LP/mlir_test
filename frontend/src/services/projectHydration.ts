@@ -35,24 +35,43 @@ import { createInputPortsFromParams, createOutputPortsFromReturns, getExecOutput
 /**
  * Strip operation definition from BlueprintNodeData for storage
  * 保存用户意图（pinnedTypes）和传播结果（inputTypes/outputTypes）用于快速还原
+ * 不保存 portStates（UI 状态，运行时计算）
  */
 export function dehydrateNodeData(data: BlueprintNodeData): StoredBlueprintNodeData {
-  return {
+  // 过滤空对象
+  const result: StoredBlueprintNodeData = {
     fullName: data.operation.fullName,
     attributes: data.attributes,
-    pinnedTypes: data.pinnedTypes,
-    inputTypes: data.inputTypes,
-    outputTypes: data.outputTypes,
-    variadicCounts: data.variadicCounts,
     execIn: data.execIn,
     execOuts: data.execOuts,
     regionPins: data.regionPins,
   };
+  
+  // 只保存非空的 pinnedTypes
+  if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
+    result.pinnedTypes = data.pinnedTypes;
+  }
+  
+  // 只保存非空的 inputTypes/outputTypes
+  if (data.inputTypes && Object.keys(data.inputTypes).length > 0) {
+    result.inputTypes = data.inputTypes;
+  }
+  if (data.outputTypes && Object.keys(data.outputTypes).length > 0) {
+    result.outputTypes = data.outputTypes;
+  }
+  
+  // 只保存非空的 variadicCounts
+  if (data.variadicCounts && Object.keys(data.variadicCounts).length > 0) {
+    result.variadicCounts = data.variadicCounts;
+  }
+  
+  return result;
 }
 
 /**
  * Fill operation definition into StoredBlueprintNodeData from dialectStore
- * 优先使用保存的类型，如果没有则初始化为原始约束（加载后由传播重新计算并覆盖）
+ * 优先使用保存的类型，如果没有则初始化为原始约束的单元素数组
+ * （加载后由传播重新计算并覆盖）
  */
 export function hydrateNodeData(
   data: StoredBlueprintNodeData,
@@ -64,19 +83,19 @@ export function hydrateNodeData(
     throw new Error(`Unknown operation: ${data.fullName}. Make sure the dialect is loaded.`);
   }
 
-  // 优先使用保存的类型，如果没有则初始化为原始约束
-  const inputTypes: Record<string, string> = data.inputTypes || {};
-  const outputTypes: Record<string, string> = data.outputTypes || {};
+  // 优先使用保存的类型，如果没有则初始化为原始约束的单元素数组
+  const inputTypes: Record<string, string[]> = data.inputTypes || {};
+  const outputTypes: Record<string, string[]> = data.outputTypes || {};
   
-  // 填充缺失的端口（使用原始约束）
+  // 填充缺失的端口（使用原始约束的单元素数组）
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand' && !inputTypes[arg.name]) {
-      inputTypes[arg.name] = arg.typeConstraint;
+      inputTypes[arg.name] = [arg.typeConstraint];
     }
   }
   for (const result of operation.results) {
     if (!outputTypes[result.name]) {
-      outputTypes[result.name] = result.typeConstraint;
+      outputTypes[result.name] = [result.typeConstraint];
     }
   }
 
@@ -95,7 +114,7 @@ export function hydrateNodeData(
 
 /**
  * Dehydrate a graph node for storage
- * Entry/Return 节点只保存必要字段，不保存 outputs/inputs、outputTypes/inputTypes、narrowedConstraints
+ * Entry/Return 节点只保存必要字段，不保存 outputs/inputs、outputTypes/inputTypes、portStates
  */
 export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
   if (node.type === 'operation') {
@@ -110,8 +129,11 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
     const stored: StoredFunctionEntryData = {
       execOut: data.execOut,
       isMain: data.isMain,
-      pinnedTypes: data.pinnedTypes,
     };
+    // 只保存非空的 pinnedTypes
+    if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
+      stored.pinnedTypes = data.pinnedTypes;
+    }
     return {
       ...node,
       data: stored,
@@ -124,8 +146,11 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
       branchName: data.branchName,
       execIn: data.execIn,
       isMain: data.isMain,
-      pinnedTypes: data.pinnedTypes,
     };
+    // 只保存非空的 pinnedTypes
+    if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
+      stored.pinnedTypes = data.pinnedTypes;
+    }
     return {
       ...node,
       data: stored,
@@ -137,12 +162,19 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
     const stored: StoredFunctionCallData = {
       functionId: data.functionId,
       functionName: data.functionName,
-      pinnedTypes: data.pinnedTypes,
-      inputTypes: data.inputTypes,
-      outputTypes: data.outputTypes,
       execIn: data.execIn,
       execOuts: data.execOuts,
     };
+    // 只保存非空的字段
+    if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
+      stored.pinnedTypes = data.pinnedTypes;
+    }
+    if (data.inputTypes && Object.keys(data.inputTypes).length > 0) {
+      stored.inputTypes = data.inputTypes;
+    }
+    if (data.outputTypes && Object.keys(data.outputTypes).length > 0) {
+      stored.outputTypes = data.outputTypes;
+    }
     return {
       ...node,
       data: stored,
@@ -187,6 +219,7 @@ function rebuildReturnInputs(func: FunctionDef): PortConfig[] {
  * Hydrate a stored graph node to runtime format
  * Entry/Return 节点从 FunctionDef 重建 outputs/inputs
  * Function-call 节点从 FunctionDef 重建 inputs/outputs
+ * 不恢复 portStates（运行时计算）
  */
 export function hydrateGraphNode(
   node: StoredGraphNode,
@@ -214,7 +247,6 @@ export function hydrateGraphNode(
       functionName: func.name,
       outputs: rebuildEntryOutputs(func),
       outputTypes: {},
-      narrowedConstraints: {},
       // 节点头部颜色
       headerColor: tokens.nodeType.entry,
     };
@@ -232,7 +264,6 @@ export function hydrateGraphNode(
       functionName: func.name,
       inputs: rebuildReturnInputs(func),
       inputTypes: {},
-      narrowedConstraints: {},
       // 节点头部颜色
       headerColor: tokens.nodeType.return,
     };
@@ -259,7 +290,6 @@ export function hydrateGraphNode(
       pinnedTypes: stored.pinnedTypes,
       inputTypes: stored.inputTypes || {},
       outputTypes: stored.outputTypes || {},
-      narrowedConstraints: {},
       // 确保 execIn 有默认值（向后兼容旧数据）
       execIn: stored.execIn || { id: 'exec-in', label: '' },
       execOuts: getExecOutputsFromFunction(calleeFunc),

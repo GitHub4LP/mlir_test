@@ -110,6 +110,8 @@ export function buildTypeGroups(
 
 /**
  * 构建约束限制下的类型分组
+ * 
+ * expandedTypes 已经是经过收窄的可选约束名列表，直接使用即可
  */
 export function buildConstrainedTypeGroups(
   expandedTypes: string[],
@@ -119,16 +121,7 @@ export function buildConstrainedTypeGroups(
 ): TypeGroup[] {
   const matcher = createSearchMatcher(searchText, useRegex);
   
-  const allItems = new Set<string>();
-  if (constraintName) allItems.add(constraintName);
-  expandedTypes.forEach(t => allItems.add(t));
-
-  const items = [...allItems].filter(matcher).sort((a, b) => {
-    // 约束名排在最前
-    if (a === constraintName) return -1;
-    if (b === constraintName) return 1;
-    return a.localeCompare(b);
-  });
+  const items = expandedTypes.filter(matcher).sort((a, b) => a.localeCompare(b));
 
   if (items.length > 0) {
     return [{ label: constraintName || '可选类型', items }];
@@ -291,6 +284,9 @@ export function computeTypeSelectorData(input: TypeSelectorInput): TypeSelectorD
 
 /**
  * 计算类型分组（用于选择面板）
+ * 
+ * 当 constraintTypes 来自 allowedTypes（portState.options）时，
+ * 它已经是约束名列表，直接使用，不需要展开。
  */
 export function computeTypeGroups(
   data: TypeSelectorData,
@@ -298,8 +294,11 @@ export function computeTypeGroups(
   constraintName: string | undefined,
   buildableTypes: string[],
   constraintDefs: Map<string, { name: string; summary: string; rule: unknown }>,
-  getConstraintElements: (name: string) => string[]
+  _getConstraintElements?: (name: string) => string[]
 ): TypeGroup[] {
+  // _getConstraintElements 保留用于未来扩展
+  void _getConstraintElements;
+  
   const { constraintTypes } = data;
   const { searchText, useRegex } = filter;
 
@@ -309,17 +308,9 @@ export function computeTypeGroups(
     constraintName !== undefined;
 
   if (hasConstraint && constraintTypes && constraintTypes.length > 0) {
-    // 展开约束到具体类型
-    const expandedTypes = expandConstraintTypes(
-      constraintTypes,
-      buildableTypes,
-      getConstraintElements
-    );
-    
-    if (expandedTypes.length > 0) {
-      return buildConstrainedTypeGroups(expandedTypes, constraintName, searchText, useRegex);
-    }
-    return [];
+    // constraintTypes 已经是约束名列表（来自 allowedTypes/options），直接使用
+    // 不再调用 expandConstraintTypes 展开
+    return buildConstrainedTypeGroups(constraintTypes, constraintName, searchText, useRegex);
   }
 
   // 无约束，显示所有

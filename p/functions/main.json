@@ -51,14 +51,15 @@
         "data": {
           "fullName": "arith.constant",
           "attributes": {
-            "value": 2
-          },
-          "inputTypes": {},
-          "outputTypes": {
-            "result": "I32"
+            "value": "10"
           },
           "execOuts": [],
-          "regionPins": []
+          "regionPins": [],
+          "outputTypes": {
+            "result": [
+              "I32"
+            ]
+          }
         }
       },
       {
@@ -71,15 +72,6 @@
         "data": {
           "functionId": "add1",
           "functionName": "add1",
-          "pinnedTypes": {
-            "data-in-arg0": "I32"
-          },
-          "inputTypes": {
-            "arg0": "I32"
-          },
-          "outputTypes": {
-            "ret0": "I32"
-          },
           "execIn": {
             "id": "exec-in",
             "label": ""
@@ -89,7 +81,20 @@
               "id": "exec-out-0",
               "label": ""
             }
-          ]
+          ],
+          "pinnedTypes": {
+            "data-in-arg0": "I32"
+          },
+          "inputTypes": {
+            "arg0": [
+              "I32"
+            ]
+          },
+          "outputTypes": {
+            "ret0": [
+              "I32"
+            ]
+          }
         }
       },
       {
@@ -102,15 +107,6 @@
         "data": {
           "functionId": "add2",
           "functionName": "add2",
-          "pinnedTypes": {
-            "data-out-ret1": "F32"
-          },
-          "inputTypes": {
-            "arg0": "F32"
-          },
-          "outputTypes": {
-            "ret1": "F32"
-          },
           "execIn": {
             "id": "exec-in",
             "label": ""
@@ -120,7 +116,20 @@
               "id": "exec-out-0",
               "label": ""
             }
-          ]
+          ],
+          "pinnedTypes": {
+            "data-out-ret1": "F32"
+          },
+          "inputTypes": {
+            "arg0": [
+              "F32"
+            ]
+          },
+          "outputTypes": {
+            "ret1": [
+              "F32"
+            ]
+          }
         }
       },
       {
@@ -133,17 +142,21 @@
         "data": {
           "fullName": "arith.uitofp",
           "attributes": {},
+          "execOuts": [],
+          "regionPins": [],
           "pinnedTypes": {
             "data-out-out": "F32"
           },
           "inputTypes": {
-            "in": "I32"
+            "in": [
+              "I32"
+            ]
           },
           "outputTypes": {
-            "out": "F32"
-          },
-          "execOuts": [],
-          "regionPins": []
+            "out": [
+              "F32"
+            ]
+          }
         }
       },
       {
@@ -156,15 +169,21 @@
         "data": {
           "fullName": "arith.addi",
           "attributes": {},
+          "execOuts": [],
+          "regionPins": [],
           "inputTypes": {
-            "lhs": "I32",
-            "rhs": "I32"
+            "lhs": [
+              "I32"
+            ],
+            "rhs": [
+              "I32"
+            ]
           },
           "outputTypes": {
-            "result": "I32"
-          },
-          "execOuts": [],
-          "regionPins": []
+            "result": [
+              "I32"
+            ]
+          }
         }
       },
       {
@@ -177,14 +196,18 @@
         "data": {
           "fullName": "arith.fptoui",
           "attributes": {},
+          "execOuts": [],
+          "regionPins": [],
           "inputTypes": {
-            "in": "F32"
+            "in": [
+              "F32"
+            ]
           },
           "outputTypes": {
-            "out": "I32"
-          },
-          "execOuts": [],
-          "regionPins": []
+            "out": [
+              "I32"
+            ]
+          }
         }
       }
     ],

@@ -2,7 +2,7 @@
  * 端到端传播测试：验证 Return I32 → constant 的传播
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { buildPropagationGraph, propagateTypes, extractTypeSources, applyPropagationResult } from './propagator';
+import { buildPropagationGraph, propagateTypes, extractTypeSources, applyPropagationResult, extractPortConstraints } from './propagator';
 import type { BlueprintNodeData, FunctionReturnData, OperationDef } from '../../types';
 import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
@@ -11,7 +11,14 @@ import type { ConstraintDef } from '../../stores/typeConstraintStore';
 function buildMockConstraintDefs(): Map<string, ConstraintDef> {
   const defs = new Map<string, ConstraintDef>();
   defs.set('I32', { name: 'I32', summary: '', rule: { kind: 'type', name: 'I32' } });
-  defs.set('TypedAttrInterface', { name: 'TypedAttrInterface', summary: '', rule: null });
+  // TypedAttrInterface 是一个接口约束，包含所有 BuildableType
+  // 在实际系统中，它会展开为所有具体类型
+  // 这里简化为包含 I32
+  defs.set('TypedAttrInterface', { 
+    name: 'TypedAttrInterface', 
+    summary: '', 
+    rule: { kind: 'oneOf', types: ['I32'] } 
+  });
   return defs;
 }
 
@@ -26,6 +33,8 @@ beforeAll(() => {
 
 describe('Return I32 → constant propagation', () => {
   it('should propagate I32 from Return to connected constant', () => {
+    const { getConstraintElements } = useTypeConstraintStore.getState();
+    
     // 1. 创建 Return 节点（main 函数）
     const returnNode: EditorNode = {
       id: 'main-return',
@@ -72,7 +81,7 @@ describe('Return I32 → constant propagation', () => {
         operation: constantOp,
         attributes: {},
         inputTypes: {},
-        outputTypes: { result: 'TypedAttrInterface' },
+        outputTypes: { result: ['TypedAttrInterface'] },
         pinnedTypes: {},
         execOuts: [],
         regionPins: [],
@@ -93,17 +102,18 @@ describe('Return I32 → constant propagation', () => {
     // 4. 执行传播
     const graph = buildPropagationGraph(nodes, edges);
     const sources = extractTypeSources(nodes);
-    const result = propagateTypes(graph, sources);
+    const portConstraints = extractPortConstraints(nodes);
+    const result = propagateTypes(graph, sources, portConstraints, getConstraintElements);
 
     // 5. 验证传播结果
-    expect(result.types.get('main-return:data-in:result')).toBe('I32');
-    expect(result.types.get('const1:data-out:result')).toBe('I32');
+    expect(result.effectiveSets.get('main-return:data-in:result')).toEqual(['I32']);
+    expect(result.effectiveSets.get('const1:data-out:result')).toEqual(['I32']);
 
     // 6. 应用传播结果
     const updatedNodes = applyPropagationResult(nodes, result);
     const updatedConstant = updatedNodes.find(n => n.id === 'const1');
     const constantData = updatedConstant?.data as BlueprintNodeData;
 
-    expect(constantData.outputTypes?.result).toBe('I32');
+    expect(constantData.outputTypes?.result).toEqual(['I32']);
   });
 });

@@ -104,23 +104,37 @@ export interface RegionPinConfig {
 }
 
 /**
+ * 端口状态（用于 UI 渲染）
+ */
+export interface PortState {
+  /** 当前显示的类型 */
+  displayType: string;
+  /** 原始约束 */
+  constraint: string;
+  /** 可选的约束名列表（用户可以选择的类型） */
+  options: string[];
+  /** 是否可编辑 */
+  canEdit: boolean;
+}
+
+/**
  * 类型传播相关数据（所有节点类型共享）
  * 
  * 所有节点类型（Operation、Entry、Return、Call）都使用相同的字段：
  * - pinnedTypes: 用户显式选择的类型（持久化）
- * - inputTypes: 输入端口的传播结果
- * - outputTypes: 输出端口的传播结果
- * - narrowedConstraints: 连接导致的约束收窄
+ * - inputTypes: 输入端口的有效集合（持久化）
+ * - outputTypes: 输出端口的有效集合（持久化）
+ * - portStates: 端口 UI 状态（options、canEdit，不持久化）
  */
 export interface TypePropagationData {
   /** 用户显式选择的类型，键为端口 handleId */
   pinnedTypes?: Record<string, string>;
-  /** 输入端口的传播结果，键为端口名 */
-  inputTypes?: Record<string, string>;
-  /** 输出端口的传播结果，键为端口名 */
-  outputTypes?: Record<string, string>;
-  /** 连接导致的约束收窄，键为端口名 */
-  narrowedConstraints?: Record<string, string>;
+  /** 输入端口的有效集合，键为端口名，值为具体类型数组 */
+  inputTypes?: Record<string, string[]>;
+  /** 输出端口的有效集合，键为端口名，值为具体类型数组 */
+  outputTypes?: Record<string, string[]>;
+  /** 端口 UI 状态（options、canEdit），键为端口 handleId，不持久化 */
+  portStates?: Record<string, PortState>;
 }
 
 // 节点类型
@@ -134,10 +148,10 @@ export interface StoredBlueprintNodeData {
   attributes: Record<string, string>;
   /** 用户显式选择的类型（pinned）- 传播的源 */
   pinnedTypes?: Record<string, string>;
-  /** 传播后的输入类型（用于快速还原） */
-  inputTypes?: Record<string, string>;
-  /** 传播后的输出类型（用于快速还原） */
-  outputTypes?: Record<string, string>;
+  /** 输入端口的有效集合 */
+  inputTypes?: Record<string, string[]>;
+  /** 输出端口的有效集合 */
+  outputTypes?: Record<string, string[]>;
   /** Variadic 端口实例数 */
   variadicCounts?: Record<string, number>;
   execIn?: ExecPin;
@@ -330,7 +344,7 @@ export interface FunctionReturnData extends TypePropagationData {
 
 /**
  * 存储格式的 FunctionEntryData（只保存必要字段）
- * functionId、functionName、outputs、outputTypes、narrowedConstraints 不保存，从 FunctionDef 派生
+ * functionId、functionName、outputs 不保存，从 FunctionDef 派生
  */
 export interface StoredFunctionEntryData {
   execOut: ExecPin;
@@ -340,7 +354,7 @@ export interface StoredFunctionEntryData {
 
 /**
  * 存储格式的 FunctionReturnData（只保存必要字段）
- * functionId、functionName、inputs、inputTypes、narrowedConstraints 不保存，从 FunctionDef 派生
+ * functionId、functionName、inputs 不保存，从 FunctionDef 派生
  */
 export interface StoredFunctionReturnData {
   branchName: string;
@@ -351,14 +365,14 @@ export interface StoredFunctionReturnData {
 
 /**
  * 存储格式的 FunctionCallData（只保存必要字段）
- * inputs、outputs、narrowedConstraints 不保存，从 FunctionDef 派生
+ * inputs、outputs 不保存，从 FunctionDef 派生
  */
 export interface StoredFunctionCallData {
   functionId: string;
   functionName: string;
   pinnedTypes?: Record<string, string>;
-  inputTypes?: Record<string, string>;
-  outputTypes?: Record<string, string>;
+  inputTypes?: Record<string, string[]>;
+  outputTypes?: Record<string, string[]>;
   execIn: ExecPin;
   execOuts: ExecPin[];
 }

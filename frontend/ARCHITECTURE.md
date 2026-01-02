@@ -151,13 +151,9 @@ const fontSize = TEXT.titleSize;  // 14
 
 ### 类型颜色系统
 
-类型颜色由 `typeColorMapping.ts` 计算，支持：
+类型颜色由 `typeColorMapping.ts` 计算，颜色值从 `tokens.type.*` 读取。
 
-1. **基础类型匹配**：`I32` → 绿色，`F32` → 蓝色
-2. **复合类型展开**：`SignlessIntegerLike` → 展开为 `{I1, I8, I16, ...}` 后颜色平均
-3. **颜色缓存**：`typeColorCache.ts` 提供带缓存的 `getTypeColor()`
-
-颜色值从 `tokens.type.*` 读取，确保全局一致。
+详见"类型系统"章节的"引脚颜色"部分。
 
 ## 类型系统
 
@@ -181,38 +177,114 @@ const fontSize = TEXT.titleSize;  // 14
 - `SignlessIntegerLike` ∩ `I32` = `{I32}` → 可连接
 - `SignlessIntegerLike` ∩ `F32` = `∅` → 不可连接
 
-### 类型相关变量
+### 数据存储
 
-| 变量 | 位置 | 持久化 | 说明 |
-|------|------|--------|------|
-| `typeConstraint` | `OperationDef.arguments[].typeConstraint` | ❌ | 原始约束，来自方言 JSON |
-| `pinnedTypes` | `node.data.pinnedTypes` | ✅ | 用户显式选择的类型（传播源） |
-| `inputTypes` | `node.data.inputTypes` | ✅* | 输入端口传播结果 |
-| `outputTypes` | `node.data.outputTypes` | ✅* | 输出端口传播结果 |
-| `narrowedConstraints` | `node.data.narrowedConstraints` | ❌ | 连接导致的约束收窄 |
-| `constraint` | `FunctionDef.parameters[].constraint` | ✅ | 函数签名类型（权威数据源） |
+| 数据 | 存储位置 | 持久化 | 说明 |
+|------|----------|--------|------|
+| 原始约束 | `OperationDef.arguments[].typeConstraint` | ❌ | 来自方言 JSON |
+| 用户选择 | `node.data.pinnedTypes` | ✅ | 用户显式 pin 的类型（传播源） |
+| 有效集合 | `node.data.inputTypes/outputTypes` | ✅* | 传播后的类型集合 |
+| 端口状态 | `node.data.portStates` | ❌ | UI 状态（displayType、options、canEdit） |
+| 函数签名 | `FunctionDef.parameters[].constraint` | ✅ | 权威数据源，后端读取 |
 
 *Operation 节点保存 inputTypes/outputTypes 用于快速还原，Entry/Return 节点不保存（从 FunctionDef 派生）
+
+### 端口状态（PortState）
+
+每个端口的 UI 状态统一存储在 `node.data.portStates[handleId]`：
+
+```typescript
+interface PortState {
+  displayType: string;      // 显示的类型名称
+  constraint: string;       // 原始约束名称
+  options: string[];        // 可选类型列表
+  canEdit: boolean;         // 是否可编辑
+}
+```
+
+**数据源统一**：所有渲染器（ReactFlow、VueFlow、Canvas）都从 `node.data.portStates` 读取端口状态。
 
 ### 类型显示逻辑
 
 ```typescript
-displayType = pinnedTypes[port] ?? propagatedType ?? originalConstraint
+displayType = portStates[handleId]?.displayType 
+           ?? pinnedTypes[port] 
+           ?? effectiveSet[0] 
+           ?? originalConstraint
 ```
 
-1. 优先显示用户 pin 的类型
-2. 其次显示传播结果
-3. 最后显示原始约束
+### 可编辑性规则
+
+```typescript
+isExternallyDetermined = propagatedType !== null && !isPinned
+canEdit = options.length > 1 && !isExternallyDetermined
+```
+
+| 场景 | isPinned | propagatedType | canEdit |
+|------|----------|----------------|---------|
+| 无任何类型 | false | null | options > 1 |
+| 自己 pin 了 | true | 有(自己传播) | options > 1 |
+| 被别人传播 | false | 有 | false |
+
+- **被传播的端口不可编辑**：类型由上游决定
+- **自己 pin 的类型可修改**：不算"外部决定"
 
 ### 类型传播
 
 基于数据流模型（非 CSP）：
 
 ```
-用户选择（pinnedTypes）→ 沿 Trait 和连线传播 → inputTypes/outputTypes
+用户选择（pinnedTypes）
+    ↓
+沿 Trait 和连线传播
+    ↓
+计算有效集合（inputTypes/outputTypes）
+    ↓
+计算端口状态（portStates）
+    ↓
+更新 node.data
 ```
 
-传播结果仍是约束（集合），不是具体类型。
+**传播触发时机**：
+- 用户选择类型（pinnedTypes 变化）
+- 连线变化（添加/删除边）
+- 函数切换（加载新图）
+
+**传播结果**：
+- `effectiveSets`：每个端口的有效类型集合
+- `portStates`：每个端口的 UI 状态
+- `invalidPins`：类型冲突的端口
+
+### Traits 支持
+
+| Trait | 传播规则 | 状态 |
+|-------|----------|------|
+| `SameOperandsAndResultType` | 所有端口双向传播 | ✅ |
+| `SameTypeOperands` | 所有输入端口双向传播 | 未来 |
+| 函数级 `SameType` | 指定端口双向传播 | ✅ |
+
+### 可选集计算
+
+**核心问题**：用户修改自己之前选择的类型时，可选集不应受自己上次选择的影响。
+
+**解决方案**：`computeOptionsExcludingSelf()`
+1. 排除自己作为类型源
+2. 重新执行一次传播（"无 A 世界"）
+3. 用邻居在"无 A 世界"中的类型收窄可选集
+4. 可选集 = 原始约束 ∩ 邻居有效类型
+
+### 引脚颜色
+
+引脚颜色根据 `portStates[handleId].displayType` 计算：
+
+```typescript
+const color = getTypeColor(portState?.displayType ?? originalConstraint);
+```
+
+颜色计算支持：
+1. **基础类型**：`I32` → 绿色，`F32` → 蓝色
+2. **复合类型**：`SignlessIntegerLike` → 展开后颜色平均
+3. **缓存**：`typeColorCache.ts` 提供带缓存的 `getTypeColor()`
 
 ## 渲染器架构
 
@@ -427,9 +499,6 @@ interface INodeEditor {
   
   /** 连接请求回调（用户尝试创建连接） */
   onConnect: ((request: ConnectionRequest) => void) | null;
-  
-  /** 节点双击回调 */
-  onNodeDoubleClick: ((nodeId: string) => void) | null;
   
   /** 边双击回调 */
   onEdgeDoubleClick: ((edgeId: string) => void) | null;

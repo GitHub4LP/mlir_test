@@ -19,7 +19,7 @@ import { PortRef } from './port';
 /**
  * 统一的 displayType 计算逻辑
  * 
- * 优先级：pinnedTypes > propagatedTypes > narrowedConstraints > 原始约束
+ * 优先级：portStates > pinnedTypes > 有效集合第一个元素 > 原始约束
  * 
  * 所有节点类型都使用这个函数，不要在组件中重复定义！
  */
@@ -27,27 +27,34 @@ export function getDisplayType(
   pin: DataPin,
   data: TypePropagationData
 ): string {
-  const { pinnedTypes = {}, inputTypes = {}, outputTypes = {}, narrowedConstraints = {} } = data;
+  const { pinnedTypes = {}, inputTypes = {}, outputTypes = {}, portStates = {} } = data;
   
-  // 1. 用户显式选择（pinnedTypes 键是 handleId）
+  // 1. 从 portStates 获取（如果有）
+  if (portStates[pin.id]?.displayType) {
+    return portStates[pin.id].displayType;
+  }
+  
+  // 2. 用户显式选择（pinnedTypes 键是 handleId）
   if (pinnedTypes[pin.id]) {
     return pinnedTypes[pin.id];
   }
   
-  // 2. 传播结果（inputTypes/outputTypes 键是端口名）
+  // 3. 从有效集合获取（inputTypes/outputTypes 键是端口名，值是 string[]）
   const parsed = PortRef.parseHandleId(pin.id);
   const portName = parsed?.name || '';
   
   if (parsed?.kind === 'data-in' && inputTypes[portName]) {
-    return inputTypes[portName];
+    const effectiveSet = inputTypes[portName];
+    if (Array.isArray(effectiveSet) && effectiveSet.length > 0) {
+      // 单一元素直接显示，多元素显示第一个（实际应该由 portStates 提供）
+      return effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0];
+    }
   }
   if (parsed?.kind === 'data-out' && outputTypes[portName]) {
-    return outputTypes[portName];
-  }
-  
-  // 3. 收窄后的约束
-  if (narrowedConstraints[portName]) {
-    return narrowedConstraints[portName];
+    const effectiveSet = outputTypes[portName];
+    if (Array.isArray(effectiveSet) && effectiveSet.length > 0) {
+      return effectiveSet.length === 1 ? effectiveSet[0] : effectiveSet[0];
+    }
   }
   
   // 4. 原始约束
@@ -70,6 +77,8 @@ export interface TypeSelectorRenderParams {
   currentFunction: FunctionDef | undefined;
   /** 获取约束映射到的类型约束集合元素 */
   getConstraintElements: (constraint: string) => string[];
+  /** 找出所有元素集合是有效集合子集的约束名 */
+  findSubsetConstraints: (E: string[]) => string[];
   /** 类型选择回调 */
   onTypeSelect: (portId: string, type: string, originalConstraint: string) => void;
 }
@@ -88,22 +97,35 @@ export function computeTypeSelectorState(
   canEdit: boolean;
   onSelect: (type: string) => void;
 } {
-  const { nodeId, data, nodes, edges, currentFunction, getConstraintElements, onTypeSelect } = params;
+  const { nodeId, data, nodes, edges, currentFunction, getConstraintElements, findSubsetConstraints, onTypeSelect } = params;
+  const { portStates = {} } = data;
 
   // 1. 计算显示类型（统一逻辑）
   const displayType = getDisplayType(pin, data);
 
-  // 2. 计算可选集和 canEdit
+  // 2. 优先从 portStates 获取 options 和 canEdit
+  const portState = portStates[pin.id];
+  if (portState) {
+    return {
+      displayType: portState.displayType,
+      options: portState.options,
+      canEdit: portState.canEdit,
+      onSelect: (type: string) => onTypeSelect(pin.id, type, pin.typeConstraint),
+    };
+  }
+
+  // 3. 否则计算可选集和 canEdit
   const { options, canEdit } = computeTypeSelectionState(
     nodeId,
     pin.id,
     nodes,
     edges,
     currentFunction,
-    getConstraintElements
+    getConstraintElements,
+    findSubsetConstraints
   );
 
-  // 3. 构造回调
+  // 4. 构造回调
   const onSelect = (type: string) => onTypeSelect(pin.id, type, pin.typeConstraint);
 
   return { displayType, options, canEdit, onSelect };

@@ -40,7 +40,6 @@ export class VueFlowNodeEditor implements INodeEditor {
   onSelectionChange: ((selection: EditorSelection) => void) | null = null;
   onViewportChange: ((viewport: EditorViewport) => void) | null = null;
   onConnect: ((request: ConnectionRequest) => void) | null = null;
-  onNodeDoubleClick: ((nodeId: string) => void) | null = null;
   onEdgeDoubleClick: ((edgeId: string) => void) | null = null;
   onDrop: ((x: number, y: number, dataTransfer: DataTransfer) => void) | null = null;
   onDeleteRequest: ((nodeIds: string[], edgeIds: string[]) => void) | null = null;
@@ -166,7 +165,6 @@ export class VueFlowNodeEditor implements INodeEditor {
         onSelectionChange={this.onSelectionChange ?? undefined}
         onViewportChange={this.onViewportChange ?? undefined}
         onConnect={this.onConnect ?? undefined}
-        onNodeDoubleClick={this.onNodeDoubleClick ?? undefined}
         onEdgeDoubleClick={this.onEdgeDoubleClick ?? undefined}
         onDrop={this.onDrop ?? undefined}
         onDeleteRequest={this.onDeleteRequest ?? undefined}

@@ -17,6 +17,7 @@ import type {
   FunctionReturnData,
   FunctionCallData,
   ArgumentDef,
+  PortState,
 } from '../../../types';
 import { layoutConfig } from './LayoutConfig';
 
@@ -164,13 +165,32 @@ function getNodeSubtitle(node: GraphNode): string | undefined {
 
 /**
  * 获取显示的类型约束
+ * 
+ * 优先级：
+ * 1. portStates[handleId].displayType（类型传播系统计算的结果）
+ * 2. types[portName][0]（旧的有效集合格式，向后兼容）
+ * 3. originalConstraint（原始约束）
  */
 function getDisplayType(
   portName: string,
   originalConstraint: string,
-  types: Record<string, string> | undefined
+  types: Record<string, string[]> | undefined,
+  portStates: Record<string, PortState> | undefined,
+  handleId: string
 ): string {
-  return types?.[portName] || originalConstraint;
+  // 1. 优先从 portStates 获取（新的统一数据源）
+  const portState = portStates?.[handleId];
+  if (portState?.displayType) {
+    return portState.displayType;
+  }
+  
+  // 2. 从旧的 types 格式获取（向后兼容）
+  const effectiveSet = types?.[portName];
+  if (effectiveSet && effectiveSet.length > 0) {
+    return effectiveSet[0];
+  }
+  
+  return originalConstraint;
 }
 
 // ============================================================================
@@ -184,6 +204,7 @@ function collectOperationPins(data: BlueprintNodeData): { inputs: PinInfo[]; out
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
   const op = data.operation;
+  const portStates = data.portStates;
 
   // 输入：execIn
   if (data.execIn) {
@@ -208,16 +229,17 @@ function collectOperationPins(data: BlueprintNodeData): { inputs: PinInfo[]; out
         inputs.push({
           handleId,
           label: count > 1 ? `${operand.name}[${i}]` : operand.name,
-          typeConstraint: getDisplayType(portName, operand.typeConstraint, data.inputTypes),
+          typeConstraint: getDisplayType(portName, operand.typeConstraint, data.inputTypes, portStates, handleId),
           kind: 'data',
           isOutput: false,
         });
       }
     } else {
+      const handleId = `data-in-${operand.name}`;
       inputs.push({
-        handleId: `data-in-${operand.name}`,
+        handleId,
         label: operand.name,
-        typeConstraint: getDisplayType(operand.name, operand.typeConstraint, data.inputTypes),
+        typeConstraint: getDisplayType(operand.name, operand.typeConstraint, data.inputTypes, portStates, handleId),
         kind: 'data',
         isOutput: false,
       });
@@ -249,16 +271,17 @@ function collectOperationPins(data: BlueprintNodeData): { inputs: PinInfo[]; out
         outputs.push({
           handleId,
           label: count > 1 ? `${resultName}[${j}]` : resultName,
-          typeConstraint: getDisplayType(portName, result.typeConstraint, data.outputTypes),
+          typeConstraint: getDisplayType(portName, result.typeConstraint, data.outputTypes, portStates, handleId),
           kind: 'data',
           isOutput: true,
         });
       }
     } else {
+      const handleId = `data-out-${resultName}`;
       outputs.push({
-        handleId: `data-out-${resultName}`,
+        handleId,
         label: resultName,
-        typeConstraint: getDisplayType(resultName, result.typeConstraint, data.outputTypes),
+        typeConstraint: getDisplayType(resultName, result.typeConstraint, data.outputTypes, portStates, handleId),
         kind: 'data',
         isOutput: true,
       });
@@ -303,6 +326,7 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
   const isMain = data.isMain;
+  const portStates = data.portStates;
 
   // 输出：execOut
   outputs.push({
@@ -313,16 +337,17 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
     isOutput: true,
   });
 
-  // 输出：parameters（非 main 函数可编辑和删除）
+  // 输出：parameters（非 main 函数可删除，但名称编辑移到属性面板）
   let paramIndex = 0;
   for (const param of data.outputs) {
+    const handleId = param.id || `data-out-${param.name}`;
     outputs.push({
-      handleId: param.id || `data-out-${param.name}`,
+      handleId,
       label: param.name,
-      typeConstraint: getDisplayType(param.name, param.typeConstraint, data.outputTypes),
+      typeConstraint: getDisplayType(param.name, param.typeConstraint, data.outputTypes, portStates, handleId),
       kind: 'data',
       isOutput: true,
-      editable: !isMain,
+      editable: false,  // 名称编辑移到属性面板
       removable: !isMain,
       originalName: param.name,
       index: paramIndex,
@@ -340,6 +365,7 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
   const isMain = data.isMain;
+  const portStates = data.portStates;
 
   // 输入：execIn
   inputs.push({
@@ -350,16 +376,17 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
     isOutput: false,
   });
 
-  // 输入：return values（非 main 函数可编辑和删除）
+  // 输入：return values（非 main 函数可删除，但名称编辑移到属性面板）
   let returnIndex = 0;
   for (const input of data.inputs) {
+    const handleId = input.id || `data-in-${input.name}`;
     inputs.push({
-      handleId: input.id || `data-in-${input.name}`,
+      handleId,
       label: input.name,
-      typeConstraint: getDisplayType(input.name, input.typeConstraint, data.inputTypes),
+      typeConstraint: getDisplayType(input.name, input.typeConstraint, data.inputTypes, portStates, handleId),
       kind: 'data',
       isOutput: false,
-      editable: !isMain,
+      editable: false,  // 名称编辑移到属性面板
       removable: !isMain,
       originalName: input.name,
       index: returnIndex,
@@ -376,6 +403,7 @@ function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outpu
 function collectCallPins(data: FunctionCallData): { inputs: PinInfo[]; outputs: PinInfo[] } {
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
+  const portStates = data.portStates;
 
   // 输入：execIn
   inputs.push({
@@ -388,10 +416,11 @@ function collectCallPins(data: FunctionCallData): { inputs: PinInfo[]; outputs: 
 
   // 输入：parameters
   for (const input of data.inputs) {
+    const handleId = input.id || `data-in-${input.name}`;
     inputs.push({
-      handleId: input.id || `data-in-${input.name}`,
+      handleId,
       label: input.name,
-      typeConstraint: getDisplayType(input.name, input.typeConstraint, data.inputTypes),
+      typeConstraint: getDisplayType(input.name, input.typeConstraint, data.inputTypes, portStates, handleId),
       kind: 'data',
       isOutput: false,
     });
@@ -410,10 +439,11 @@ function collectCallPins(data: FunctionCallData): { inputs: PinInfo[]; outputs: 
 
   // 输出：return values
   for (const output of data.outputs) {
+    const handleId = output.id || `data-out-${output.name}`;
     outputs.push({
-      handleId: output.id || `data-out-${output.name}`,
+      handleId,
       label: output.name,
-      typeConstraint: getDisplayType(output.name, output.typeConstraint, data.outputTypes),
+      typeConstraint: getDisplayType(output.name, output.typeConstraint, data.outputTypes, portStates, handleId),
       kind: 'data',
       isOutput: true,
     });
@@ -968,8 +998,18 @@ function buildAttrWrapper(node: GraphNode, config: LayoutConfig, hasBottomRadius
 
   // 构建 value 列
   const valueChildren: LayoutNode[] = attrs.map((attr: ArgumentDef) => {
-    const value = data.attributes[attr.name] || '';
-    return buildTextNode('attrValue', value || '(empty)', config.text.muted);
+    const value = data.attributes[attr.name];
+    // 将值转换为显示字符串
+    let displayValue: string;
+    if (value === undefined || value === null || value === '') {
+      displayValue = '(empty)';
+    } else if (typeof value === 'object' && value !== null) {
+      // enum 对象：显示 str 字段
+      displayValue = (value as { str?: string }).str ?? JSON.stringify(value);
+    } else {
+      displayValue = String(value);
+    }
+    return buildTextNode('attrValue', displayValue, config.text.muted);
   });
 
   // attrContent（有背景色）

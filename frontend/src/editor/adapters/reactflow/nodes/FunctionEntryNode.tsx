@@ -10,7 +10,7 @@ import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import type { FunctionEntryData, FunctionTrait, GraphNode } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
-import { useReactStore, projectStore, typeConstraintStore, usePortStateStore } from '../../../../stores';
+import { useReactStore, projectStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
 import { FunctionTraitsEditor } from '../../../../components/FunctionTraitsEditor';
 import { EditableName } from '../../../../components/shared';
@@ -37,7 +37,7 @@ export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
 
 export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, selected }: FunctionEntryNodeProps) {
-  const { functionId, isMain, outputTypes = {} } = data;
+  const { functionId, isMain, portStates = {} } = data;
   
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<FunctionEntryData>(id);
@@ -47,10 +47,6 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const updateParameter = useReactStore(projectStore, state => state.updateParameter);
   const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
   const setFunctionTraits = useReactStore(projectStore, state => state.setFunctionTraits);
-  const getConstraintElements = useReactStore(typeConstraintStore, state => state.getConstraintElements);
-  
-  // 从 portStateStore 获取端口状态
-  const getPortState = usePortStateStore(state => state.getPortState);
 
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
@@ -123,7 +119,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
       }
     }
     return tree;
-  }, [graphNode, isMain]);
+  }, [graphNode]);
 
   // Handle 渲染回调
   const renderHandle = useCallback((config: HandleRenderConfig) => {
@@ -150,16 +146,12 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
 
   // TypeSelector 渲染回调
   const renderTypeSelector = useCallback((config: TypeSelectorRenderConfig) => {
-    // 从 data 中获取显示类型
-    const displayType = outputTypes[config.pinId] || config.typeConstraint;
-    
-    // 从 portStateStore 读取端口状态
-    const portState = getPortState(id, config.pinId);
+    // 从 data.portStates 读取端口状态（包含 displayType、options、canEdit）
+    const portState = portStates[config.pinId];
+    const displayType = portState?.displayType ?? config.typeConstraint;
     const canEdit = portState?.canEdit ?? false;
-    
-    // 计算可选类型
-    const constraint = portState?.constraint ?? config.typeConstraint;
-    const options = getConstraintElements(constraint);
+    // options 已经是排除自己后的可选集，直接使用
+    const options = portState?.options ?? [];
 
     return (
       <UnifiedTypeSelector
@@ -170,7 +162,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
         disabled={!canEdit}
       />
     );
-  }, [id, outputTypes, getPortState, getConstraintElements, handleTypeChange]);
+  }, [portStates, handleTypeChange]);
 
   // EditableName 渲染回调
   const renderEditableName = useCallback((config: { value: string; onChange: (newValue: string) => void }) => {

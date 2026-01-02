@@ -2,7 +2,7 @@
  * 测试：Return I32 → addi 的传播
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { buildPropagationGraph, propagateTypes, extractTypeSources } from './propagator';
+import { buildPropagationGraph, propagateTypes, extractTypeSources, extractPortConstraints } from './propagator';
 import type { BlueprintNodeData, FunctionReturnData, OperationDef } from '../../types';
 import type { EditorNode, EditorEdge } from '../../editor/types';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
@@ -27,6 +27,8 @@ beforeAll(() => {
 
 describe('Return I32 → addi propagation', () => {
   it('should propagate I32 from Return to connected addi', () => {
+    const { getConstraintElements } = useTypeConstraintStore.getState();
+    
     // 1. Return 节点
     const returnNode: EditorNode = {
       id: 'main-return',
@@ -75,8 +77,8 @@ describe('Return I32 → addi propagation', () => {
       data: {
         operation: addiOp,
         attributes: {},
-        inputTypes: { lhs: 'SignlessIntegerLike', rhs: 'SignlessIntegerLike' },
-        outputTypes: { result: 'SignlessIntegerLike' },
+        inputTypes: { lhs: ['SignlessIntegerLike'], rhs: ['SignlessIntegerLike'] },
+        outputTypes: { result: ['SignlessIntegerLike'] },
         pinnedTypes: {},
         execOuts: [],
         regionPins: [],
@@ -97,20 +99,21 @@ describe('Return I32 → addi propagation', () => {
     // 4. 执行传播
     const graph = buildPropagationGraph(nodes, edges);
     const sources = extractTypeSources(nodes);
-    const result = propagateTypes(graph, sources);
+    const portConstraints = extractPortConstraints(nodes);
+    const result = propagateTypes(graph, sources, portConstraints, getConstraintElements);
 
     console.log('=== addi test ===');
     console.log('Graph:', [...graph.entries()].map(([k, v]) => `${k} -> [${[...v].join(', ')}]`));
     console.log('Sources:', sources.map(s => `${s.portRef.key} = ${s.type}`));
-    console.log('Result:', [...result.types.entries()]);
+    console.log('Result:', [...result.effectiveSets.entries()]);
 
     // 5. 验证
     // Return 的 I32 应该传播到 addi 的 result
-    expect(result.types.get('main-return:data-in:result')).toBe('I32');
-    expect(result.types.get('addi1:data-out:result')).toBe('I32');
+    expect(result.effectiveSets.get('main-return:data-in:result')).toEqual(['I32']);
+    expect(result.effectiveSets.get('addi1:data-out:result')).toEqual(['I32']);
     
-    // SameOperandsAndResultType trait 应该让 lhs 和 rhs 也变成 I32
-    expect(result.types.get('addi1:data-in:lhs')).toBe('I32');
-    expect(result.types.get('addi1:data-in:rhs')).toBe('I32');
+    // SameOperandsAndResultType trait 应该让 lhs 和 rhs 也变成 [I32]
+    expect(result.effectiveSets.get('addi1:data-in:lhs')).toEqual(['I32']);
+    expect(result.effectiveSets.get('addi1:data-in:rhs')).toEqual(['I32']);
   });
 });
