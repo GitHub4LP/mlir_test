@@ -135,6 +135,10 @@ def parse_cpred_to_rule(expr: str) -> dict | None:
     if "isa<::mlir::BFloat16Type>" in expr:
         return {"kind": "type", "name": "BF16"}
     
+    # TF32 浮点
+    if "isa<::mlir::FloatTF32Type>" in expr:
+        return {"kind": "type", "name": "TF32"}
+    
     # 特殊浮点 (Float8E5M2Type 等)
     m = re.search(r"isa<::mlir::(Float\d+E\d+M\d+\w*)Type>", expr)
     if m:
