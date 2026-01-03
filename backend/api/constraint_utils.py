@@ -92,10 +92,17 @@ def parse_cpred_to_rule(expr: str) -> dict | None:
         t = f"UI{m.group(1)}"
         return {"kind": "type", "name": t} if t in buildable else None
     
+    # isInteger(N) 匹配任意符号性的 N 位整数：I{N}, SI{N}, UI{N}
     m = re.search(r"isInteger\((\d+)\)", expr)
     if m:
-        t = f"I{m.group(1)}"
-        return {"kind": "type", "name": t} if t in buildable else None
+        width = m.group(1)
+        types = [f"{prefix}{width}" for prefix in ["I", "SI", "UI"] 
+                 if f"{prefix}{width}" in buildable]
+        if len(types) == 0:
+            return None
+        if len(types) == 1:
+            return {"kind": "type", "name": types[0]}
+        return {"kind": "oneOf", "types": types}
     
     # 通用整数
     if "isSignlessInteger()" in expr:
