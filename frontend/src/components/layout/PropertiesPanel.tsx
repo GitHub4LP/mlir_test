@@ -22,6 +22,7 @@ import { UnifiedTypeSelector } from '../UnifiedTypeSelector';
 import { useEditorStore } from '../../core/stores/editorStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { useTypeChangeHandler } from '../../hooks';
+import { generateParameterName, generateReturnTypeName } from '../../services/parameterService';
 
 // ============ 可折叠区域组件 ============
 interface CollapsibleSectionProps {
@@ -500,9 +501,10 @@ function EntryNodePanel({ node, data }: EntryNodePanelProps) {
   
   // 参数操作
   const handleAddParameter = useCallback(() => {
-    const newName = `param${parameters.length}`;
+    const existingNames = parameters.map(p => p.name);
+    const newName = generateParameterName(existingNames);
     addParameter(functionId, { name: newName, constraint: 'AnyType' });
-  }, [functionId, parameters.length, addParameter]);
+  }, [functionId, parameters, addParameter]);
   
   const handleRemoveParameter = useCallback((name: string) => {
     removeParameter(functionId, name);
@@ -591,9 +593,10 @@ function ReturnNodePanel({ node, data }: ReturnNodePanelProps) {
   
   // 返回值操作
   const handleAddReturnType = useCallback(() => {
-    const newName = `result${returnTypes.length}`;
+    const existingNames = returnTypes.map(r => r.name);
+    const newName = generateReturnTypeName(existingNames);
     addReturnType(functionId, { name: newName, constraint: 'AnyType' });
-  }, [functionId, returnTypes.length, addReturnType]);
+  }, [functionId, returnTypes, addReturnType]);
   
   const handleRemoveReturnType = useCallback((name: string) => {
     removeReturnType(functionId, name);

@@ -202,8 +202,9 @@ function renderLayoutNode(
   // TypeLabel 节点
   if (type === 'typeLabel' && interactive) {
     if (renderers?.typeSelector && interactive.typeConstraint) {
+      // 使用自定义渲染器时，外层容器透明，样式由 UnifiedTypeSelector 内部控制
       return (
-        <div key={key} className={className} style={{ ...baseStyle, overflow: 'visible' }}>
+        <div key={key} className={className} style={{ overflow: 'visible' }}>
           {renderers.typeSelector({
             pinId: extractPinId(interactive.id),
             typeConstraint: interactive.typeConstraint,
@@ -213,7 +214,7 @@ function renderLayoutNode(
       );
     }
 
-    // 默认渲染
+    // 默认渲染（Canvas 等不使用自定义渲染器的场景）
     return (
       <div key={key} className={className} style={baseStyle}>
         <span style={{ fontSize: 10, color: '#ffffff', lineHeight: 1 }}>{text?.content || ''}</span>

@@ -56,12 +56,22 @@ def _load_dialect_data() -> dict[str, dict]:
 
 @lru_cache(maxsize=1)
 def _build_all_constraint_defs() -> list[ConstraintDef]:
-    """只构建内置约束定义（不包含方言约束）"""
+    """
+    只构建内置约束定义（不包含方言约束）
+    
+    排除 TypeDef：
+    - TypeDef 是类型定义（用于生成 C++ 类型类），不是用户可选的约束
+    - 对应的 BuildableType（如 F32）已经提供了相同的功能
+    - 例如：排除 Builtin_Float32，保留 F32
+    """
     result: list[ConstraintDef] = []
     seen: set[str] = set()
     
     builtin_data = load_builtin_data()
     buildable = set(get_buildable_types())
+    
+    # 获取 TypeDef 集合，用于排除
+    typedef_set = set(builtin_data.get("!instanceof", {}).get("TypeDef", []))
     
     # BuildableType - 内置类型
     for name in buildable:
@@ -74,14 +84,13 @@ def _build_all_constraint_defs() -> list[ConstraintDef]:
                 # dialect 不设置，序列化时不会出现此字段
             ))
     
-    # 内置 TypeConstraint
+    # 内置 TypeConstraint（排除 anonymous 和 TypeDef）
     for name in builtin_data.get("!instanceof", {}).get("TypeConstraint", []):
-        if name.startswith("anonymous") or name in seen:
+        if name.startswith("anonymous") or name in seen or name in typedef_set:
             continue
         seen.add(name)
         result.append(build_constraint_def(name, builtin_data, dialect=None))
     
-    # 不再遍历方言数据
     return result
 
 

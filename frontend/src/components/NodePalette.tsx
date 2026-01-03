@@ -334,7 +334,7 @@ export function NodePalette({
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Search Input */}
       <div className="p-3 border-b border-gray-700">
         <div className="relative">

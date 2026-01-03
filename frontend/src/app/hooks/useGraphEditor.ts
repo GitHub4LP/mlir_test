@@ -186,6 +186,31 @@ export function useGraphEditor(): UseGraphEditorReturn {
     setEdgesStore(updatedEdges);
   }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, setNodesStore, setEdgesStore]);
   
+  // 监听函数参数/返回值变化，自动触发类型传播
+  // 这确保添加/删除参数后，新端口能获得正确的 portStates
+  const prevParamsLengthRef = useRef<number>(0);
+  const prevReturnTypesLengthRef = useRef<number>(0);
+  
+  useEffect(() => {
+    if (!currentFunction) return;
+    
+    const paramsLength = currentFunction.parameters.length;
+    const returnTypesLength = currentFunction.returnTypes.length;
+    
+    // 检查是否有变化（只检查数量变化，避免不必要的传播）
+    if (paramsLength !== prevParamsLengthRef.current || 
+        returnTypesLength !== prevReturnTypesLengthRef.current) {
+      prevParamsLengthRef.current = paramsLength;
+      prevReturnTypesLengthRef.current = returnTypesLength;
+      
+      // 使用 setTimeout 延迟触发，确保 node.data.outputs/inputs 同步完成
+      // （FunctionEntryNode/FunctionReturnNode 的 useEffect 会先执行）
+      setTimeout(() => {
+        triggerTypePropagation();
+      }, 0);
+    }
+  }, [currentFunction, triggerTypePropagation]);
+  
   // ============================================================
   // 保存/加载图
   // ============================================================

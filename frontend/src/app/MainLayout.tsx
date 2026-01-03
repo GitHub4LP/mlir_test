@@ -16,7 +16,7 @@
 import { useCallback, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Node } from '@xyflow/react';
 
-import { NodePalette } from '../components/NodePalette';
+import { LeftPanelTabs } from '../components/LeftPanelTabs';
 import { FunctionManager } from '../components/FunctionManager';
 import { ExecutionPanel } from '../components/ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from '../components/ProjectDialog';
@@ -59,6 +59,10 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [executionPanelExpanded, setExecutionPanelExpanded] = useState(true);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  
+  // 左侧面板宽度（可拖拽调整）
+  const [leftPanelWidth, setLeftPanelWidth] = useState(256);
+  const isResizing = useRef(false);
 
   // Project dialog states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -180,6 +184,37 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [copySelectedNodes, pasteNodes, deleteSelected]);
+
+  // 左侧面板拖拽调整宽度
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.max(200, Math.min(500, e.clientX));
+      setLeftPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const handleFunctionDeleted = useCallback(() => {
     const currentId = useProjectStore.getState().currentFunctionId;
@@ -411,20 +446,25 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Function Manager + Node Palette */}
-        <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
+        <div 
+          className="bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0 relative"
+          style={{ width: leftPanelWidth }}
+        >
           <div className="border-b border-gray-700 max-h-64 flex-shrink-0">
             <FunctionManager
               onFunctionSelect={handleFunctionSelect}
               onFunctionDeleted={handleFunctionDeleted}
             />
           </div>
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <h2 className="text-lg font-semibold text-white p-4 pb-0 flex-shrink-0">Node Palette</h2>
-            <NodePalette
-              onDragStart={handleDragStart}
-              onFunctionDragStart={handleFunctionDragStart}
-            />
-          </div>
+          <LeftPanelTabs
+            onDragStart={handleDragStart}
+            onFunctionDragStart={handleFunctionDragStart}
+          />
+          {/* 拖拽调整宽度手柄 */}
+          <div
+            className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/50 transition-colors"
+            onMouseDown={handleResizeMouseDown}
+          />
         </div>
 
         {/* Center - Node Editor */}
@@ -471,8 +511,9 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
 
       {/* Bottom Panel - Execution */}
       <div
-        className="flex-shrink-0 absolute bottom-0 left-64"
+        className="flex-shrink-0 absolute bottom-0"
         style={{
+          left: leftPanelWidth,
           height: executionPanelHeight,
           right: (effectiveSelectedNode || selection.nodeIds.length > 1) ? 288 : 0,
         }}

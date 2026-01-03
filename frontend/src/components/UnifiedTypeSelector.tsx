@@ -490,7 +490,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     return (
       <span
         className={`rf-type-readonly ${className}`}
-        style={{ color, backgroundColor: `${color}20`, border: `1px solid ${color}40` }}
+        style={{ color, backgroundColor: `${color}20` }}
       >
         {preview}
       </span>

@@ -222,15 +222,16 @@ function renderLayoutNode(
   // TypeLabel 节点
   if (type === 'typeLabel' && interactive) {
     if (renderers?.typeSelector && interactive.typeConstraint) {
+      // 使用自定义渲染器时，外层容器透明，样式由 UnifiedTypeSelector 内部控制
       const selectorVNode = renderers.typeSelector({
         pinId: extractPinId(interactive.id),
         typeConstraint: interactive.typeConstraint,
         pinLabel: interactive.pinLabel,
       });
-      return h('div', { key, class: className, style: { ...baseStyle, overflow: 'visible' } }, selectorVNode ? [selectorVNode] : []);
+      return h('div', { key, class: className, style: { overflow: 'visible' } }, selectorVNode ? [selectorVNode] : []);
     }
 
-    // 默认渲染
+    // 默认渲染（Canvas 等不使用自定义渲染器的场景）
     return h('div', { key, class: className, style: baseStyle }, [
       h('span', { style: { fontSize: '10px', color: '#ffffff', lineHeight: 1 } }, text?.content || ''),
     ]);

@@ -291,7 +291,7 @@ const BuildNode = defineComponent({
         return h('button', {
           ref: leafRef,
           type: 'button',
-          class: 'text-xs bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 border border-gray-600 inline-flex items-center gap-1',
+          class: 'text-xs bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 inline-flex items-center gap-1',
           style: { color: c },
           onClick: handleLeafClick,
         }, [
@@ -384,11 +384,10 @@ const BuildNode = defineComponent({
   <!-- 禁用状态 -->
   <span
     v-if="disabled"
-    class="text-xs px-1.5 py-0.5 rounded"
+    class="text-xs px-1.5 py-0.5 rounded inline-flex items-center"
     :style="{ 
       color, 
-      backgroundColor: `${color}20`, 
-      border: `1px solid ${color}40` 
+      backgroundColor: `${color}20`
     }"
   >
     {{ preview }}
@@ -398,7 +397,7 @@ const BuildNode = defineComponent({
   <template v-else>
     <div
       ref="containerRef"
-      class="inline-flex items-center gap-1 bg-gray-800 rounded px-2 py-1 border border-gray-600"
+      class="inline-flex items-center gap-1"
       @mousedown.stop
     >
       <!-- 递归渲染 TypeNode -->

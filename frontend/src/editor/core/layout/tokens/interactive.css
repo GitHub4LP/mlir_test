@@ -14,13 +14,8 @@
   box-sizing: border-box;
 }
 
-/* 类型标签 */
+/* 类型标签 - 外层容器透明，样式由内部组件控制 */
 .layout-type-label {
-  padding: 2px 6px;
-  min-width: 20px;
-  min-height: 16px;
-  border-radius: 3px;
-  background-color: rgba(55, 65, 81, 1); /* r: 0.216, g: 0.255, b: 0.318 */
   box-sizing: border-box;
 }
 
