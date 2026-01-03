@@ -7,6 +7,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from .constraint_utils import ConstraintDef, build_constraint_def
+
 router = APIRouter()
 
 # 方言 JSON 文件路径
@@ -84,9 +86,10 @@ class OperationDef(BaseModel):
 
 
 class DialectInfo(BaseModel):
-    """Dialect information with operations."""
+    """Dialect information with operations and type constraints."""
     name: str
     operations: list[OperationDef]
+    typeConstraints: list[ConstraintDef] = []  # 该方言的类型约束
 
 
 def resolve_type_recursive(
@@ -699,9 +702,28 @@ def is_pure_operation(traits: list[str]) -> bool:
     return False
 
 
+def parse_type_constraints(json_data: dict, dialect_name: str) -> list[ConstraintDef]:
+    """
+    解析方言的类型约束
+    
+    从方言 JSON 的 !instanceof.TypeConstraint 中提取类型约束，
+    跳过 anonymous_xxx 类型，为每个约束设置 dialect 字段。
+    """
+    result: list[ConstraintDef] = []
+    
+    instanceof = json_data.get("!instanceof", {})
+    for name in instanceof.get("TypeConstraint", []):
+        # 跳过匿名类型
+        if name.startswith("anonymous"):
+            continue
+        result.append(build_constraint_def(name, json_data, dialect=dialect_name))
+    
+    return result
+
+
 def parse_dialect_json(json_data: dict, dialect_name: str | None = None) -> DialectInfo:
     """
-    Parse a dialect JSON file and extract all operations.
+    Parse a dialect JSON file and extract all operations and type constraints.
     
     Requirements: 8.1, 8.2, 8.3, 8.4, 8.5
     """
@@ -776,7 +798,14 @@ def parse_dialect_json(json_data: dict, dialect_name: str | None = None) -> Dial
         
         operations.append(operation)
     
-    return DialectInfo(name=detected_dialect_name, operations=operations)
+    # 解析类型约束
+    type_constraints = parse_type_constraints(json_data, detected_dialect_name)
+    
+    return DialectInfo(
+        name=detected_dialect_name,
+        operations=operations,
+        typeConstraints=type_constraints,
+    )
 
 
 def load_dialect(dialect_name: str) -> DialectInfo:

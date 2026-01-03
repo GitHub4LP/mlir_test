@@ -19,35 +19,31 @@ Types API Routes
 """
 
 import json
-import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from .constraint_utils import (
+    ConstraintDef,
+    load_builtin_data,
+    get_buildable_types,
+    build_constraint_def,
+    parse_constraint_rule,
+)
+
 router = APIRouter()
 
 MLIR_DATA_DIR = Path(__file__).parent.parent.parent / "mlir_data"
-TYPE_CONSTRAINTS_PATH = MLIR_DATA_DIR / "type_constraints.json"
 DIALECTS_DIR = MLIR_DATA_DIR / "dialects"
 
 
-# ============ 数据加载 ============
-
-@lru_cache(maxsize=1)
-def _load_builtin_data() -> dict:
-    """加载内置类型数据"""
-    if not TYPE_CONSTRAINTS_PATH.exists():
-        return {}
-    with open(TYPE_CONSTRAINTS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
+# ============ 方言数据加载（仅用于 TypeDef）============
 
 @lru_cache(maxsize=1)
 def _load_dialect_data() -> dict[str, dict]:
-    """加载所有方言数据"""
+    """加载所有方言数据（仅用于 TypeDef）"""
     result = {}
     if DIALECTS_DIR.exists():
         for json_file in DIALECTS_DIR.glob("*.json"):
@@ -56,326 +52,18 @@ def _load_dialect_data() -> dict[str, dict]:
     return result
 
 
-@lru_cache(maxsize=1)
-def _get_buildable_types() -> list[str]:
-    """获取所有 BuildableType"""
-    data = _load_builtin_data()
-    return sorted(data.get("!instanceof", {}).get("BuildableType", []))
-
-
-@lru_cache(maxsize=1)
-def _get_type_groups() -> dict[str, list[str]]:
-    """获取类型分组 (I, SI, UI, F)"""
-    data = _load_builtin_data()
-    instanceof = data.get("!instanceof", {})
-    return {
-        "I": instanceof.get("I", []),
-        "SI": instanceof.get("SI", []),
-        "UI": instanceof.get("UI", []),
-        "F": instanceof.get("F", []),
-    }
-
-
-# ============ 规则解析 ============
-
-def _parse_cpred_to_rule(expr: str) -> dict | None:
-    """
-    解析 CPred 表达式为规则
-    
-    返回 None 表示无法解析（如复合类型检查）
-    """
-    buildable = set(_get_buildable_types())
-    groups = _get_type_groups()
-    
-    # any
-    if expr == "(true)":
-        return {"kind": "any"}
-    
-    # === 整数类型 ===
-    
-    # 带宽度的整数
-    m = re.search(r"isSignlessInteger\((\d+)\)", expr)
-    if m:
-        t = f"I{m.group(1)}"
-        return {"kind": "type", "name": t} if t in buildable else None
-    
-    m = re.search(r"isSignedInteger\((\d+)\)", expr)
-    if m:
-        t = f"SI{m.group(1)}"
-        return {"kind": "type", "name": t} if t in buildable else None
-    
-    m = re.search(r"isUnsignedInteger\((\d+)\)", expr)
-    if m:
-        t = f"UI{m.group(1)}"
-        return {"kind": "type", "name": t} if t in buildable else None
-    
-    m = re.search(r"isInteger\((\d+)\)", expr)
-    if m:
-        t = f"I{m.group(1)}"
-        return {"kind": "type", "name": t} if t in buildable else None
-    
-    # 通用整数
-    if "isSignlessInteger()" in expr:
-        return {"kind": "oneOf", "types": sorted(buildable & set(groups["I"]))}
-    if "isSignedInteger()" in expr:
-        return {"kind": "oneOf", "types": sorted(buildable & set(groups["SI"]))}
-    if "isUnsignedInteger()" in expr:
-        return {"kind": "oneOf", "types": sorted(buildable & set(groups["UI"]))}
-    
-    # IntegerType (所有整数)
-    if "isa<::mlir::IntegerType>" in expr:
-        all_ints = set(groups["I"]) | set(groups["SI"]) | set(groups["UI"])
-        return {"kind": "oneOf", "types": sorted(buildable & all_ints)}
-    
-    # Index + 整数
-    if "isSignlessIntOrIndex()" in expr:
-        types = sorted(buildable & set(groups["I"]))
-        if "Index" in buildable:
-            types.append("Index")
-        return {"kind": "oneOf", "types": sorted(types)}
-    
-    # === 浮点类型 ===
-    
-    # 具体浮点
-    m = re.search(r"isa<::mlir::Float(\d+)Type>", expr)
-    if m:
-        t = f"F{m.group(1)}"
-        return {"kind": "type", "name": t} if t in buildable else None
-    
-    if "isa<::mlir::BFloat16Type>" in expr:
-        return {"kind": "type", "name": "BF16"}
-    
-    # 特殊浮点 (Float8E5M2Type 等)
-    m = re.search(r"isa<::mlir::(Float\d+E\d+M\d+\w*)Type>", expr)
-    if m:
-        t = m.group(1).replace("Float", "F")
-        return {"kind": "type", "name": t} if t in buildable else None
-    
-    # 通用浮点
-    if "isa<::mlir::FloatType>" in expr:
-        floats = [t for t in buildable if t.startswith("F") or t.startswith("BF") or t.startswith("TF")]
-        return {"kind": "oneOf", "types": sorted(floats)}
-    
-    # 具体浮点方法
-    for suffix in ["16", "32", "64", "80", "128"]:
-        if f".isF{suffix}()" in expr:
-            t = f"F{suffix}"
-            return {"kind": "type", "name": t} if t in buildable else None
-    
-    if ".isBF16()" in expr:
-        return {"kind": "type", "name": "BF16"}
-    
-    # === Index ===
-    if "isa<::mlir::IndexType>" in expr:
-        return {"kind": "type", "name": "Index"}
-    
-    # === 复合类型（返回 shaped 规则）===
-    if "isa<::mlir::TensorType>" in expr:
-        return {"kind": "shaped", "container": "tensor"}
-    if "isa<::mlir::RankedTensorType>" in expr:
-        return {"kind": "shaped", "container": "tensor", "ranked": True}
-    if "isa<::mlir::UnrankedTensorType>" in expr:
-        return {"kind": "shaped", "container": "tensor", "ranked": False}
-    if "isa<::mlir::MemRefType>" in expr:
-        return {"kind": "shaped", "container": "memref"}
-    if "isa<::mlir::UnrankedMemRefType>" in expr:
-        return {"kind": "shaped", "container": "memref", "ranked": False}
-    if "isa<::mlir::VectorType>" in expr:
-        return {"kind": "shaped", "container": "vector"}
-    if "isa<::mlir::ShapedType>" in expr:
-        return {"kind": "shaped", "container": "shaped"}
-    
-    # === 其他 ===
-    if "isa<::mlir::ComplexType>" in expr:
-        return {"kind": "shaped", "container": "complex"}
-    
-    if "isa<::mlir::NoneType>" in expr:
-        return {"kind": "type", "name": "NoneType"}
-    
-    # 无法解析
-    return None
-
-
-def _parse_predicate_to_rule(pred_name: str, data: dict, visited: set | None = None) -> dict | None:
-    """
-    递归解析 predicate 为规则树
-    """
-    if visited is None:
-        visited = set()
-    if pred_name in visited:
-        return None  # 循环引用
-    visited.add(pred_name)
-    
-    if pred_name not in data:
-        return None
-    
-    pred = data[pred_name]
-    superclasses = pred.get("!superclasses", [])
-    
-    # CPred - 叶子节点
-    if "CPred" in superclasses:
-        expr = pred.get("predExpr", "")
-        return _parse_cpred_to_rule(expr)
-    
-    # And - 交集
-    if "And" in superclasses:
-        children = []
-        for child_ref in pred.get("children", []):
-            child_name = child_ref.get("def")
-            if child_name:
-                child_rule = _parse_predicate_to_rule(child_name, data, visited.copy())
-                if child_rule:
-                    children.append(child_rule)
-        if len(children) == 0:
-            return None
-        if len(children) == 1:
-            return children[0]
-        return {"kind": "and", "children": children}
-    
-    # Or - 并集
-    if "Or" in superclasses:
-        children = []
-        for child_ref in pred.get("children", []):
-            child_name = child_ref.get("def")
-            if child_name:
-                child_rule = _parse_predicate_to_rule(child_name, data, visited.copy())
-                if child_rule:
-                    children.append(child_rule)
-        if len(children) == 0:
-            return None
-        if len(children) == 1:
-            return children[0]
-        return {"kind": "or", "children": children}
-    
-    # SubstLeaves - 元素类型检查，递归解析子节点
-    if "SubstLeaves" in superclasses:
-        for child_ref in pred.get("children", []):
-            child_name = child_ref.get("def")
-            if child_name:
-                return _parse_predicate_to_rule(child_name, data, visited.copy())
-    
-    # Concat - 包装元素类型检查
-    if "Concat" in superclasses:
-        # Concat 通常用于 ShapedType 的元素类型检查
-        # 递归解析子节点获取元素约束
-        for child_ref in pred.get("children", []):
-            child_name = child_ref.get("def")
-            if child_name:
-                return _parse_predicate_to_rule(child_name, data, visited.copy())
-    
-    return None
-
-
-def _parse_constraint_rule(name: str, data: dict) -> dict | None:
-    """
-    解析约束为规则
-    """
-    buildable = set(_get_buildable_types())
-    
-    # BuildableType 直接返回 type
-    if name in buildable:
-        return {"kind": "type", "name": name}
-    
-    entry = data.get(name, {})
-    if not entry:
-        return None
-    
-    superclasses = entry.get("!superclasses", [])
-    
-    # AnyTypeOf - 并集，使用 ref 引用
-    if "AnyTypeOf" in superclasses:
-        allowed = entry.get("allowedTypes", [])
-        if not allowed:
-            return None
-        children = []
-        for t in allowed:
-            if isinstance(t, dict):
-                ref_name = t.get("def")
-                if ref_name:
-                    # 如果是 BuildableType，直接用 type
-                    if ref_name in buildable:
-                        children.append({"kind": "type", "name": ref_name})
-                    else:
-                        children.append({"kind": "ref", "name": ref_name})
-        if len(children) == 0:
-            return None
-        if len(children) == 1:
-            return children[0]
-        return {"kind": "or", "children": children}
-    
-    # ShapedContainerType - 容器类型
-    if "ShapedContainerType" in superclasses:
-        # 从 predicate 解析容器类型和元素约束
-        pred_ref = entry.get("predicate", {})
-        pred_name = pred_ref.get("def")
-        if pred_name:
-            rule = _parse_predicate_to_rule(pred_name, data)
-            if rule:
-                return rule
-        # 默认返回 shaped
-        return {"kind": "shaped", "container": "shaped"}
-    
-    # TypeOrValueSemanticsContainer (Like 类型)
-    # 结构是 Or(标量检查, And(ValueSemantics, 元素类型检查))
-    # 我们只需要提取标量检查部分
-    if "TypeOrValueSemanticsContainer" in superclasses:
-        pred_ref = entry.get("predicate", {})
-        pred_name = pred_ref.get("def")
-        if pred_name and pred_name in data:
-            pred = data[pred_name]
-            # 应该是 Or，取第一个 child（标量检查）
-            if "Or" in pred.get("!superclasses", []):
-                children = pred.get("children", [])
-                if children:
-                    first_child = children[0].get("def")
-                    if first_child:
-                        scalar_rule = _parse_predicate_to_rule(first_child, data)
-                        if scalar_rule:
-                            return {"kind": "like", "element": scalar_rule}
-        # fallback: 解析整个 predicate
-        if pred_name:
-            rule = _parse_predicate_to_rule(pred_name, data)
-            if rule:
-                return {"kind": "like", "element": rule}
-    
-    # 普通 TypeConstraint - 从 predicate 解析
-    pred_ref = entry.get("predicate", {})
-    pred_name = pred_ref.get("def")
-    if pred_name:
-        return _parse_predicate_to_rule(pred_name, data)
-    
-    return None
-
-
-# ============ 构建约束定义 ============
-
-class ConstraintDef(BaseModel):
-    """约束定义"""
-    name: str
-    summary: str
-    rule: dict | None  # ConstraintRule
-
-
-def _build_constraint_def(name: str, data: dict) -> ConstraintDef:
-    """构建单个约束定义"""
-    entry = data.get(name, {})
-    return ConstraintDef(
-        name=name,
-        summary=entry.get("summary", ""),
-        rule=_parse_constraint_rule(name, data),
-    )
-
+# ============ 构建约束定义（只返回内置约束）============
 
 @lru_cache(maxsize=1)
 def _build_all_constraint_defs() -> list[ConstraintDef]:
-    """构建所有约束定义"""
+    """只构建内置约束定义（不包含方言约束）"""
     result: list[ConstraintDef] = []
     seen: set[str] = set()
     
-    builtin_data = _load_builtin_data()
-    buildable = set(_get_buildable_types())
+    builtin_data = load_builtin_data()
+    buildable = set(get_buildable_types())
     
-    # BuildableType
+    # BuildableType - 内置类型
     for name in buildable:
         if name not in seen:
             seen.add(name)
@@ -383,6 +71,7 @@ def _build_all_constraint_defs() -> list[ConstraintDef]:
                 name=name,
                 summary=builtin_data.get(name, {}).get("summary", ""),
                 rule={"kind": "type", "name": name},
+                # dialect 不设置，序列化时不会出现此字段
             ))
     
     # 内置 TypeConstraint
@@ -390,16 +79,9 @@ def _build_all_constraint_defs() -> list[ConstraintDef]:
         if name.startswith("anonymous") or name in seen:
             continue
         seen.add(name)
-        result.append(_build_constraint_def(name, builtin_data))
+        result.append(build_constraint_def(name, builtin_data, dialect=None))
     
-    # 方言 TypeConstraint
-    for dialect_name, data in _load_dialect_data().items():
-        for name in data.get("!instanceof", {}).get("TypeConstraint", []):
-            if name.startswith("anonymous") or name in seen:
-                continue
-            seen.add(name)
-            result.append(_build_constraint_def(name, data))
-    
+    # 不再遍历方言数据
     return result
 
 
@@ -451,7 +133,7 @@ def _build_type_definitions() -> list[TypeDefinition]:
     result: list[TypeDefinition] = []
     seen: set[str] = set()
     
-    builtin_data = _load_builtin_data()
+    builtin_data = load_builtin_data()
     for td in builtin_data.get("!instanceof", {}).get("TypeDef", []):
         if td in seen:
             continue
@@ -486,7 +168,7 @@ def _build_type_definitions() -> list[TypeDefinition]:
     return result
 
 
-# ============ 等价约束映射 ============
+# ============ 等价约束映射（只包含内置约束）============
 
 def _expand_rule_to_types(rule: dict | None, defs_map: dict, buildable: set, visited: set | None = None) -> set:
     """展开规则到具体类型集合"""
@@ -532,12 +214,12 @@ def _expand_rule_to_types(rule: dict | None, defs_map: dict, buildable: set, vis
 @lru_cache(maxsize=1)
 def _build_constraint_equivalences() -> dict[str, list[str]]:
     """
-    构建类型集合到等价约束名的映射
+    构建类型集合到等价约束名的映射（只包含内置约束）
     
     返回: { 类型集合的排序字符串 → [约束名列表] }
     """
     defs = _build_all_constraint_defs()
-    buildable = set(_get_buildable_types())
+    buildable = set(get_buildable_types())
     defs_map = {d.name: d for d in defs}
     
     # 按类型集合分组
@@ -564,9 +246,9 @@ class TypeConstraintsResponse(BaseModel):
 
 @router.get("/", response_model=TypeConstraintsResponse)
 async def get_type_constraints():
-    """获取类型约束数据"""
+    """获取类型约束数据（只返回内置约束）"""
     return TypeConstraintsResponse(
-        buildableTypes=_get_buildable_types(),
+        buildableTypes=get_buildable_types(),
         constraintDefs=_build_all_constraint_defs(),
         typeDefinitions=_build_type_definitions(),
         constraintEquivalences=_build_constraint_equivalences(),

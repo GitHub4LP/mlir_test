@@ -20,6 +20,7 @@ export interface ConstraintDef {
   name: string;
   summary: string;
   rule: ConstraintRule | null;
+  dialect: string | null;  // 来源方言，null 表示内置约束
 }
 
 // ============ 规则展开 ============

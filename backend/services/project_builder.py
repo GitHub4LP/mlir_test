@@ -22,8 +22,8 @@ from .type_registry import json_type_to_mlir
 from backend.api.types import (
     _build_all_constraint_defs, 
     _expand_rule_to_types, 
-    _get_buildable_types
 )
+from backend.api.constraint_utils import get_buildable_types
 from backend.api.dialects import load_dialect
 
 
@@ -314,7 +314,7 @@ class ProjectBuilder:
     def _get_buildable_types_set(self) -> set[str]:
         """获取 BuildableType 集合（延迟加载）"""
         if self._buildable_types is None:
-            self._buildable_types = set(_get_buildable_types())
+            self._buildable_types = set(get_buildable_types())
         return self._buildable_types
     
     def _get_concrete_types(self, constraint: str) -> list[str]:

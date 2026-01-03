@@ -21,7 +21,7 @@
 
 import type { EditorNode, EditorEdge } from '../editor/types';
 import type { FunctionDef, PortState } from '../types';
-import { triggerTypePropagationWithSignature } from './typePropagation';
+import { triggerTypePropagationWithSignature, type DialectFilterConfig } from './typePropagation';
 import { computeOptionsExcludingSelf } from './typePropagation/propagator';
 import { PortRef } from './port';
 
@@ -92,6 +92,7 @@ export interface TypeChangeHandlerDeps {
   getConstraintElements: (constraint: string) => string[];
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;
   findSubsetConstraints: (E: string[]) => string[];
+  dialectFilter?: DialectFilterConfig;
 }
 
 /**
@@ -188,7 +189,8 @@ export function handlePinnedTypeChange<T extends { pinnedTypes?: Record<string, 
     currentFunction,
     deps.getConstraintElements,
     deps.pickConstraintName,
-    deps.findSubsetConstraints
+    deps.findSubsetConstraints,
+    deps.dialectFilter
   );
 
   return result.nodes;
@@ -212,7 +214,8 @@ export function triggerPropagationOnly(
     currentFunction,
     deps.getConstraintElements,
     deps.pickConstraintName,
-    deps.findSubsetConstraints
+    deps.findSubsetConstraints,
+    deps.dialectFilter
   );
 
   // 注意：签名同步不再在这里同步执行，而是在 MainLayout 的 useEffect 中异步处理

@@ -12,7 +12,7 @@
 
 import type { EditorNode, EditorEdge } from '../../editor/types';
 import type { FunctionDef, FunctionEntryData, FunctionReturnData } from '../../types';
-import { computePropagation, applyPropagationResult } from './propagator';
+import { computePropagation, applyPropagationResult, type DialectFilterConfig } from './propagator';
 import { getDisplayType } from '../typeSelectorRenderer';
 import { dataOutHandle, dataInHandle } from '../port';
 import { usePortStateStore, makePortKey, type PortState as StorePortState } from '../../stores/portStateStore';
@@ -82,6 +82,7 @@ export interface PropagationTriggerResult {
  * @param getConstraintElements - 获取约束映射到的类型约束集合元素
  * @param pickConstraintName - 选择约束名称
  * @param findSubsetConstraints - 找出所有元素集合是给定集合子集的约束名
+ * @param dialectFilter - 方言过滤配置（可选）
  * @returns 更新后的节点列表（包含传播结果）
  */
 export function triggerTypePropagation(
@@ -90,10 +91,11 @@ export function triggerTypePropagation(
   currentFunction: FunctionDef | undefined,
   getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
-  findSubsetConstraints?: (E: string[]) => string[]
+  findSubsetConstraints?: (E: string[]) => string[],
+  dialectFilter?: DialectFilterConfig
 ): EditorNode[] {
   const result = triggerTypePropagationWithSignature(
-    nodes, edges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints
+    nodes, edges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter
   );
   return result.nodes;
 }
@@ -103,6 +105,14 @@ export function triggerTypePropagation(
  * 
  * 用于需要同步签名到 FunctionDef 的场景。
  * portStates 直接写入 node.data.portStates，供所有渲染器通过 props 读取。
+ * 
+ * @param nodes - 当前节点列表（EditorNode 类型）
+ * @param edges - 当前边列表（EditorEdge 类型）
+ * @param currentFunction - 当前函数定义（用于函数级 Traits）
+ * @param getConstraintElements - 获取约束映射到的类型约束集合元素
+ * @param pickConstraintName - 选择约束名称
+ * @param findSubsetConstraints - 找出所有元素集合是给定集合子集的约束名
+ * @param dialectFilter - 方言过滤配置（可选）
  */
 export function triggerTypePropagationWithSignature(
   nodes: EditorNode[],
@@ -110,7 +120,8 @@ export function triggerTypePropagationWithSignature(
   currentFunction: FunctionDef | undefined,
   getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
-  findSubsetConstraints?: (E: string[]) => string[]
+  findSubsetConstraints?: (E: string[]) => string[],
+  dialectFilter?: DialectFilterConfig
 ): PropagationTriggerResult {
   // 使用新的 computePropagation 函数
   const propagationResult = computePropagation(
@@ -119,7 +130,8 @@ export function triggerTypePropagationWithSignature(
     currentFunction,
     getConstraintElements,
     pickConstraintName,
-    findSubsetConstraints || (() => [])
+    findSubsetConstraints || (() => []),
+    dialectFilter
   );
   
   // 应用传播结果到节点（包含 portStates）

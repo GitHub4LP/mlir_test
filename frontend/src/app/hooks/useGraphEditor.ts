@@ -21,7 +21,8 @@ import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import type { EditorNode, EditorEdge, EditorViewport, NodeChange, ConnectionRequest } from '../../editor/types';
 import type { OperationDef, BlueprintNodeData, GraphState, FunctionEntryData, FunctionReturnData, DataPin } from '../../types';
 import { validateConnection } from '../../editor/adapters/reactflow/connectionUtils';
-import { triggerTypePropagationWithSignature } from '../../services/typePropagation';
+import { triggerTypePropagationWithSignature, type DialectFilterConfig } from '../../services/typePropagation';
+import { computeReachableDialects } from '../../services/dialectDependency';
 import { dataInHandle, dataOutHandle } from '../../services/port';
 import { getDisplayType } from '../../services/typeSelectorRenderer';
 import {
@@ -111,6 +112,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
   const getConstraintElements = useTypeConstraintStore(state => state.getConstraintElements);
   const pickConstraintName = useTypeConstraintStore(state => state.pickConstraintName);
   const findSubsetConstraints = useTypeConstraintStore(state => state.findSubsetConstraints);
+  const filterConstraintsByDialects = useTypeConstraintStore(state => state.filterConstraintsByDialects);
   
   // 剪贴板
   const clipboardRef = useRef<ClipboardData | null>(null);
@@ -167,15 +169,22 @@ export function useGraphEditor(): UseGraphEditorReturn {
     // 从 store 获取最新状态，避免闭包捕获旧值
     const latestNodes = useEditorStore.getState().nodes;
     const latestEdges = useEditorStore.getState().edges;
+    const latestProject = useProjectStore.getState().project;
+    
+    // 构建方言过滤配置
+    const dialectFilter: DialectFilterConfig | undefined = latestProject ? {
+      getReachableDialects: (functionId: string) => computeReachableDialects(functionId, latestProject),
+      filterConstraintsByDialects,
+    } : undefined;
     
     const result = triggerTypePropagationWithSignature(
-      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints
+      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter
     );
     
     setNodesStore(result.nodes);
     const updatedEdges = updateEdgeColors(result.nodes, latestEdges);
     setEdgesStore(updatedEdges);
-  }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, setNodesStore, setEdgesStore]);
+  }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, setNodesStore, setEdgesStore]);
   
   // ============================================================
   // 保存/加载图
@@ -197,8 +206,15 @@ export function useGraphEditor(): UseGraphEditorReturn {
     const graphNodes = func.graph.nodes.map(convertGraphNodeToReactFlowNode);
     const graphEdges = func.graph.edges.map(convertGraphEdgeToReactFlowEdge);
     
+    // 获取最新的 project 用于方言过滤
+    const latestProject = useProjectStore.getState().project;
+    const dialectFilter: DialectFilterConfig | undefined = latestProject ? {
+      getReachableDialects: (fId: string) => computeReachableDialects(fId, latestProject),
+      filterConstraintsByDialects,
+    } : undefined;
+    
     const result = triggerTypePropagationWithSignature(
-      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints
+      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter
     );
     
     const edgesWithColors = updateEdgeColors(result.nodes, graphEdges);
@@ -208,7 +224,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
     queueMicrotask(() => {
       isLoadingFromStoreRef.current = false;
     });
-  }, [getFunctionById, getConstraintElements, pickConstraintName, findSubsetConstraints, loadGraph]);
+  }, [getFunctionById, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, loadGraph]);
   
   // ============================================================
   // 函数切换

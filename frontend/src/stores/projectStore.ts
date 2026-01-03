@@ -11,6 +11,7 @@ import { getTypeColor } from './typeColorCache';
 import { syncFunctionSignatureChange, syncFunctionRemoval, syncFunctionRename } from '../services/functionSyncService';
 import { dataInHandle, dataOutHandle } from '../services/port';
 import { tokens } from '../editor/adapters/shared/styles';
+import { computeDirectDialects, computeProjectDialects } from '../services/dialectDependency';
 
 import type { FunctionEntryData, FunctionReturnData, PortConfig, GraphNode } from '../types';
 
@@ -138,6 +139,7 @@ function createDefaultMainFunction(): FunctionDef {
     name,
     parameters: [],
     returnTypes: [{ name: 'result', constraint: 'I32' }],
+    directDialects: [],  // 新函数没有使用任何方言
     graph: createFunctionGraph(id, name, [], [{ name: 'result', constraint: 'I32' }], true),
     isMain: true,
   };
@@ -153,6 +155,7 @@ function createFunction(name: string, id?: string): FunctionDef {
     name,
     parameters: [],
     returnTypes: [],
+    directDialects: [],  // 新函数没有使用任何方言
     graph: createFunctionGraph(funcId, name, [], [], false),
     isMain: false,
   };
@@ -783,31 +786,37 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const state = get();
     if (!state.project) return false;
 
+    // 计算新图的直接依赖方言
+    const newDirectDialects = computeDirectDialects(graph);
+
     set((state) => {
       if (!state.project) return state;
 
       const updateFunc = (f: FunctionDef): FunctionDef => ({
         ...f,
         graph,
+        directDialects: newDirectDialects,
       });
 
+      let updatedProject: Project;
       if (state.project.mainFunction.id === functionId) {
-        return {
-          project: {
-            ...state.project,
-            mainFunction: updateFunc(state.project.mainFunction),
-          },
+        updatedProject = {
+          ...state.project,
+          mainFunction: updateFunc(state.project.mainFunction),
         };
-      }
-
-      return {
-        project: {
+      } else {
+        updatedProject = {
           ...state.project,
           customFunctions: state.project.customFunctions.map(f =>
             f.id === functionId ? updateFunc(f) : f
           ),
-        },
-      };
+        };
+      }
+
+      // 重新计算项目方言列表
+      updatedProject.dialects = computeProjectDialects(updatedProject);
+
+      return { project: updatedProject };
     });
 
     return true;

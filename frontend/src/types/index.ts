@@ -1,9 +1,12 @@
 // MLIR 蓝图编辑器类型定义
 
+import type { ConstraintDef } from '../services/constraintResolver';
+
 // 方言与操作类型
 export interface DialectInfo {
   name: string;
   operations: OperationDef[];
+  typeConstraints?: ConstraintDef[];  // 该方言的类型约束
 }
 
 export interface OperationDef {
@@ -232,6 +235,8 @@ export interface FunctionDef {
   returnTypes: TypeDef[];
   /** 函数级别的 Traits，定义参数/返回值之间的类型关系 */
   traits?: FunctionTrait[];
+  /** 函数直接使用的方言列表（从图中 Operation 节点计算） */
+  directDialects: string[];
   graph: GraphState;
   isMain: boolean;
 }
@@ -292,6 +297,8 @@ export interface StoredFunctionDef {
   returnTypes: TypeDef[];
   /** 函数级别的 Traits */
   traits?: FunctionTrait[];
+  /** 函数直接使用的方言列表 */
+  directDialects: string[];
   graph: StoredGraphState;
   isMain: boolean;
 }

@@ -14,12 +14,16 @@ export {
   propagateTypes, 
   buildPropagationGraph,
   extractPortConstraints,
+  extractTypeSources,
   computePropagation,
   computeOptionsExcludingSelf,
   applyPropagationResult,
+  computeDisplayTypes,
   computeDisplayTypeFromSet,
   computePortState,
+  getAllowedDialectsForPort,
 } from './propagator';
+export type { DialectFilterConfig } from './propagator';
 export { triggerTypePropagation, triggerTypePropagationWithSignature } from './trigger';
 export type { PropagationGraph, TypeSource, PropagationResult } from './types';
 export type { PropagationTriggerResult } from './trigger';

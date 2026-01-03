@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import type { DialectInfo, OperationDef } from '../types';
+import { useTypeConstraintStore } from './typeConstraintStore';
 
 const API_BASE_URL = '/api';
 
@@ -140,6 +141,14 @@ export const useDialectStore = create<DialectState>((set, get) => ({
       }
 
       const dialect: DialectInfo = await response.json();
+
+      // 注册类型约束到 typeConstraintStore
+      if (dialect.typeConstraints && dialect.typeConstraints.length > 0) {
+        useTypeConstraintStore.getState().registerDialectConstraints(
+          name,
+          dialect.typeConstraints
+        );
+      }
 
       // Update state with new dialect and index operations
       set(state => {
