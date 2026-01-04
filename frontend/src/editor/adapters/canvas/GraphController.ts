@@ -645,19 +645,22 @@ export class GraphController {
       };
       this.requestRender();
     } else if (data.type === 'up') {
+      // 保存 connecting 状态引用，避免 TypeScript 类型推断问题
+      const connectingState = this.state;
+      
       // 转换为世界坐标用于命中测试
       const worldPos = this.screenToCanvas(data.x, data.y);
       const hit = this.hitTest(worldPos.x, worldPos.y);
       
-      if (hit.kind === 'handle' && hit.nodeId !== this.state.sourceNodeId) {
+      if (hit.kind === 'handle' && hit.nodeId !== connectingState.sourceNodeId) {
         // 判断拖拽起点是输出端还是输入端
         const graphData = this.getGraphData();
-        const startNode = graphData?.nodes.find(n => n.id === this.state.sourceNodeId);
+        const startNode = graphData?.nodes.find(n => n.id === connectingState.sourceNodeId);
         let isStartOutput = true;
         if (startNode) {
           const startBox = this.getLayoutBox(startNode);
           const startHandles = extractHandlePositions(startBox);
-          const startHandle = startHandles.find(h => h.handleId === this.state.sourceHandleId);
+          const startHandle = startHandles.find(h => h.handleId === connectingState.sourceHandleId);
           isStartOutput = startHandle?.isOutput ?? true;
         }
         
@@ -666,8 +669,8 @@ export class GraphController {
         // 如果从输入端拖出：终点是 source，起点是 target
         if (isStartOutput) {
           this.onConnectionAttempt?.(
-            this.state.sourceNodeId,
-            this.state.sourceHandleId,
+            connectingState.sourceNodeId,
+            connectingState.sourceHandleId,
             hit.nodeId,
             hit.handleId
           );
@@ -676,8 +679,8 @@ export class GraphController {
           this.onConnectionAttempt?.(
             hit.nodeId,
             hit.handleId,
-            this.state.sourceNodeId,
-            this.state.sourceHandleId
+            connectingState.sourceNodeId,
+            connectingState.sourceHandleId
           );
         }
       }

@@ -998,7 +998,7 @@ export class GPURenderer implements IRenderer {
   /**
    * 渲染交互提示（连接预览线、选择框等）
    */
-  private renderHint(ctx: CanvasRenderingContext2D, hint: import('./types').InteractionHint): void {
+  private renderHint(ctx: CanvasRenderingContext2D, hint: import('../canvas/types').InteractionHint): void {
     // 渲染连接预览线
     if (hint.connectionPreview) {
       this.renderPath(ctx, hint.connectionPreview);
@@ -1021,7 +1021,7 @@ export class GPURenderer implements IRenderer {
   /**
    * 渲染路径（用于连接预览线）
    */
-  private renderPath(ctx: CanvasRenderingContext2D, path: import('./types').RenderPath): void {
+  private renderPath(ctx: CanvasRenderingContext2D, path: import('../canvas/types').RenderPath): void {
     if (path.points.length < 2) return;
     
     ctx.save();
@@ -1057,7 +1057,7 @@ export class GPURenderer implements IRenderer {
   /**
    * 渲染选择框
    */
-  private renderSelectionBox(ctx: CanvasRenderingContext2D, rect: import('./types').RenderRect): void {
+  private renderSelectionBox(ctx: CanvasRenderingContext2D, rect: import('../canvas/types').RenderRect): void {
     ctx.save();
     
     if (rect.fillColor && rect.fillColor !== 'transparent') {
