@@ -360,6 +360,17 @@ export class GPURenderer implements IRenderer {
       ctx.restore();
     }
     
+    // 渲染交互提示（连接预览线、选择框等）- 使用 textCanvas
+    if (data.hint && this.textCtx && this.textCanvas) {
+      const ctx = this.textCtx;
+      ctx.save();
+      ctx.scale(this.dpr, this.dpr);
+      ctx.translate(data.viewport.x, data.viewport.y);
+      ctx.scale(data.viewport.zoom, data.viewport.zoom);
+      this.renderHint(ctx, data.hint);
+      ctx.restore();
+    }
+    
     // 渲染 UI 层
     if (this.uiCtx && this.uiRenderCallback) {
       this.uiCtx.clearRect(0, 0, this.uiCanvas!.width, this.uiCanvas!.height);
@@ -978,6 +989,89 @@ export class GPURenderer implements IRenderer {
       }
     }
     return color;
+  }
+
+  // ============================================================================
+  // 交互提示渲染
+  // ============================================================================
+
+  /**
+   * 渲染交互提示（连接预览线、选择框等）
+   */
+  private renderHint(ctx: CanvasRenderingContext2D, hint: import('./types').InteractionHint): void {
+    // 渲染连接预览线
+    if (hint.connectionPreview) {
+      this.renderPath(ctx, hint.connectionPreview);
+    }
+    
+    // 渲染选择框
+    if (hint.selectionBox) {
+      this.renderSelectionBox(ctx, hint.selectionBox);
+    }
+    
+    // 渲染拖拽预览
+    if (hint.dragPreview) {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      this.renderSelectionBox(ctx, hint.dragPreview);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * 渲染路径（用于连接预览线）
+   */
+  private renderPath(ctx: CanvasRenderingContext2D, path: import('./types').RenderPath): void {
+    if (path.points.length < 2) return;
+    
+    ctx.save();
+    ctx.strokeStyle = path.color ?? '#ffffff';
+    ctx.lineWidth = path.width ?? 2;
+    
+    if (path.dashed && path.dashPattern) {
+      ctx.setLineDash(path.dashPattern);
+    }
+    
+    ctx.beginPath();
+    
+    if (path.points.length === 4) {
+      // 贝塞尔曲线
+      ctx.moveTo(path.points[0].x, path.points[0].y);
+      ctx.bezierCurveTo(
+        path.points[1].x, path.points[1].y,
+        path.points[2].x, path.points[2].y,
+        path.points[3].x, path.points[3].y
+      );
+    } else {
+      // 折线
+      ctx.moveTo(path.points[0].x, path.points[0].y);
+      for (let i = 1; i < path.points.length; i++) {
+        ctx.lineTo(path.points[i].x, path.points[i].y);
+      }
+    }
+    
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * 渲染选择框
+   */
+  private renderSelectionBox(ctx: CanvasRenderingContext2D, rect: import('./types').RenderRect): void {
+    ctx.save();
+    
+    if (rect.fillColor && rect.fillColor !== 'transparent') {
+      ctx.fillStyle = rect.fillColor;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    }
+    
+    if (rect.borderWidth && rect.borderWidth > 0 && rect.borderColor && rect.borderColor !== 'transparent') {
+      ctx.strokeStyle = rect.borderColor;
+      ctx.lineWidth = rect.borderWidth;
+      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    }
+    
+    ctx.restore();
   }
 
 }

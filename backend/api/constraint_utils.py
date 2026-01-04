@@ -2,6 +2,15 @@
 约束定义构建工具
 
 提取 types.py 和 dialects.py 共享的约束构建逻辑。
+
+规则类型：
+- type: 具体标量类型 (I32)
+- oneOf: 标量类型枚举 ([I1, I8, I16, ...])
+- or: 并集
+- and: 交集
+- ref: 引用其他约束
+- shaped: 容器类型 (tensor, memref, vector)，可限制元素类型
+- like: 标量或其容器，containers 指定允许的容器（默认 tensor, vector）
 """
 
 import json
@@ -13,6 +22,12 @@ from pydantic import BaseModel, ConfigDict
 
 MLIR_DATA_DIR = Path(__file__).parent.parent.parent / "mlir_data"
 TYPE_CONSTRAINTS_PATH = MLIR_DATA_DIR / "type_constraints.json"
+
+# ValueSemantics 容器：tensor 和 vector（不包括 memref）
+VALUE_SEMANTICS_CONTAINERS = ["tensor", "vector"]
+
+# 所有容器类型
+ALL_CONTAINERS = ["tensor", "vector", "memref", "complex", "unranked_tensor", "unranked_memref"]
 
 
 class ConstraintDef(BaseModel):
@@ -70,9 +85,13 @@ def parse_cpred_to_rule(expr: str) -> dict | None:
     buildable = set(get_buildable_types())
     groups = get_type_groups()
     
-    # any
+    # AnyType: 用 like 表示，允许所有标量和所有容器
     if expr == "(true)":
-        return {"kind": "any"}
+        return {
+            "kind": "like",
+            "element": {"kind": "oneOf", "types": sorted(buildable)},
+            "containers": ALL_CONTAINERS,
+        }
     
     # === 整数类型 ===
     
@@ -228,6 +247,11 @@ def parse_predicate_to_rule(pred_name: str, data: dict, visited: set | None = No
     
     # Or - 并集
     if "Or" in superclasses:
+        # 检查是否是 Like 模式：Or(标量检查, And(HasValueSemanticsPred, ...))
+        like_result = _try_parse_like_pattern(pred, data, visited)
+        if like_result:
+            return like_result
+        
         children = []
         for child_ref in pred.get("children", []):
             child_name = child_ref.get("def")
@@ -254,6 +278,201 @@ def parse_predicate_to_rule(pred_name: str, data: dict, visited: set | None = No
             child_name = child_ref.get("def")
             if child_name:
                 return parse_predicate_to_rule(child_name, data, visited.copy())
+    
+    return None
+
+
+def _try_parse_like_pattern(pred: dict, data: dict, visited: set) -> dict | None:
+    """
+    尝试解析 Like 模式的 predicate
+    
+    Like 模式结构：
+    Or(
+      CPred(标量检查)                    // 第一个子节点
+      And(HasValueSemanticsPred, ...)   // 第二个子节点
+    )
+    
+    或者复合 Like：
+    Or(
+      Or(Like1 的 predicate)
+      Or(Like2 的 predicate)
+    )
+    """
+    children = pred.get("children", [])
+    if len(children) < 2:
+        return None
+    
+    # 检查是否有 HasValueSemanticsPred
+    has_value_semantics = False
+    scalar_rules = []
+    
+    for child_ref in children:
+        child_name = child_ref.get("def")
+        if not child_name or child_name not in data:
+            continue
+        
+        child_pred = data[child_name]
+        child_superclasses = child_pred.get("!superclasses", [])
+        
+        # 检查是否是 And(HasValueSemanticsPred, ...)
+        if "And" in child_superclasses:
+            and_children = child_pred.get("children", [])
+            for and_child_ref in and_children:
+                and_child_name = and_child_ref.get("def")
+                if and_child_name == "HasValueSemanticsPred":
+                    has_value_semantics = True
+                    break
+        
+        # 检查是否是嵌套的 Or（可能是另一个 Like 的 predicate）
+        elif "Or" in child_superclasses:
+            nested_like = _try_parse_like_pattern(child_pred, data, visited.copy())
+            if nested_like and nested_like.get("kind") == "like":
+                # 收集嵌套 like 的元素规则
+                scalar_rules.append(nested_like.get("element"))
+                has_value_semantics = True
+            else:
+                # 不是 like 模式，尝试解析为普通规则
+                rule = parse_predicate_to_rule(child_name, data, visited.copy())
+                if rule:
+                    scalar_rules.append(rule)
+        
+        # CPred - 标量检查
+        elif "CPred" in child_superclasses:
+            rule = parse_predicate_to_rule(child_name, data, visited.copy())
+            if rule:
+                scalar_rules.append(rule)
+    
+    if not has_value_semantics:
+        return None
+    
+    if len(scalar_rules) == 0:
+        return None
+    
+    # 合并标量规则
+    if len(scalar_rules) == 1:
+        element = scalar_rules[0]
+    else:
+        element = {"kind": "or", "children": scalar_rules}
+    
+    return {"kind": "like", "element": element}
+
+
+# cppType 到容器名的映射
+CPPTYPE_TO_CONTAINER = {
+    "::mlir::TensorType": "tensor",
+    "::mlir::RankedTensorType": "tensor",
+    "::mlir::UnrankedTensorType": "unranked_tensor",
+    "::mlir::MemRefType": "memref",
+    "::mlir::UnrankedMemRefType": "unranked_memref",
+    "::mlir::BaseMemRefType": "memref",  # ranked or unranked
+    "::mlir::VectorType": "vector",
+    "::mlir::ShapedType": "shaped",
+    "::mlir::ComplexType": "complex",
+}
+
+
+def _parse_shaped_container_type(name: str, entry: dict, data: dict) -> dict | None:
+    """
+    解析 ShapedContainerType 约束
+    
+    直接从 cppType 推断容器类型，从 predicate 提取元素约束。
+    避免解析 predicate 产生冗余的 like 规则。
+    
+    示例：
+    - AnyTensor: cppType=TensorType → shaped(tensor)
+    - I32Tensor: cppType=TensorType, predicate 含 isSignlessInteger(32) → shaped(tensor, element=I32)
+    - AnyRankedTensor: cppType=RankedTensorType → shaped(tensor, ranked=true)
+    """
+    cppType = entry.get("cppType", "")
+    container = CPPTYPE_TO_CONTAINER.get(cppType)
+    
+    if not container:
+        # 无法识别的 cppType，回退到 predicate 解析
+        pred_ref = entry.get("predicate", {})
+        pred_name = pred_ref.get("def")
+        if pred_name:
+            return parse_predicate_to_rule(pred_name, data)
+        return {"kind": "shaped", "container": "shaped"}
+    
+    # 构建基础 shaped 规则
+    shaped_rule: dict = {"kind": "shaped", "container": container}
+    
+    # 处理 ranked/unranked
+    superclasses = entry.get("!superclasses", [])
+    if "RankedTensorType" in cppType or "RankedTensorOf" in superclasses:
+        shaped_rule["ranked"] = True
+    elif "UnrankedTensorType" in cppType or "UnrankedTensorOf" in superclasses:
+        shaped_rule["ranked"] = False
+    elif "UnrankedMemRefType" in cppType or "UnrankedMemRefOf" in superclasses:
+        shaped_rule["ranked"] = False
+    
+    # 从 predicate 提取元素约束
+    pred_ref = entry.get("predicate", {})
+    pred_name = pred_ref.get("def")
+    if pred_name:
+        element_rule = _extract_element_constraint_from_predicate(pred_name, data)
+        if element_rule:
+            shaped_rule["element"] = element_rule
+    
+    return shaped_rule
+
+
+def _extract_element_constraint_from_predicate(pred_name: str, data: dict) -> dict | None:
+    """
+    从 predicate 中提取元素类型约束
+    
+    ShapedContainerType 的 predicate 结构通常是：
+    And(
+      容器检查 (IsTensorTypePred 等)
+      Concat(SubstLeaves(Or(元素类型检查)))
+    )
+    
+    我们需要找到 SubstLeaves 下的元素类型检查
+    """
+    if not pred_name or pred_name not in data:
+        return None
+    
+    pred = data[pred_name]
+    superclasses = pred.get("!superclasses", [])
+    
+    # And - 遍历子节点找元素约束
+    if "And" in superclasses:
+        children = pred.get("children", [])
+        for child_ref in children:
+            child_name = child_ref.get("def")
+            if not child_name:
+                continue
+            
+            child_pred = data.get(child_name, {})
+            child_superclasses = child_pred.get("!superclasses", [])
+            
+            # 跳过容器检查（IsTensorTypePred 等）
+            if "CPred" in child_superclasses:
+                continue
+            
+            # 递归查找
+            result = _extract_element_constraint_from_predicate(child_name, data)
+            if result:
+                return result
+    
+    # Concat - 继续递归
+    if "Concat" in superclasses:
+        children = pred.get("children", [])
+        for child_ref in children:
+            child_name = child_ref.get("def")
+            if child_name:
+                result = _extract_element_constraint_from_predicate(child_name, data)
+                if result:
+                    return result
+    
+    # SubstLeaves - 这里包含元素类型检查
+    if "SubstLeaves" in superclasses:
+        children = pred.get("children", [])
+        for child_ref in children:
+            child_name = child_ref.get("def")
+            if child_name:
+                # 解析元素类型检查
+                return parse_predicate_to_rule(child_name, data)
     
     return None
 
@@ -296,33 +515,21 @@ def parse_constraint_rule(name: str, data: dict) -> dict | None:
         return {"kind": "or", "children": children}
     
     # ShapedContainerType - 容器类型
+    # 直接从 cppType 推断容器，避免解析 predicate 产生冗余的 like 规则
     if "ShapedContainerType" in superclasses:
+        rule = _parse_shaped_container_type(name, entry, data)
+        if rule:
+            return rule
+    
+    # TypeOrValueSemanticsContainer (Like 类型)
+    # 直接从 predicate 解析，_try_parse_like_pattern 会识别 Like 模式
+    if "TypeOrValueSemanticsContainer" in superclasses:
         pred_ref = entry.get("predicate", {})
         pred_name = pred_ref.get("def")
         if pred_name:
             rule = parse_predicate_to_rule(pred_name, data)
             if rule:
                 return rule
-        return {"kind": "shaped", "container": "shaped"}
-    
-    # TypeOrValueSemanticsContainer (Like 类型)
-    if "TypeOrValueSemanticsContainer" in superclasses:
-        pred_ref = entry.get("predicate", {})
-        pred_name = pred_ref.get("def")
-        if pred_name and pred_name in data:
-            pred = data[pred_name]
-            if "Or" in pred.get("!superclasses", []):
-                children = pred.get("children", [])
-                if children:
-                    first_child = children[0].get("def")
-                    if first_child:
-                        scalar_rule = parse_predicate_to_rule(first_child, data)
-                        if scalar_rule:
-                            return {"kind": "like", "element": scalar_rule}
-        if pred_name:
-            rule = parse_predicate_to_rule(pred_name, data)
-            if rule:
-                return {"kind": "like", "element": rule}
     
     # 普通 TypeConstraint - 从 predicate 解析
     pred_ref = entry.get("predicate", {})

@@ -31,6 +31,8 @@ from .constraint_utils import (
     get_buildable_types,
     build_constraint_def,
     parse_constraint_rule,
+    get_type_groups,
+    ALL_CONTAINERS,
 )
 
 router = APIRouter()
@@ -50,6 +52,89 @@ def _load_dialect_data() -> dict[str, dict]:
             with open(json_file, "r", encoding="utf-8") as f:
                 result[json_file.stem] = json.load(f)
     return result
+
+
+# ============ 容器元素约束定义 ============
+
+def _build_vector_element_constraint() -> ConstraintDef:
+    """
+    构造 Vector 元素约束
+    
+    根据官方文档：vector 元素只能是 integer、index 或 float
+    https://mlir.llvm.org/docs/DefiningDialects/Constraints/
+    """
+    return ConstraintDef(
+        name="VectorElementType",
+        summary="vector 元素类型：integer、index 或 float",
+        rule={
+            "kind": "or",
+            "children": [
+                {"kind": "ref", "name": "AnyInteger"},
+                {"kind": "type", "name": "Index"},
+                {"kind": "ref", "name": "AnyFloat"},
+            ]
+        },
+        dialect=None,
+    )
+
+
+def _build_memref_element_constraint() -> ConstraintDef:
+    """
+    构造 MemRef 元素约束
+    
+    根据官方文档：memref 元素可以是 integer、index、float、vector 或 memref
+    https://mlir.llvm.org/docs/Dialects/Builtin/
+    """
+    return ConstraintDef(
+        name="MemRefElementType",
+        summary="memref 元素类型：integer、index、float、vector 或 memref",
+        rule={
+            "kind": "or",
+            "children": [
+                {"kind": "ref", "name": "AnyInteger"},
+                {"kind": "type", "name": "Index"},
+                {"kind": "ref", "name": "AnyFloat"},
+                {"kind": "shaped", "container": "vector"},
+                {"kind": "shaped", "container": "memref"},
+            ]
+        },
+        dialect=None,
+    )
+
+
+def _build_complex_element_constraint() -> ConstraintDef:
+    """
+    构造 Complex 元素约束
+    
+    根据 TableGen 定义：complex 元素只能是 float
+    """
+    return ConstraintDef(
+        name="ComplexElementType",
+        summary="complex 元素类型：float",
+        rule={"kind": "ref", "name": "AnyFloat"},
+        dialect=None,
+    )
+
+
+# ============ 容器类型列表 ============
+
+class ContainerType(BaseModel):
+    """容器类型定义"""
+    name: str
+    hasShape: bool
+    elementConstraint: str | None
+
+
+def _build_container_types() -> list[ContainerType]:
+    """构造容器类型列表"""
+    return [
+        ContainerType(name="vector", hasShape=True, elementConstraint="VectorElementType"),
+        ContainerType(name="memref", hasShape=True, elementConstraint="MemRefElementType"),
+        ContainerType(name="tensor", hasShape=True, elementConstraint=None),
+        ContainerType(name="complex", hasShape=False, elementConstraint="ComplexElementType"),
+        ContainerType(name="unranked_tensor", hasShape=False, elementConstraint=None),
+        ContainerType(name="unranked_memref", hasShape=False, elementConstraint="MemRefElementType"),
+    ]
 
 
 # ============ 构建约束定义（只返回内置约束）============
@@ -90,6 +175,25 @@ def _build_all_constraint_defs() -> list[ConstraintDef]:
             continue
         seen.add(name)
         result.append(build_constraint_def(name, builtin_data, dialect=None))
+    
+    # 添加容器元素约束定义
+    result.append(_build_vector_element_constraint())
+    result.append(_build_memref_element_constraint())
+    result.append(_build_complex_element_constraint())
+    
+    # 手动添加 AnyType（不在 TypeConstraint 列表中，但是常用的内置约束）
+    # AnyType 允许所有标量类型和所有容器类型
+    if "AnyType" not in seen:
+        seen.add("AnyType")
+        result.append(ConstraintDef(
+            name="AnyType",
+            summary="any type",
+            rule={
+                "kind": "like",
+                "element": {"kind": "oneOf", "types": sorted(buildable)},
+                "containers": ALL_CONTAINERS,
+            },
+        ))
     
     return result
 
@@ -251,6 +355,7 @@ class TypeConstraintsResponse(BaseModel):
     constraintDefs: list[ConstraintDef]
     typeDefinitions: list[TypeDefinition]
     constraintEquivalences: dict[str, list[str]]  # 类型集合 → 等价约束名
+    containerTypes: list[ContainerType]  # 容器类型及其元素约束
 
 
 @router.get("/", response_model=TypeConstraintsResponse)
@@ -261,4 +366,5 @@ async def get_type_constraints():
         constraintDefs=_build_all_constraint_defs(),
         typeDefinitions=_build_type_definitions(),
         constraintEquivalences=_build_constraint_equivalences(),
+        containerTypes=_build_container_types(),
     )

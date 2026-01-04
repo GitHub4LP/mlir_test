@@ -13,6 +13,7 @@ import type { Node, Connection } from '@xyflow/react';
 import type { BlueprintNodeData, FunctionEntryData, FunctionReturnData, FunctionCallData, PortConfig } from '../../../types';
 import { getConstraintElements } from '../../../services/typeSystem';
 import { PortRef, PortKind, PortKindUtils } from '../../../services/port';
+import { computeTypeIntersection } from '../../../services/typeIntersection';
 
 // ============================================================
 // 类型定义
@@ -354,17 +355,33 @@ export function validateConnection(
     };
   }
 
-  // 9. 直接计算两个有效集合的交集
-  const targetSetLookup = new Set(targetSet);
-  const intersection = sourceSet.filter(t => targetSetLookup.has(t));
-  const intersectionCount = intersection.length;
+  // 9. 计算两个有效集合的交集（支持容器类型与约束的交集）
+  // 使用 computeTypeIntersection 处理容器类型（如 memref<4xI32>）与约束（如 AnyType）的交集
+  let hasIntersection = false;
+  
+  for (const srcType of sourceSet) {
+    for (const tgtType of targetSet) {
+      // 快速路径：完全相同
+      if (srcType === tgtType) {
+        hasIntersection = true;
+        break;
+      }
+      // 使用类型交集计算（处理容器类型与约束）
+      const intersection = computeTypeIntersection(srcType, tgtType);
+      if (intersection !== null) {
+        hasIntersection = true;
+        break;
+      }
+    }
+    if (hasIntersection) break;
+  }
 
-  if (intersectionCount > 0) {
+  if (hasIntersection) {
     return {
       isValid: true,
       sourceType: sourceSet.length === 1 ? sourceSet[0] : `${sourceSet.length} types`,
       targetType: targetSet.length === 1 ? targetSet[0] : `${targetSet.length} types`,
-      intersectionCount,
+      intersectionCount: 1,  // 简化：只要有交集就返回 1
     };
   }
 

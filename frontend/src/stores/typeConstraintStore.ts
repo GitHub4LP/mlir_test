@@ -5,11 +5,12 @@
  */
 
 import { create } from 'zustand';
-import type { ConstraintDef, ConstraintRule } from '../services/constraintResolver';
+import type { ConstraintDef, ConstraintRule, ConstraintDescriptor } from '../services/constraintResolver';
 import { 
   getConstraintElements,
   isShapedConstraint as checkIsShapedConstraint,
   getAllowedContainers as getContainers,
+  getConstraintDescriptor as getDescriptor,
 } from '../services/constraintResolver';
 import { setConstraintResolver } from './typeColorCache';
 
@@ -29,11 +30,18 @@ export interface TypeDefinition {
   isScalar: boolean;
 }
 
+export interface ContainerType {
+  name: string;
+  hasShape: boolean;
+  elementConstraint: string | null;
+}
+
 interface TypeConstraintsResponse {
   buildableTypes: string[];
   constraintDefs: ConstraintDef[];
   typeDefinitions: TypeDefinition[];
   constraintEquivalences: Record<string, string[]>;  // 类型集合 → 等价约束名
+  containerTypes: ContainerType[];  // 容器类型及其元素约束
 }
 
 export interface TypeConstraintState {
@@ -43,6 +51,7 @@ export interface TypeConstraintState {
   typeDefinitions: TypeDefinition[];
   constraintEquivalences: Map<string, string[]>;  // 类型集合key → 等价约束名
   constraintsByDialect: Map<string, string[]>;    // 方言 → 约束名列表
+  containerTypes: ContainerType[];                // 容器类型列表
 
   // 状态
   isLoading: boolean;
@@ -63,6 +72,11 @@ export interface TypeConstraintState {
   getEquivalentConstraints: (types: string[]) => string[];
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null;
   findSubsetConstraints: (E: string[]) => string[];  // 找出所有元素集合是 E 子集的具名约束
+  getConstraintDescriptor: (constraint: string) => ConstraintDescriptor;  // 获取约束的三元素描述符
+  
+  // 容器类型方法
+  getContainerType: (name: string) => ContainerType | undefined;
+  getElementConstraintName: (container: string) => string | null;
   
   // 方言过滤方法
   getBuiltinConstraints: () => string[];
@@ -77,6 +91,7 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
   typeDefinitions: [],
   constraintEquivalences: new Map(),
   constraintsByDialect: new Map(),
+  containerTypes: [],
   isLoading: false,
   isLoaded: false,
   error: null,
@@ -125,6 +140,7 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
         typeDefinitions: data.typeDefinitions || [],
         constraintEquivalences: equivMap,
         constraintsByDialect: byDialectMap,
+        containerTypes: data.containerTypes || [],
         isLoading: false,
         isLoaded: true,
       });
@@ -314,6 +330,24 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     }
     
     return result;
+  },
+
+  getConstraintDescriptor: (constraint: string) => {
+    const { constraintDefs, buildableTypes } = get();
+    return getDescriptor(constraint, constraintDefs, buildableTypes);
+  },
+
+  // ============ 容器类型方法 ============
+
+  getContainerType: (name: string) => {
+    const { containerTypes } = get();
+    return containerTypes.find(c => c.name === name);
+  },
+
+  getElementConstraintName: (container: string) => {
+    const { containerTypes } = get();
+    const ct = containerTypes.find(c => c.name === container);
+    return ct?.elementConstraint ?? null;
   },
 
   // ============ 方言过滤方法 ============

@@ -379,10 +379,37 @@ export function computeOptionsExcludingSelf(
       const neighborSet = result.effectiveSets.get(neighborKey) || [];
       // 空集不参与交集运算
       if (neighborSet.length > 0) {
-        options = options.filter(t => neighborSet.includes(t));
+        // 使用兼容容器类型的交集计算
+        options = computeOptionsIntersection(options, neighborSet);
       }
     }
   }
   
   return options;
+}
+
+/**
+ * 计算可选集与邻居集合的交集（支持容器类型）
+ */
+function computeOptionsIntersection(options: string[], neighborSet: string[]): string[] {
+  const result: string[] = [];
+  
+  for (const opt of options) {
+    // 检查 opt 是否与 neighborSet 中的任何类型兼容
+    for (const neighbor of neighborSet) {
+      if (opt === neighbor) {
+        if (!result.includes(opt)) {
+          result.push(opt);
+        }
+        break;
+      }
+      // 对于容器类型，使用 computeTypeIntersection
+      // 但这里我们只需要检查兼容性，不需要计算具体交集
+      // 因为 options 是标量类型列表，neighborSet 可能包含容器类型
+      // 如果 neighborSet 包含容器类型，标量类型不应该与之兼容
+      // 所以这里简单使用相等检查即可
+    }
+  }
+  
+  return result;
 }

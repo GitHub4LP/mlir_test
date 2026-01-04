@@ -483,6 +483,7 @@ export class GraphController {
           currentX: worldPos.x,
           currentY: worldPos.y,
         };
+        this.requestRender();
         break;
 
       case 'node':
@@ -549,6 +550,7 @@ export class GraphController {
             currentX: worldPos.x,
             currentY: worldPos.y,
           };
+          this.requestRender();
         } else if (data.button === 1 || data.button === 2) {
           // 中键或右键点击空白 → 开始拖拽视口
           // 存储屏幕坐标！这是关键
@@ -648,13 +650,36 @@ export class GraphController {
       const hit = this.hitTest(worldPos.x, worldPos.y);
       
       if (hit.kind === 'handle' && hit.nodeId !== this.state.sourceNodeId) {
-        // 尝试创建连接
-        this.onConnectionAttempt?.(
-          this.state.sourceNodeId,
-          this.state.sourceHandleId,
-          hit.nodeId,
-          hit.handleId
-        );
+        // 判断拖拽起点是输出端还是输入端
+        const graphData = this.getGraphData();
+        const startNode = graphData?.nodes.find(n => n.id === this.state.sourceNodeId);
+        let isStartOutput = true;
+        if (startNode) {
+          const startBox = this.getLayoutBox(startNode);
+          const startHandles = extractHandlePositions(startBox);
+          const startHandle = startHandles.find(h => h.handleId === this.state.sourceHandleId);
+          isStartOutput = startHandle?.isOutput ?? true;
+        }
+        
+        // 连接方向：始终是 输出端 → 输入端
+        // 如果从输出端拖出：起点是 source，终点是 target
+        // 如果从输入端拖出：终点是 source，起点是 target
+        if (isStartOutput) {
+          this.onConnectionAttempt?.(
+            this.state.sourceNodeId,
+            this.state.sourceHandleId,
+            hit.nodeId,
+            hit.handleId
+          );
+        } else {
+          // 从输入端拖出，交换 source 和 target
+          this.onConnectionAttempt?.(
+            hit.nodeId,
+            hit.handleId,
+            this.state.sourceNodeId,
+            this.state.sourceHandleId
+          );
+        }
       }
       
       this.state = { kind: 'idle' };
@@ -942,7 +967,7 @@ export class GraphController {
       const distance = distanceToEdge(x, y, points);
       
       if (distance < 8) { // 8 像素容差
-        const edgeId = `${edge.source}-${edge.sourceHandle}-${edge.target}-${edge.targetHandle}`;
+        const edgeId = `edge-${edge.source}-${edge.sourceHandle}-${edge.target}-${edge.targetHandle}`;
         return {
           kind: 'edge',
           edgeId,
@@ -1118,8 +1143,8 @@ export class GraphController {
       });
     }
 
-    // 计算交互提示
-    const hint = this.computeInteractionHint();
+    // 计算交互提示（传入当前计算的 layoutBoxes）
+    const hint = this.computeInteractionHint(layoutBoxes);
 
     const renderData: RenderData = {
       viewport: { ...this.viewport },
@@ -1140,8 +1165,9 @@ export class GraphController {
 
   /**
    * 计算交互提示
+   * @param layoutBoxes - 当前计算的 LayoutBox 映射（用于获取 Handle 位置）
    */
-  private computeInteractionHint(): InteractionHint {
+  private computeInteractionHint(layoutBoxes?: Map<string, LayoutBox>): InteractionHint {
     const hint = createDefaultHint();
     
     switch (this.state.kind) {
@@ -1164,28 +1190,49 @@ export class GraphController {
         const graphData = this.getGraphData();
         const sourceNode = graphData?.nodes.find(n => n.id === connectingState.sourceNodeId);
         if (sourceNode) {
-          const sourceBox = this.getLayoutBox(sourceNode);
+          // 优先从传入的 layoutBoxes 获取，否则实时计算
+          const sourceBox = layoutBoxes?.get(sourceNode.id) ?? this.getLayoutBox(sourceNode);
           const sourceHandles = extractHandlePositions(sourceBox);
           const sourceHandle = sourceHandles.find(h => h.handleId === connectingState.sourceHandleId);
-          if (sourceHandle) {
-            const points = computeEdgePath(sourceHandle.x, sourceHandle.y, connectingState.currentX, connectingState.currentY);
-            // 判断是否为执行流
-            const isExec = connectingState.sourceHandleId.includes('exec');
-            // 连接预览颜色：执行流用白色，数据流用源 Handle 的 pinColor
-            const previewColor = isExec 
-              ? EDGE_LAYOUT.EXEC_COLOR 
-              : sourceHandle.pinColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR;
-            hint.connectionPreview = {
-              id: 'connection-preview',
-              points,
-              color: previewColor,
-              width: 2,
-              dashed: true,
-              dashPattern: [5, 5],
-              animated: true,
-              arrowEnd: false,
-            };
+          
+          // 计算 handle 坐标
+          const handleX = sourceHandle?.x ?? sourceBox.x + sourceBox.width;
+          const handleY = sourceHandle?.y ?? sourceBox.y + sourceBox.height / 2;
+          const mouseX = connectingState.currentX;
+          const mouseY = connectingState.currentY;
+          
+          // 判断是否为执行流
+          const isExec = connectingState.sourceHandleId.includes('exec');
+          // 判断是否从输出端拖出
+          const isFromOutput = sourceHandle?.isOutput ?? true;
+          
+          // 曲线始终是"从输出端出来，进入输入端"的形状
+          // computeEdgePath(outputX, outputY, inputX, inputY)
+          // 从输出端拖出：handle 是输出端，鼠标位置是输入端
+          // 从输入端拖出：鼠标位置是输出端，handle 是输入端
+          let points: Array<{ x: number; y: number }>;
+          if (isFromOutput) {
+            // handle(输出) → mouse(输入)
+            points = computeEdgePath(handleX, handleY, mouseX, mouseY);
+          } else {
+            // mouse(输出) → handle(输入)
+            points = computeEdgePath(mouseX, mouseY, handleX, handleY);
           }
+          
+          // 连接预览颜色：执行流用白色，数据流用源 Handle 的 pinColor
+          const previewColor = isExec 
+            ? EDGE_LAYOUT.EXEC_COLOR 
+            : sourceHandle?.pinColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR;
+          hint.connectionPreview = {
+            id: 'connection-preview',
+            points,
+            color: previewColor,
+            width: 2,
+            dashed: true,
+            dashPattern: [5, 5],
+            animated: true,
+            arrowEnd: false,
+          };
         }
         break;
       }

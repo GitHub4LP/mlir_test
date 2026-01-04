@@ -18,6 +18,7 @@ import { dataOutHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
 import { generateParameterName } from '../../../../services/parameterService';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import { useEditorStore } from '../../../../core/stores/editorStore';
 import {
   buildNodeLayoutTree,
   DOMRenderer,
@@ -68,9 +69,19 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
 
   const handleRemoveParameter = useCallback((paramName: unknown) => {
     if (typeof paramName === 'string') {
+      // 删除与该端口相关的边
+      const handleId = dataOutHandle(paramName);
+      const edges = useEditorStore.getState().edges;
+      const edgesToRemove = edges.filter(e => 
+        (e.source === id && e.sourceHandle === handleId)
+      ).map(e => e.id);
+      if (edgesToRemove.length > 0) {
+        useEditorStore.getState().removeEdges(edgesToRemove);
+      }
+      
       removeParameter(functionId, paramName);
     }
-  }, [functionId, removeParameter]);
+  }, [functionId, removeParameter, id]);
 
   const handleRenameParameter = useCallback((oldName: string, newName: string) => {
     const func = getCurrentFunction();

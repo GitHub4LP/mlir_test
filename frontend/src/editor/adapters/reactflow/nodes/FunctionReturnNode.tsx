@@ -17,6 +17,7 @@ import { dataInHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
 import { generateReturnTypeName } from '../../../../services/parameterService';
 import { useEditorStoreUpdate } from '../useEditorStoreUpdate';
+import { useEditorStore } from '../../../../core/stores/editorStore';
 import {
   buildNodeLayoutTree,
   DOMRenderer,
@@ -60,9 +61,19 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
 
   const handleRemoveReturnType = useCallback((returnName: unknown) => {
     if (typeof returnName === 'string' && functionId) {
+      // 删除与该端口相关的边
+      const handleId = dataInHandle(returnName);
+      const edges = useEditorStore.getState().edges;
+      const edgesToRemove = edges.filter(e => 
+        (e.target === id && e.targetHandle === handleId)
+      ).map(e => e.id);
+      if (edgesToRemove.length > 0) {
+        useEditorStore.getState().removeEdges(edgesToRemove);
+      }
+      
       removeReturnType(functionId, returnName);
     }
-  }, [functionId, removeReturnType]);
+  }, [functionId, removeReturnType, id]);
 
   const handleRenameReturnType = useCallback((oldName: string, newName: string) => {
     const func = getFunctionById(functionId);

@@ -507,8 +507,18 @@ function EntryNodePanel({ node, data }: EntryNodePanelProps) {
   }, [functionId, parameters, addParameter]);
   
   const handleRemoveParameter = useCallback((name: string) => {
+    // 删除与该端口相关的边
+    const handleId = `data-out-${name}`;
+    const edges = useEditorStore.getState().edges;
+    const edgesToRemove = edges.filter(e => 
+      (e.source === node.id && e.sourceHandle === handleId)
+    ).map(e => e.id);
+    if (edgesToRemove.length > 0) {
+      useEditorStore.getState().removeEdges(edgesToRemove);
+    }
+    
     removeParameter(functionId, name);
-  }, [functionId, removeParameter]);
+  }, [functionId, removeParameter, node.id]);
   
   const handleRenameParameter = useCallback((oldName: string, newName: string) => {
     const param = parameters.find(p => p.name === oldName);
@@ -599,8 +609,18 @@ function ReturnNodePanel({ node, data }: ReturnNodePanelProps) {
   }, [functionId, returnTypes, addReturnType]);
   
   const handleRemoveReturnType = useCallback((name: string) => {
+    // 删除与该端口相关的边
+    const handleId = `data-in-${name}`;
+    const edges = useEditorStore.getState().edges;
+    const edgesToRemove = edges.filter(e => 
+      (e.target === node.id && e.targetHandle === handleId)
+    ).map(e => e.id);
+    if (edgesToRemove.length > 0) {
+      useEditorStore.getState().removeEdges(edgesToRemove);
+    }
+    
     removeReturnType(functionId, name);
-  }, [functionId, removeReturnType]);
+  }, [functionId, removeReturnType, node.id]);
   
   const handleRenameReturnType = useCallback((oldName: string, newName: string) => {
     const ret = returnTypes.find(r => r.name === oldName);

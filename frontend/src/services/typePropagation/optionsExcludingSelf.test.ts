@@ -20,7 +20,7 @@ const mockBuildableTypes = [
 
 // 模拟约束定义
 const mockConstraintDefs = new Map<string, ConstraintDef>([
-  ['AnyType', { name: 'AnyType', summary: 'any type', rule: { kind: 'any' } }],
+  ['AnyType', { name: 'AnyType', summary: 'any type', rule: { kind: 'like', element: { kind: 'oneOf', types: ['I1', 'I8', 'I16', 'I32', 'I64', 'I128', 'F16', 'F32', 'F64', 'BF16'] } } }],
   ['SignlessIntegerLike', { 
     name: 'SignlessIntegerLike', 
     summary: 'signless integer', 

@@ -80,10 +80,6 @@ function getRuleChildren(rule: ConstraintRule | null): { label?: string; childre
         children: rule.element ? [{ name: getRuleName(rule.element, 0), rule: rule.element }] : []
       };
 
-    case 'any':
-      // 任意类型
-      return { children: [] };
-
     default:
       return { children: [] };
   }
@@ -108,8 +104,6 @@ function getRuleName(rule: ConstraintRule, index: number): string {
       return `like_${index}`;
     case 'shaped':
       return rule.container;
-    case 'any':
-      return 'any';
     default:
       return `item_${index}`;
   }
@@ -120,7 +114,7 @@ function getRuleName(rule: ConstraintRule, index: number): string {
  */
 function isLeafNode(rule: ConstraintRule | null): boolean {
   if (!rule) return true;
-  return rule.kind === 'type' || rule.kind === 'any';
+  return rule.kind === 'type';
 }
 
 /**
@@ -132,11 +126,11 @@ function getNodeLabel(name: string, rule: ConstraintRule | null): string {
   switch (rule.kind) {
     case 'type':
       return rule.name;
-    case 'any':
-      // 顶层约束显示约束名，子节点显示"任意类型"
-      return name || '任意类型';
     case 'shaped':
       return `${name} (${rule.container})`;
+    case 'like':
+      // like 约束显示约束名
+      return name || '任意类型';
     default:
       return name;
   }

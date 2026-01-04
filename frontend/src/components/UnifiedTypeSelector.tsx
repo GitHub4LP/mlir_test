@@ -29,6 +29,7 @@ import {
   computeTypeGroups,
   hasConstraintLimit,
 } from '../services/typeSelectorService';
+import { expandElementConstraint } from '../services/constraintResolver';
 
 // ============ 选择面板组件 ============
 
@@ -45,6 +46,8 @@ interface SelectionPanelProps {
   allowedWrappers: readonly WrapperInfo[];
   /** 原始约束名（用于显示） */
   constraintName?: string;
+  /** 元素约束名（用于容器内部类型选择） */
+  elementConstraint?: string;
 }
 
 const SelectionPanel = memo(function SelectionPanel({
@@ -57,6 +60,7 @@ const SelectionPanel = memo(function SelectionPanel({
   constraintTypes,
   allowedWrappers,
   constraintName,
+  elementConstraint,
 }: SelectionPanelProps) {
   const [search, setSearch] = useState('');
   const [showConstraints, setShowConstraints] = useState(true);
@@ -69,6 +73,41 @@ const SelectionPanel = memo(function SelectionPanel({
   // 是否有约束限制
   const hasConstraint = hasConstraintLimit(constraintTypes, constraintName);
 
+  // 根据元素约束过滤标量类型和包装选项
+  const { filteredTypes, filteredWrappers } = useMemo(() => {
+    if (!elementConstraint) {
+      // 无元素约束，使用原始值
+      return { filteredTypes: constraintTypes, filteredWrappers: allowedWrappers };
+    }
+    
+    // 展开元素约束
+    const expansion = expandElementConstraint(elementConstraint, constraintDefs, buildableTypes);
+    
+    // 过滤标量类型
+    let types: string[] | null = null;
+    if (expansion.scalarTypes.length > 0) {
+      if (constraintTypes) {
+        // 取交集
+        const scalarSet = new Set(expansion.scalarTypes);
+        types = constraintTypes.filter(t => scalarSet.has(t));
+      } else {
+        types = expansion.scalarTypes;
+      }
+    }
+    
+    // 过滤包装选项
+    let wrappers: readonly WrapperInfo[];
+    if (expansion.allowedContainers.length === 0) {
+      // 不允许任何容器
+      wrappers = [];
+    } else {
+      const containerSet = new Set(expansion.allowedContainers);
+      wrappers = allowedWrappers.filter(w => containerSet.has(w.name));
+    }
+    
+    return { filteredTypes: types, filteredWrappers: wrappers };
+  }, [elementConstraint, constraintTypes, allowedWrappers, constraintDefs, buildableTypes]);
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -76,15 +115,19 @@ const SelectionPanel = memo(function SelectionPanel({
   // 使用 service 计算类型分组
   const typeGroups = useMemo(() => {
     const filter: SearchFilter = { searchText: search, showConstraints, showTypes, useRegex };
+    // 使用过滤后的类型和包装器
+    const effectiveConstraintTypes = filteredTypes;
+    const effectiveHasConstraint = effectiveConstraintTypes !== null && 
+      (constraintName !== 'AnyType' || elementConstraint !== undefined);
     const data = { 
       analysis: { 
-        isUnconstrained: !hasConstraint, 
+        isUnconstrained: !effectiveHasConstraint, 
         isCompositeConstraint: false, 
         allowedWrappers: null, 
-        scalarTypes: constraintTypes 
+        scalarTypes: effectiveConstraintTypes 
       }, 
-      allowedWrappers, 
-      constraintTypes 
+      allowedWrappers: filteredWrappers, 
+      constraintTypes: effectiveConstraintTypes 
     };
     return computeTypeGroups(
       data,
@@ -94,8 +137,8 @@ const SelectionPanel = memo(function SelectionPanel({
       constraintDefs,
       getConstraintElements
     );
-  }, [hasConstraint, constraintTypes, constraintName, constraintDefs, buildableTypes, 
-      search, showConstraints, showTypes, useRegex, getConstraintElements, allowedWrappers]);
+  }, [filteredTypes, filteredWrappers, constraintName, constraintDefs, buildableTypes, 
+      search, showConstraints, showTypes, useRegex, getConstraintElements, elementConstraint]);
 
   const totalCount = useMemo(() =>
     typeGroups.reduce((sum, g) => sum + g.items.length, 0),
@@ -151,11 +194,11 @@ const SelectionPanel = memo(function SelectionPanel({
       </div>
 
       {/* 包装选项 - 只在有允许的包装器时显示 */}
-      {allowedWrappers.length > 0 && (
+      {filteredWrappers.length > 0 && (
         <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-gray-700)' }}>
           <div style={{ fontSize: 'var(--text-subtitle-size)', color: 'var(--color-gray-500)', marginBottom: 4 }}>包装为:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {allowedWrappers.map(w => (
+            {filteredWrappers.map(w => (
               <button
                 key={w.name}
                 type="button"
@@ -261,8 +304,10 @@ const ShapeEditor = memo(function ShapeEditor({
 interface BuildPanelProps {
   node: TypeNode;
   onChange: (node: TypeNode) => void;
-  onOpenSelector: (target: 'leaf', rect: DOMRect, currentValue: string, element: Element) => void;
+  onOpenSelector: (target: 'leaf', rect: DOMRect, currentValue: string, element: Element, elementConstraint?: string) => void;
   path?: string;
+  /** 当前层的元素约束名（用于限制内层类型选择） */
+  elementConstraint?: string;
 }
 
 const BuildPanel = memo(function BuildPanel({
@@ -270,16 +315,18 @@ const BuildPanel = memo(function BuildPanel({
   onChange,
   onOpenSelector,
   path = 'root',
+  elementConstraint,
 }: BuildPanelProps) {
   const leafRef = useRef<HTMLButtonElement>(null);
+  const { getElementConstraintName } = useTypeConstraintStore();
 
   const handleLeafClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (leafRef.current) {
       const rect = leafRef.current.getBoundingClientRect();
-      onOpenSelector('leaf', rect, node.kind === 'scalar' ? node.name : '', leafRef.current);
+      onOpenSelector('leaf', rect, node.kind === 'scalar' ? node.name : '', leafRef.current, elementConstraint);
     }
-  }, [node, onOpenSelector]);
+  }, [node, onOpenSelector, elementConstraint]);
 
   const handleUnwrap = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -341,6 +388,7 @@ const BuildPanel = memo(function BuildPanel({
         onChange={handleElementChange}
         onOpenSelector={onOpenSelector}
         path={`${path}.element`}
+        elementConstraint={getElementConstraintName(node.wrapper) ?? undefined}
       />
 
       <span style={{ color: 'var(--color-gray-500)' }}>&gt;</span>
@@ -408,6 +456,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectorPos, setSelectorPos] = useState({ top: 0, left: 0 });
+  const [currentElementConstraint, setCurrentElementConstraint] = useState<string | undefined>(undefined);
   // node 完全由 selectedType 派生（受控模式），无需本地 state
   const node = useMemo(() => parseType(selectedType || 'AnyType'), [selectedType]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -446,9 +495,10 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
     return () => document.removeEventListener('mousedown', handler, true);
   }, [isOpen]);
 
-  const handleOpenSelector = useCallback((_target: 'leaf', rect: DOMRect, _currentValue: string, element: Element) => {
+  const handleOpenSelector = useCallback((_target: 'leaf', rect: DOMRect, _currentValue: string, element: Element, elementConstraint?: string) => {
     clickedElementRef.current = element;
     setSelectorPos({ top: rect.bottom + 4, left: rect.left });
+    setCurrentElementConstraint(elementConstraint);
     setIsOpen(true);
   }, []);
 
@@ -522,6 +572,7 @@ export const UnifiedTypeSelector = memo(function UnifiedTypeSelector({
           constraintTypes={constraintTypes}
           allowedWrappers={allowedWrappers}
           constraintName={constraint}
+          elementConstraint={currentElementConstraint}
         />
       )}
     </>

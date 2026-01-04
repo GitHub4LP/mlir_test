@@ -15,6 +15,7 @@
 import type { OperationDef } from '../types';
 import { typeConstraintStore } from '../stores';
 import { PortRef, PortKind } from './port';
+import { getTypeIntersectionCountV2 } from './typeIntersection';
 
 // ============================================================================
 // 类型约束查询（委托给 store）
@@ -257,30 +258,14 @@ export function isCompatible(sourceType: string, targetConstraint: string): bool
  * - 返回值 > 0：类型兼容，可以连接
  * - 返回值 = 0：类型不兼容，不能连接
  * 
+ * 支持标量类型和容器类型
+ * 
  * @param type1 第一个类型约束
  * @param type2 第二个类型约束
  * @returns 交集元素数量
  */
 export function getTypeIntersectionCount(type1: string, type2: string): number {
-  const normalized1 = normalizeType(type1);
-  const normalized2 = normalizeType(type2);
-  
-  // 快速路径：完全相同
-  if (normalized1 === normalized2 || type1 === type2) {
-    const elements = getConstraintElements(type1);
-    return elements.length > 0 ? elements.length : 1;
-  }
-  
-  // 展开约束到具体类型集合
-  const elements1 = getConstraintElements(type1);
-  const elements2 = getConstraintElements(type2);
-  
-  // 如果任一为空，使用原始类型
-  const set1 = elements1.length > 0 ? elements1 : [type1];
-  const set2 = new Set(elements2.length > 0 ? elements2 : [type2]);
-  
-  // 计算交集大小
-  return set1.filter(t => set2.has(t)).length;
+  return getTypeIntersectionCountV2(type1, type2);
 }
 
 /**
@@ -368,3 +353,18 @@ export function hasAllTypesMatchTrait(operation: OperationDef): boolean {
 // 注意：getTypeColor 已移至 stores/typeColorCache.ts
 // 这里重新导出以保持向后兼容，但建议直接从 typeColorCache 导入
 export { getTypeColor } from '../stores/typeColorCache';
+
+// ============================================================================
+// 容器类型支持（重新导出）
+// ============================================================================
+
+// 从 typeIntersection 模块导出容器类型相关函数
+export { 
+  computeTypeIntersection,
+  areTypesCompatible,
+  parseType,
+  serializeType,
+  type TypeNode,
+  type ScalarNode,
+  type CompositeNode,
+} from './typeIntersection';

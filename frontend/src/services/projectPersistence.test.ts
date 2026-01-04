@@ -43,6 +43,7 @@ function createTestProject(overrides: Partial<Project> = {}): Project {
     returnTypes: [],
     graph: defaultGraph,
     isMain: true,
+    directDialects: [],
   };
   
   return {
@@ -219,6 +220,7 @@ describe('projectPersistence', () => {
             returnTypes: [{ name: 'result', constraint: 'i32' }],
             graph: { nodes: [], edges: [] },
             isMain: false,
+            directDialects: [],
           },
         ],
       });
