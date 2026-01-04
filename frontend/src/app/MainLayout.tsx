@@ -17,9 +17,8 @@ import { useCallback, useState, useEffect, useRef, type ReactNode } from 'react'
 import type { Node } from '@xyflow/react';
 
 import { LeftPanelTabs } from '../components/LeftPanelTabs';
-import { FunctionManager } from '../components/FunctionManager';
-import { ExecutionPanel } from '../components/ExecutionPanel';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from '../components/ProjectDialog';
+import { CodeView } from '../components/CodeView';
 import { EditorContainer } from './components/EditorContainer';
 import { useEditorFactory } from './hooks/useEditorFactory';
 import { useGraphEditor } from './hooks/useGraphEditor';
@@ -57,7 +56,6 @@ export interface MainLayoutProps {
  */
 export function MainLayout({ header, footer }: MainLayoutProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [executionPanelExpanded, setExecutionPanelExpanded] = useState(true);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   
   // 左侧面板宽度（可拖拽调整）
@@ -74,7 +72,11 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   const canvasBackend = useRendererStore(state => state.canvasBackend);
   const textRenderMode = useRendererStore(state => state.textRenderMode);
   const edgeRenderMode = useRendererStore(state => state.edgeRenderMode);
-  const setCurrentRenderer = useRendererStore(state => state.setCurrentRenderer);
+  const viewMode = useRendererStore(state => state.viewMode);
+  const setMlirCode = useRendererStore(state => state.setMlirCode);
+  const addLog = useRendererStore(state => state.addLog);
+  const setProcessing = useRendererStore(state => state.setProcessing);
+  const clearLogs = useRendererStore(state => state.clearLogs);
   
   // 编辑器实例引用
   const editorRef = useRef<INodeEditor | null>(null);
@@ -100,11 +102,6 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   
   // 从 editorStore 获取选择状态
   const selection = useEditorStore(state => state.selection);
-  
-  // 渲染器切换处理
-  const handleRendererChange = useCallback((newRenderer: typeof renderer) => {
-    setCurrentRenderer(newRenderer);
-  }, [setCurrentRenderer]);
   
   // 编辑器就绪回调
   const handleEditorReady = useCallback((editor: INodeEditor) => {
@@ -418,22 +415,172 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     setConnectionError(null);
   }, []);
 
-  const toggleExecutionPanel = useCallback(() => {
-    setExecutionPanelExpanded(prev => !prev);
-  }, []);
+  // API base URL
+  const API_BASE_URL = '/api';
 
-  const executionPanelHeight = executionPanelExpanded ? 256 : 32;
+  // 切换到 Code 视图时：保存 + 预览
+  const handleSwitchToCode = useCallback(async () => {
+    if (!project?.path) return;
+    
+    setProcessing(true);
+    clearLogs();
+    addLog('info', 'Saving current graph...');
+    
+    try {
+      // 1. 保存当前图到 projectStore
+      if (currentFunctionId) {
+        saveCurrentGraph(currentFunctionId);
+      }
+      
+      // 2. 保存项目到磁盘
+      addLog('info', 'Saving project to disk...');
+      const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
+      const saved = await saveProjectToPath(project.path);
+      if (!saved) {
+        addLog('error', 'Failed to save project to disk');
+        setMlirCode('', false);
+        setProcessing(false);
+        return;
+      }
+      
+      // 3. 调用 Preview API 生成 MLIR
+      addLog('info', 'Generating MLIR code...');
+      const response = await fetch(`${API_BASE_URL}/build/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: project.path }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setMlirCode(data.mlirCode || '', data.verified || false);
+        addLog('success', `MLIR generated (${data.verified ? 'verified' : 'unverified'})`);
+      } else {
+        setMlirCode('', false);
+        addLog('error', data.error || 'Preview failed');
+      }
+    } catch (error) {
+      setMlirCode('', false);
+      addLog('error', `Preview failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setProcessing(false);
+    }
+  }, [project?.path, currentFunctionId, saveCurrentGraph, setProcessing, clearLogs, addLog, setMlirCode]);
+
+  // Run - JIT 执行
+  const handleRun = useCallback(async () => {
+    if (!project?.path) return;
+    
+    setProcessing(true);
+    addLog('info', 'Saving and executing with JIT...');
+    
+    try {
+      // 保存当前图
+      if (currentFunctionId) {
+        saveCurrentGraph(currentFunctionId);
+      }
+      
+      // 保存项目到磁盘
+      const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
+      await saveProjectToPath(project.path);
+      
+      // 执行
+      const response = await fetch(`${API_BASE_URL}/build/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: project.path }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.mlirCode) {
+        setMlirCode(data.mlirCode, data.verified || false);
+      }
+      
+      if (data.success) {
+        addLog('success', 'Execution successful');
+        if (data.output) {
+          data.output.split('\n').forEach((line: string) => {
+            if (line.trim()) addLog('output', line);
+          });
+        }
+      } else {
+        addLog('error', data.error || 'Execution failed');
+        if (data.output) {
+          data.output.split('\n').forEach((line: string) => {
+            if (line.trim()) addLog('output', line);
+          });
+        }
+      }
+    } catch (error) {
+      addLog('error', `Execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setProcessing(false);
+    }
+  }, [project?.path, currentFunctionId, saveCurrentGraph, setProcessing, addLog, setMlirCode]);
+
+  // Build - 构建项目
+  const handleBuild = useCallback(async () => {
+    if (!project?.path) return;
+    
+    setProcessing(true);
+    addLog('info', 'Building project...');
+    
+    try {
+      // 保存当前图
+      if (currentFunctionId) {
+        saveCurrentGraph(currentFunctionId);
+      }
+      
+      // 保存项目到磁盘
+      const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
+      await saveProjectToPath(project.path);
+      
+      // 构建
+      const response = await fetch(`${API_BASE_URL}/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectPath: project.path,
+          generateLlvm: true,
+          generateExecutable: true,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        addLog('success', `MLIR: ${data.mlirPath}`);
+        if (data.llvmPath) {
+          addLog('success', `LLVM IR: ${data.llvmPath}`);
+        }
+        if (data.binPath) {
+          addLog('success', `Executable: ${data.binPath}`);
+        }
+        if (!data.llvmPath && !data.binPath) {
+          addLog('info', 'LLVM tools not found, skipped IR/executable generation');
+        }
+        addLog('success', 'Build completed');
+      } else {
+        addLog('error', data.error || 'Build failed');
+      }
+    } catch (error) {
+      addLog('error', `Build failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setProcessing(false);
+    }
+  }, [project?.path, currentFunctionId, saveCurrentGraph, setProcessing, addLog]);
 
   return (
     <div className="w-full h-screen flex flex-col bg-gray-900">
       {/* Project Toolbar */}
       <ProjectToolbar
         project={project}
-        renderer={renderer}
-        onRendererChange={handleRendererChange}
         onCreateClick={() => setIsCreateDialogOpen(true)}
         onOpenClick={() => setIsOpenDialogOpen(true)}
         onSaveClick={() => setIsSaveDialogOpen(true)}
+        onSwitchToCode={handleSwitchToCode}
       />
 
       {/* Optional Header */}
@@ -445,20 +592,16 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Function Manager + Node Palette */}
+        {/* Left Panel - Node Palette */}
         <div 
           className="bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0 relative"
           style={{ width: leftPanelWidth }}
         >
-          <div className="border-b border-gray-700 max-h-64 flex-shrink-0">
-            <FunctionManager
-              onFunctionSelect={handleFunctionSelect}
-              onFunctionDeleted={handleFunctionDeleted}
-            />
-          </div>
           <LeftPanelTabs
             onDragStart={handleDragStart}
             onFunctionDragStart={handleFunctionDragStart}
+            onFunctionSelect={handleFunctionSelect}
+            onFunctionDeleted={handleFunctionDeleted}
           />
           {/* 拖拽调整宽度手柄 */}
           <div
@@ -467,29 +610,37 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
           />
         </div>
 
-        {/* Center - Node Editor */}
-        <div
-          className="flex-1 flex flex-col overflow-hidden"
-          style={{ paddingBottom: executionPanelHeight }}
-        >
+        {/* Center - Editor Area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 relative">
-            <EditorContainer
-              rendererType={renderer}
-              canvasBackend={canvasBackend}
-              createEditor={createEditor}
-              onConnect={handleConnect}
-              onDrop={handleDrop}
-              onEdgeDoubleClick={handleEdgeDoubleClick}
-              onDeleteRequest={handleDeleteRequest}
-              onSelectionChange={handleSelectionChange}
-              onViewportChange={setViewport}
-              onTypeSelect={handleTypeSelect}
-              onEditorReady={handleEditorReady}
-              onParameterRename={handleParameterRename}
-              onReturnTypeRename={handleReturnTypeRename}
-            />
+            {/* Graph View */}
+            {viewMode === 'graph' && (
+              <EditorContainer
+                rendererType={renderer}
+                canvasBackend={canvasBackend}
+                createEditor={createEditor}
+                onConnect={handleConnect}
+                onDrop={handleDrop}
+                onEdgeDoubleClick={handleEdgeDoubleClick}
+                onDeleteRequest={handleDeleteRequest}
+                onSelectionChange={handleSelectionChange}
+                onViewportChange={setViewport}
+                onTypeSelect={handleTypeSelect}
+                onEditorReady={handleEditorReady}
+                onParameterRename={handleParameterRename}
+                onReturnTypeRename={handleReturnTypeRename}
+              />
+            )}
+            
+            {/* Code View */}
+            {viewMode === 'code' && (
+              <CodeView
+                onRunClick={handleRun}
+                onBuildClick={handleBuild}
+              />
+            )}
 
-            {connectionError && (
+            {connectionError && viewMode === 'graph' && (
               <ConnectionErrorToast
                 message={connectionError}
                 onClose={dismissError}
@@ -498,8 +649,8 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
           </div>
         </div>
 
-        {/* Right Panel - Properties */}
-        {(effectiveSelectedNode || selection.nodeIds.length > 1) && (
+        {/* Right Panel - Properties (only in graph mode) */}
+        {viewMode === 'graph' && (effectiveSelectedNode || selection.nodeIds.length > 1) && (
           <div className="w-72 bg-gray-800 border-l border-gray-700 flex-shrink-0 overflow-hidden">
             <PropertiesPanel 
               selectedNode={effectiveSelectedNode} 
@@ -507,35 +658,6 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
             />
           </div>
         )}
-      </div>
-
-      {/* Bottom Panel - Execution */}
-      <div
-        className="flex-shrink-0 absolute bottom-0"
-        style={{
-          left: leftPanelWidth,
-          height: executionPanelHeight,
-          right: (effectiveSelectedNode || selection.nodeIds.length > 1) ? 288 : 0,
-        }}
-      >
-        <ExecutionPanel
-          projectPath={project?.path}
-          isExpanded={executionPanelExpanded}
-          onToggleExpand={toggleExecutionPanel}
-          onSaveCurrentGraph={() => {
-            if (currentFunctionId) {
-              saveCurrentGraph(currentFunctionId);
-            }
-          }}
-          onSaveProject={async () => {
-            if (!project?.path) return false;
-            const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
-            if (currentFunctionId) {
-              saveCurrentGraph(currentFunctionId);
-            }
-            return await saveProjectToPath(project.path);
-          }}
-        />
       </div>
 
       {/* Optional Footer */}

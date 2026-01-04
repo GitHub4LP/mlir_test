@@ -64,14 +64,6 @@ export {
 // Canvas 渲染器
 export { CanvasRenderer } from './CanvasRenderer';
 
-// 多层 Canvas 渲染器
-export { MultiLayerCanvasRenderer } from './MultiLayerCanvasRenderer';
-export type { MultiLayerCanvasConfig } from './MultiLayerCanvasRenderer';
-
-// 多层架构组件
-export * from './layers';
-export * from './ui';
-
 // 性能监控
 export { PerformanceMonitor, performanceMonitor } from './PerformanceMonitor';
 export type { PerformanceMetrics, PerformanceCallback } from './PerformanceMonitor';

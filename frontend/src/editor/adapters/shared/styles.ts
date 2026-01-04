@@ -94,12 +94,14 @@ function getCornerRadius(config: { cornerRadius?: number; topLeftRadius?: number
 }
 
 /**
- * tokens 对象 - 从 layoutConfig 派生
- * 注意：推荐直接使用 layoutConfig，此对象仅为过渡期兼容
+ * tokens 对象 - 从 layoutConfig 派生（内部使用）
+ * 
+ * 注意：此对象仅供 styles.ts 内部使用，不对外导出
+ * 外部文件应使用 LAYOUT、TEXT、UI 等常量
  * 
  * 所有属性都有确定的类型（非 undefined），通过默认值保证
  */
-export const tokens = {
+const tokens = {
   // 布局相关 - 从 layoutConfig 派生
   node: {
     bg: getFillColor(layoutConfig.pinRowContent),
@@ -400,6 +402,16 @@ export const NODE_BORDER_RADIUS = tokens.node.border.radius;
 // ============================================================
 
 export const LAYOUT = {
+  // 节点背景色 - 从 pinRowContent 的 fills 派生
+  nodeBg: getFillColor(layoutConfig.pinRowContent),
+  // 节点边框
+  borderColor: (layoutConfig.node as unknown as { border?: { color?: string } }).border?.color ?? '#3d3d4d',
+  borderWidth: (layoutConfig.node as unknown as { border?: { width?: number } }).border?.width ?? 1,
+  // 节点选中边框
+  selectedBorderColor: (layoutConfig.node as unknown as { selected?: { stroke?: string } }).selected?.stroke ?? '#60a5fa',
+  selectedBorderWidth: (layoutConfig.node as unknown as { selected?: { strokeWidth?: number } }).selected?.strokeWidth ?? 2,
+  // 执行引脚颜色
+  execColor: layoutConfig.edge.exec.stroke ?? DEFAULTS.execColor,
   // 节点尺寸 - 从 layoutConfig 派生（带默认值保证类型确定）
   headerHeight: tokens.node.header.height,
   pinRowHeight: tokens.node.pin.rowHeight,

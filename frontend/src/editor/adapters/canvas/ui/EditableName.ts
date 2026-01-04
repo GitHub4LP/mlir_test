@@ -11,7 +11,7 @@
  */
 
 import { BaseUIComponent, type UIMouseEvent } from './UIComponent';
-import { tokens, TEXT, OVERLAY } from '../../shared/styles';
+import { LAYOUT, TEXT, OVERLAY } from '../../shared/styles';
 
 export interface EditableNameStyle {
   /** 显示模式背景色 */
@@ -50,7 +50,7 @@ function getDefaultStyle(): EditableNameStyle {
     textColor: TEXT.labelColor,
     placeholderColor: TEXT.mutedColor,
     borderColor: 'transparent',
-    focusBorderColor: tokens.node.selected.borderColor,
+    focusBorderColor: LAYOUT.selectedBorderColor,
     borderWidth: 1,
     borderRadius: 3,
     fontSize: TEXT.labelSize,

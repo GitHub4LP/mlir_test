@@ -43,7 +43,6 @@ export type {
 
 // LayoutConfig 导出
 export {
-  parseLayoutConfig,
   layoutConfig,
   getContainerConfig,
   normalizePadding,

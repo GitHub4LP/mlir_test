@@ -27,7 +27,7 @@ import { getPortTypeInfo } from '../../editor/adapters/shared/PortTypeInfo';
 import { UnifiedTypeSelector } from '../../components/UnifiedTypeSelector';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
 import { computeTypeSelectorData, computeTypeGroups } from '../../services/typeSelectorService';
-import { PerformanceOverlay } from '../../components/PerformanceOverlay';
+import { EditorControlBar } from '../../components/EditorControlBar';
 import { MiniMap, type NodeSize } from '../../editor/adapters/shared/MiniMap';
 import { performanceMonitor } from '../../editor/adapters/canvas/PerformanceMonitor';
 import { computeNodeLayoutBox } from '../../editor/core/layout';
@@ -602,6 +602,9 @@ export function EditorContainer({
     }
   }, []);
   
+  // 从 rendererStore 获取渲染器切换方法（EditorControlBar 内部使用）
+  // 注：渲染器切换已移至 EditorControlBar 组件
+  
   return (
     <div className="w-full h-full relative overflow-hidden">
       <div 
@@ -609,8 +612,8 @@ export function EditorContainer({
         className="w-full h-full relative"
       />
       
-      {/* 性能监控覆盖层（右上角） */}
-      <PerformanceOverlay />
+      {/* 编辑器控制栏（右上角：渲染器切换 + 性能监控） */}
+      <EditorControlBar />
       
       {/* Canvas 渲染器的工具区域 */}
       {rendererType === 'canvas' && (

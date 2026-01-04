@@ -4,7 +4,6 @@
  */
 
 import type {
-  LayoutConfig,
   Padding,
   NormalizedPadding,
 } from './types';
@@ -46,16 +45,6 @@ export function formatPadding(padding: Padding | undefined): string {
   if (padding === undefined) return '0';
   if (typeof padding === 'number') return `${padding}px`;
   return padding.map((p) => `${p}px`).join(' ');
-}
-
-/**
- * 从 Design Tokens 解析完整的布局配置
- * @deprecated 使用 tokens 模块中的 layoutConfig
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function parseLayoutConfig(_tokens: Record<string, unknown>): LayoutConfig {
-  // 直接返回已解析的配置
-  return layoutConfig;
 }
 
 // ============================================================================

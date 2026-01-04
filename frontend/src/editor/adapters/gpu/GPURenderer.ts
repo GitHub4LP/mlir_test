@@ -22,9 +22,8 @@ import { EdgeBatchManager } from './geometry/EdgeBatch';
 import { CircleBatchManager } from './geometry/CircleBatch';
 import { TriangleBatchManager } from './geometry/TriangleBatch';
 import { TextBatchManager } from './geometry/TextBatch';
-import { tokens } from '../shared/styles';
+import { layoutConfig, LAYOUT } from '../shared/styles';
 import type { LayoutBox, CornerRadius } from '../../core/layout/types';
-import { layoutConfig } from '../../core/layout/LayoutConfig';
 
 /** 渲染模式（GPU 或 Canvas 2D） */
 export type RenderMode = 'gpu' | 'canvas';
@@ -583,7 +582,7 @@ export class GPURenderer implements IRenderer {
           y: centerY,
           radius: size / 2,
           fillColor: color,
-          borderColor: tokens.node.bg,
+          borderColor: LAYOUT.nodeBg,
           borderWidth: 2,
         });
       }
@@ -659,7 +658,7 @@ export class GPURenderer implements IRenderer {
     // 渲染所有文字
     for (const text of data.texts) {
       ctx.save();
-      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? tokens.text.fontFamily}`;
+      ctx.font = `${text.fontSize ?? 12}px ${text.fontFamily ?? layoutConfig.text.fontFamily}`;
       ctx.fillStyle = text.color ?? '#ffffff';
       ctx.textAlign = (text.align ?? 'left') as CanvasTextAlign;
       ctx.textBaseline = (text.baseline ?? 'top') as CanvasTextBaseline;

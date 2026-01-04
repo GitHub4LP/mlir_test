@@ -21,7 +21,7 @@ import type {
 } from './types';
 import type { RawInputCallback, MouseButton } from './input';
 import { createPointerInput, createWheelInput, createKeyInput, extractModifiers } from './input';
-import { tokens, LAYOUT } from '../shared/styles';
+import { LAYOUT } from '../shared/styles';
 import type { LayoutBox, CornerRadius } from '../../core/layout/types';
 import { layoutConfig } from '../../core/layout/LayoutConfig';
 
@@ -391,8 +391,8 @@ export class CanvasRenderer implements IRenderer {
     }
     
     if (rect.selected) {
-      ctx.strokeStyle = tokens.node.selected.borderColor;
-      ctx.lineWidth = tokens.node.selected.borderWidth;
+      ctx.strokeStyle = LAYOUT.selectedBorderColor;
+      ctx.lineWidth = LAYOUT.selectedBorderWidth;
       const selectionRadius = typeof rect.borderRadius === 'number' 
         ? (rect.borderRadius ?? 0) + 2 
         : {
@@ -412,7 +412,7 @@ export class CanvasRenderer implements IRenderer {
     if (path.points.length < 2) return;
     
     ctx.save();
-    ctx.strokeStyle = path.color ?? tokens.edge.exec.color;
+    ctx.strokeStyle = path.color ?? LAYOUT.execColor;
     ctx.lineWidth = path.width ?? 2;
     
     if (path.dashed && path.dashPattern) {
@@ -441,7 +441,7 @@ export class CanvasRenderer implements IRenderer {
       const lastIdx = path.points.length - 1;
       const end = path.points[lastIdx];
       const prev = path.points[lastIdx - 1];
-      this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? tokens.edge.exec.color);
+      this.renderArrow(ctx, prev.x, prev.y, end.x, end.y, path.color ?? LAYOUT.execColor);
     }
     
     ctx.restore();
@@ -786,7 +786,7 @@ export class CanvasRenderer implements IRenderer {
     ctx.fill();
 
     // 边框：使用节点背景色，与 GPURenderer 一致
-    ctx.strokeStyle = tokens.node.bg;
+    ctx.strokeStyle = LAYOUT.nodeBg;
     ctx.lineWidth = strokeWidth;
     ctx.stroke();
 

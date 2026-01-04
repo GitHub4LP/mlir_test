@@ -29,15 +29,13 @@ export { AttributeEditor, type AttributeEditorProps } from './AttributeEditor';
 export { UnifiedTypeSelector } from './UnifiedTypeSelector';
 export { type TypeNode, type ScalarNode, type CompositeNode, parseType, serializeType } from '../services/typeNodeUtils';
 export { NodePalette, type NodePaletteProps } from './NodePalette';
-export { FunctionManager, type FunctionManagerProps } from './FunctionManager';
-export { ExecutionPanel } from './ExecutionPanel';
 export { ExecutionPin } from './ExecutionPin';
 export { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from './ProjectDialog';
+export { CodeView, type CodeViewProps } from './CodeView';
 
 // 左侧面板组件
 export { LeftPanelTabs, type LeftPanelTabsProps } from './LeftPanelTabs';
 export { TypeConstraintPanel } from './TypeConstraintPanel';
-export { ConstraintNode, type ConstraintNodeProps } from './ConstraintNode';
 
 // MainLayout 已移动到 app/ 目录
 // 使用: import { MainLayout } from './app/MainLayout'

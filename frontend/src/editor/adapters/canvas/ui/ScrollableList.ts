@@ -4,7 +4,7 @@
  */
 
 import { BaseUIComponent, type UIMouseEvent, type UIWheelEvent } from './UIComponent';
-import { tokens, TEXT, UI, OVERLAY } from '../../shared/styles';
+import { LAYOUT, TEXT, UI, OVERLAY } from '../../shared/styles';
 
 export interface ListItem {
   id: string;
@@ -41,8 +41,8 @@ function getDefaultStyle(): ScrollableListStyle {
   return {
     backgroundColor: OVERLAY.bg,
     itemBackgroundColor: 'transparent',
-    itemHoverBackgroundColor: tokens.node.border.color,
-    itemSelectedBackgroundColor: tokens.node.selected.borderColor,
+    itemHoverBackgroundColor: LAYOUT.borderColor,
+    itemSelectedBackgroundColor: LAYOUT.selectedBorderColor,
     textColor: TEXT.titleColor,
     secondaryTextColor: TEXT.mutedColor,
     groupHeaderColor: TEXT.mutedColor,
@@ -54,7 +54,7 @@ function getDefaultStyle(): ScrollableListStyle {
     itemHeight: UI.listItemHeight,
     itemPadding: { x: 8, y: 4 },
     scrollbarWidth: UI.scrollbarWidth,
-    scrollbarColor: tokens.node.border.color,
+    scrollbarColor: LAYOUT.borderColor,
     scrollbarTrackColor: OVERLAY.bg,
   };
 }

@@ -127,8 +127,7 @@ function getNodeTitle(node: GraphNode): string {
       return data.functionName || 'Entry';
     }
     case 'function-return': {
-      const data = node.data as FunctionReturnData;
-      return data.branchName ? `Return "${data.branchName}"` : 'Return';
+      return 'Return';
     }
     case 'function-call': {
       const data = node.data as FunctionCallData;
@@ -148,13 +147,10 @@ function getNodeSubtitle(node: GraphNode): string | undefined {
       const data = node.data as BlueprintNodeData;
       return data.operation.dialect;
     }
-    case 'function-entry': {
-      const data = node.data as FunctionEntryData;
-      return data.isMain ? '(main)' : undefined;
-    }
+    case 'function-entry':
+      return undefined;
     case 'function-return': {
-      const data = node.data as FunctionReturnData;
-      return data.isMain ? '(main)' : undefined;
+      return undefined;
     }
     case 'function-call':
       return 'call';

@@ -11,7 +11,7 @@
 
 import type { TextBatch } from '../backends/IGPUBackend';
 import type { RenderText } from '../../canvas/types';
-import { tokens } from '../../shared/styles';
+import { layoutConfig } from '../../shared/styles';
 
 /** 文字实例数据布局（每实例 floats 数量） */
 const TEXT_INSTANCE_FLOATS = 16;
@@ -236,7 +236,7 @@ export class TextBatchManager {
       const offset = i * TEXT_INSTANCE_FLOATS;
       
       const fontSize = text.fontSize ?? 12;
-      const fontFamily = text.fontFamily ?? tokens.text.fontFamily;
+      const fontFamily = text.fontFamily ?? layoutConfig.text.fontFamily;
       
       // 处理 ellipsis 文本截断
       let displayText = text.text;

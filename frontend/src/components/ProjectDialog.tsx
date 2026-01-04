@@ -13,21 +13,6 @@ import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { useProjectStore } from '../stores/projectStore';
 
 /**
- * Available dialects for selection
- */
-const AVAILABLE_DIALECTS = [
-  'affine', 'arith', 'async', 'bufferization', 'builtin', 'cf',
-  'complex', 'func', 'gpu', 'index', 'linalg', 'math', 'memref',
-  'nvgpu', 'quant', 'scf', 'shape', 'shard', 'spirv', 'tensor',
-  'tosa', 'ub', 'vector'
-];
-
-/**
- * Default dialects for new projects
- */
-const DEFAULT_DIALECTS = ['arith', 'func', 'scf', 'memref'];
-
-/**
  * Props for CreateProjectDialog
  */
 interface CreateProjectDialogProps {
@@ -38,7 +23,8 @@ interface CreateProjectDialogProps {
 
 /**
  * Create Project Dialog
- * Allows users to create a new project with name, path, and dialect selection
+ * Allows users to create a new project with name and path
+ * Dialects are automatically collected from used operations
  */
 export const CreateProjectDialog = memo(function CreateProjectDialog({
   isOpen,
@@ -47,7 +33,6 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const [name, setName] = useState('');
   const [path, setPath] = useState('');
-  const [selectedDialects, setSelectedDialects] = useState<string[]>(DEFAULT_DIALECTS);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -64,19 +49,9 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
   const handleClose = useCallback(() => {
     setName('');
     setPath('');
-    setSelectedDialects(DEFAULT_DIALECTS);
     setError(null);
     onClose();
   }, [onClose]);
-
-  // Toggle dialect selection
-  const toggleDialect = useCallback((dialect: string) => {
-    setSelectedDialects(prev => 
-      prev.includes(dialect)
-        ? prev.filter(d => d !== dialect)
-        : [...prev, dialect]
-    );
-  }, []);
 
   // Handle form submission
   const handleSubmit = useCallback((e: React.FormEvent) => {
@@ -101,10 +76,11 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
       return;
     }
     
-    createProject(trimmedName, trimmedPath, selectedDialects);
+    // Create project with empty dialects (will be auto-collected)
+    createProject(trimmedName, trimmedPath, []);
     onCreated?.();
     handleClose();
-  }, [name, path, selectedDialects, createProject, onCreated, handleClose]);
+  }, [name, path, createProject, onCreated, handleClose]);
 
   // Handle escape key
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -118,7 +94,7 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div 
-        className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-[500px] max-h-[80vh] overflow-hidden"
+        className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-[400px]"
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
@@ -135,7 +111,7 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
         </div>
         
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(80vh-140px)]">
+        <form onSubmit={handleSubmit} className="p-6">
           {/* Project Name */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -171,34 +147,6 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
             />
             <p className="mt-1 text-xs text-gray-500">
               Directory where project files will be saved
-            </p>
-          </div>
-          
-          {/* Dialect Selection */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Dialects
-            </label>
-            <div className="bg-gray-700 rounded border border-gray-600 p-3 max-h-40 overflow-y-auto">
-              <div className="grid grid-cols-4 gap-2">
-                {AVAILABLE_DIALECTS.map(dialect => (
-                  <label
-                    key={dialect}
-                    className="flex items-center gap-2 cursor-pointer hover:bg-gray-600 px-2 py-1 rounded"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedDialects.includes(dialect)}
-                      onChange={() => toggleDialect(dialect)}
-                      className="w-4 h-4 rounded border-gray-500 bg-gray-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-                    />
-                    <span className="text-sm text-gray-300">{dialect}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
-              Select MLIR dialects to use in this project
             </p>
           </div>
           

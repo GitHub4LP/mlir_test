@@ -5,11 +5,11 @@
  * 纯函数，无业务逻辑依赖。
  */
 
-import { tokens } from '../adapters/shared/styles';
+import { layoutConfig } from '../adapters/shared/styles';
 
-const BEZIER_OFFSET = typeof tokens.edge.bezierOffset === 'string' 
-  ? parseInt(tokens.edge.bezierOffset) 
-  : tokens.edge.bezierOffset;
+const BEZIER_OFFSET = typeof layoutConfig.edge.bezierOffset === 'string' 
+  ? parseInt(layoutConfig.edge.bezierOffset) 
+  : layoutConfig.edge.bezierOffset;
 
 /**
  * 计算边路径点（贝塞尔曲线）

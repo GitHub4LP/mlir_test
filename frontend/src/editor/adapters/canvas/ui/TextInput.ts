@@ -6,7 +6,7 @@
  */
 
 import { BaseUIComponent, type UIMouseEvent } from './UIComponent';
-import { tokens, TEXT, UI, OVERLAY } from '../../shared/styles';
+import { LAYOUT, TEXT, UI, OVERLAY } from '../../shared/styles';
 
 export interface TextInputStyle {
   backgroundColor: string;
@@ -30,7 +30,7 @@ function getDefaultStyle(): TextInputStyle {
     textColor: TEXT.titleColor,
     placeholderColor: TEXT.mutedColor,
     borderColor: OVERLAY.borderColor,
-    focusBorderColor: tokens.node.selected.borderColor,
+    focusBorderColor: LAYOUT.selectedBorderColor,
     borderWidth: OVERLAY.borderWidth,
     borderRadius: OVERLAY.borderRadius / 2,
     fontSize: TEXT.labelSize,

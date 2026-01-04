@@ -13,7 +13,7 @@ export {
 } from '../../core/geometry';
 
 // 从 Design Tokens 派生的常量
-import { tokens, LAYOUT, getPinContentLayout } from '../shared/styles';
+import { layoutConfig, LAYOUT, getPinContentLayout } from '../shared/styles';
 
 export { LAYOUT, getPinContentLayout };
 
@@ -23,21 +23,21 @@ export const NODE_LAYOUT = {
   HEADER_HEIGHT: LAYOUT.headerHeight,
   PIN_ROW_HEIGHT: LAYOUT.pinRowHeight,
   HANDLE_RADIUS: LAYOUT.handleRadius,
-  HANDLE_OFFSET: typeof tokens.node.handle.offset === 'string' ? parseInt(tokens.node.handle.offset) : tokens.node.handle.offset,
+  HANDLE_OFFSET: 0,  // 默认值
   PADDING: LAYOUT.padding,
   BORDER_RADIUS: LAYOUT.borderRadius,
-  DEFAULT_BG_COLOR: tokens.node.bg,
-  DEFAULT_BORDER_COLOR: tokens.node.border.color,
-  SELECTED_BORDER_COLOR: tokens.node.selected.borderColor,
+  DEFAULT_BG_COLOR: LAYOUT.nodeBg,
+  DEFAULT_BORDER_COLOR: '#3d3d4d',  // 默认边框色
+  SELECTED_BORDER_COLOR: LAYOUT.selectedBorderColor,
   HEADER_PADDING_X: LAYOUT.headerPaddingX,
   HEADER_PADDING_Y: LAYOUT.headerPaddingY,
 } as const;
 
 /** 边布局常量 */
 export const EDGE_LAYOUT = {
-  WIDTH: tokens.edge.width,
-  SELECTED_WIDTH: tokens.edge.selectedWidth,
-  BEZIER_OFFSET: typeof tokens.edge.bezierOffset === 'string' ? parseInt(tokens.edge.bezierOffset) : tokens.edge.bezierOffset,
-  EXEC_COLOR: tokens.edge.exec.color,
-  DEFAULT_DATA_COLOR: tokens.edge.data.defaultColor,
+  WIDTH: layoutConfig.edge.data.strokeWidth,
+  SELECTED_WIDTH: 3,
+  BEZIER_OFFSET: typeof layoutConfig.edge.bezierOffset === 'string' ? parseInt(layoutConfig.edge.bezierOffset) : layoutConfig.edge.bezierOffset,
+  EXEC_COLOR: LAYOUT.execColor,
+  DEFAULT_DATA_COLOR: layoutConfig.edge.data.defaultStroke ?? '#888888',
 } as const;

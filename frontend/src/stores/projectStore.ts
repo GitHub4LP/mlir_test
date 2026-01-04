@@ -10,7 +10,7 @@ import * as projectPersistence from '../services/projectPersistence';
 import { getTypeColor } from './typeColorCache';
 import { syncFunctionSignatureChange, syncFunctionRemoval, syncFunctionRename } from '../services/functionSyncService';
 import { dataInHandle, dataOutHandle } from '../services/port';
-import { tokens } from '../editor/adapters/shared/styles';
+import { layoutConfig } from '../editor/adapters/shared/styles';
 import { computeDirectDialects, computeProjectDialects } from '../services/dialectDependency';
 
 import type { FunctionEntryData, FunctionReturnData, PortConfig, GraphNode } from '../types';
@@ -91,7 +91,7 @@ function createFunctionGraph(
     execOut: { id: 'exec-out', label: '' },
     isMain,
     // 节点头部颜色（创建时确定，不会变化）
-    headerColor: tokens.nodeType.entry,
+    headerColor: layoutConfig.nodeType.entry,
   };
 
   const returnData: FunctionReturnData = {
@@ -102,7 +102,7 @@ function createFunctionGraph(
     execIn: { id: 'exec-in', label: '' },
     isMain,
     // 节点头部颜色（创建时确定，不会变化）
-    headerColor: tokens.nodeType.return,
+    headerColor: layoutConfig.nodeType.return,
   };
 
   return {

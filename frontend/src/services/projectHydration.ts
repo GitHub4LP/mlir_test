@@ -28,7 +28,7 @@ import type {
   StoredFunctionCallData,
 } from '../types';
 import { dataOutHandle, dataInHandle } from './port';
-import { getDialectColor, tokens } from '../editor/adapters/shared/styles';
+import { getDialectColor, layoutConfig } from '../editor/adapters/shared/styles';
 import { getTypeColor } from '../stores/typeColorCache';
 import { createInputPortsFromParams, createOutputPortsFromReturns, getExecOutputsFromFunction } from './functionNodeGenerator';
 
@@ -248,7 +248,7 @@ export function hydrateGraphNode(
       outputs: rebuildEntryOutputs(func),
       outputTypes: {},
       // 节点头部颜色
-      headerColor: tokens.nodeType.entry,
+      headerColor: layoutConfig.nodeType.entry,
     };
     return {
       ...node,
@@ -265,7 +265,7 @@ export function hydrateGraphNode(
       inputs: rebuildReturnInputs(func),
       inputTypes: {},
       // 节点头部颜色
-      headerColor: tokens.nodeType.return,
+      headerColor: layoutConfig.nodeType.return,
     };
     return {
       ...node,
@@ -294,7 +294,7 @@ export function hydrateGraphNode(
       execIn: stored.execIn || { id: 'exec-in', label: '' },
       execOuts: getExecOutputsFromFunction(calleeFunc),
       // 节点头部颜色
-      headerColor: tokens.nodeType.call,
+      headerColor: layoutConfig.nodeType.call,
     };
     return {
       ...node,
