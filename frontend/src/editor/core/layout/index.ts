@@ -136,7 +136,10 @@ export {
 export type { HandlePosition } from './hitTest';
 
 // cache 导出
-export { LayoutCache, layoutCache } from './cache';
+export { LayoutCache, layoutCache, computeNodeDataHash } from './cache';
+
+// TextMeasureCache 导出
+export { TextMeasureCache, textMeasureCache } from './TextMeasureCache';
 
 // sizeProvider 导出
 export type { SizeProvider, DOMSizeProvider, InteractiveComponentType } from './sizeProvider';

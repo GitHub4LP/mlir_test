@@ -61,7 +61,26 @@
           "execOuts": [],
           "regionPins": [],
           "outputTypes": {
-            "result": "AnyFloat"
+            "result": [
+              "BF16",
+              "F128",
+              "F16",
+              "F32",
+              "F4E2M1FN",
+              "F64",
+              "F6E2M3FN",
+              "F6E3M2FN",
+              "F80",
+              "F8E3M4",
+              "F8E4M3",
+              "F8E4M3B11FNUZ",
+              "F8E4M3FN",
+              "F8E4M3FNUZ",
+              "F8E5M2",
+              "F8E5M2FNUZ",
+              "F8E8M0FNU",
+              "TF32"
+            ]
           }
         }
       },
@@ -78,11 +97,68 @@
           "execOuts": [],
           "regionPins": [],
           "inputTypes": {
-            "lhs": "FloatLike",
-            "rhs": "FloatLike"
+            "lhs": [
+              "BF16",
+              "F128",
+              "F16",
+              "F32",
+              "F4E2M1FN",
+              "F64",
+              "F6E2M3FN",
+              "F6E3M2FN",
+              "F80",
+              "F8E3M4",
+              "F8E4M3",
+              "F8E4M3B11FNUZ",
+              "F8E4M3FN",
+              "F8E4M3FNUZ",
+              "F8E5M2",
+              "F8E5M2FNUZ",
+              "F8E8M0FNU",
+              "TF32"
+            ],
+            "rhs": [
+              "BF16",
+              "F128",
+              "F16",
+              "F32",
+              "F4E2M1FN",
+              "F64",
+              "F6E2M3FN",
+              "F6E3M2FN",
+              "F80",
+              "F8E3M4",
+              "F8E4M3",
+              "F8E4M3B11FNUZ",
+              "F8E4M3FN",
+              "F8E4M3FNUZ",
+              "F8E5M2",
+              "F8E5M2FNUZ",
+              "F8E8M0FNU",
+              "TF32"
+            ]
           },
           "outputTypes": {
-            "result": "FloatLike"
+            "result": [
+              "BF16",
+              "F128",
+              "F16",
+              "F32",
+              "F4E2M1FN",
+              "F64",
+              "F6E2M3FN",
+              "F6E3M2FN",
+              "F80",
+              "F8E3M4",
+              "F8E4M3",
+              "F8E4M3B11FNUZ",
+              "F8E4M3FN",
+              "F8E4M3FNUZ",
+              "F8E5M2",
+              "F8E5M2FNUZ",
+              "F8E8M0FNU",
+              "TF32"
+            ]
           }
         }
       }

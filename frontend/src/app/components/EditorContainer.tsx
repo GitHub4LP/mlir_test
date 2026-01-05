@@ -140,6 +140,10 @@ export function EditorContainer({
   const setSelection = useEditorStore(state => state.setSelection);
   const setViewport = useEditorStore(state => state.setViewport);
   
+  // 标志位：区分内部触发（渲染器拖拽）还是外部触发（fitView、切换渲染器等）的 viewport 变化
+  // 内部触发的变化不需要同步回渲染器，避免循环
+  const isInternalViewportChange = useRef(false);
+  
   // 稳定的事件处理函数（通过 ref 访问最新回调）
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     applyNodeChanges(changes);
@@ -151,6 +155,8 @@ export function EditorContainer({
   }, [setSelection]);
   
   const handleViewportChange = useCallback((newViewport: EditorViewport) => {
+    // 标记为内部触发，避免 useEffect 同步回渲染器
+    isInternalViewportChange.current = true;
     viewportRef.current = newViewport;
     setViewport(newViewport);
     callbacksRef.current.onViewportChangeProp?.(newViewport);
@@ -524,8 +530,17 @@ export function EditorContainer({
   }, [edges]);
   
   // 同步视口到编辑器（仅当外部改变时）
+  // 内部触发的变化（渲染器拖拽）不需要同步回渲染器，避免循环
   const lastViewportRef = useRef(viewport);
   useEffect(() => {
+    // 内部触发的变化，跳过同步
+    if (isInternalViewportChange.current) {
+      isInternalViewportChange.current = false;
+      lastViewportRef.current = viewport;
+      return;
+    }
+    
+    // 外部触发的变化（如切换渲染器、fitView），同步到渲染器
     const last = lastViewportRef.current;
     const diff = Math.abs(viewport.x - last.x) + Math.abs(viewport.y - last.y) + Math.abs(viewport.zoom - last.zoom);
     if (diff > 0.01) {

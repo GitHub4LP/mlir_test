@@ -31,7 +31,14 @@ import {
   EDGE_LAYOUT,
 } from './layout';
 // 统一布局系统 - 所有尺寸和位置信息都从 LayoutBox 获取
-import { computeNodeLayoutBox, extractHandlePositions, type LayoutBox, type HandlePosition } from '../../core/layout';
+import {
+  computeNodeLayoutBox,
+  extractHandlePositions,
+  LayoutCache,
+  computeNodeDataHash,
+  type LayoutBox,
+  type HandlePosition,
+} from '../../core/layout';
 import { performanceMonitor } from './PerformanceMonitor';
 
 // ============================================================
@@ -158,12 +165,24 @@ export class GraphController {
   // 缓存的渲染数据
   private cachedRenderData: RenderData = createEmptyRenderData();
 
+  // 布局缓存（用于性能优化）
+  private layoutCache: LayoutCache = new LayoutCache();
+  
+  // 拖拽状态标志（用于选择快速/完整渲染路径）
+  private isDragging: boolean = false;
+
+  // 内部位置管理（拖拽时使用，避免通过 React 状态循环）
+  private internalPositions: Map<string, { x: number; y: number }> = new Map();
+
   // ============================================================
   // 外部回调（用于与应用层通信）
   // ============================================================
 
-  /** 节点位置变化回调 */
+  /** 节点位置变化回调（拖拽结束时调用） */
   onNodePositionChange: ((nodeId: string, x: number, y: number) => void) | null = null;
+  
+  /** 批量节点位置变化回调（拖拽结束时调用，用于多选拖拽） */
+  onNodesPositionChange: ((changes: Array<{ id: string; x: number; y: number }>) => void) | null = null;
 
   // 渲染扩展已移至 LayoutBox 系统，不再需要 onExtendRenderData 回调
 
@@ -522,6 +541,8 @@ export class GraphController {
               startY: worldPos.y,
               nodeStartPositions,
             };
+            // 设置拖拽状态
+            this.isDragging = true;
             // 通知拖拽开始
             this.onDragStateChange?.(true);
           }
@@ -561,6 +582,8 @@ export class GraphController {
             viewportStartX: this.viewport.x,
             viewportStartY: this.viewport.y,
           };
+          // 设置拖拽状态
+          this.isDragging = true;
           // 通知拖拽开始
           this.onDragStateChange?.(true);
         }
@@ -571,6 +594,9 @@ export class GraphController {
   /**
    * 拖拽节点状态下处理指针输入
    * data.x/y 是屏幕坐标，需要转换为世界坐标
+   * 
+   * 设计：拖拽时仅更新内部位置，不通知外部（避免 React 状态循环）
+   * 拖拽结束时批量同步位置到外部
    */
   private handlePointerInDraggingNode(data: import('./input').PointerInput): void {
     if (this.state.kind !== 'dragging-node') return;
@@ -583,19 +609,41 @@ export class GraphController {
       const deltaX = worldPos.x - this.state.startX;
       const deltaY = worldPos.y - this.state.startY;
       
-      // 更新所有选中节点的位置
+      // 更新内部位置（不通知外部，避免 React 状态循环）
       for (const [nodeId, startPos] of this.state.nodeStartPositions) {
-        this.onNodePositionChange?.(
-          nodeId,
-          startPos.x + deltaX,
-          startPos.y + deltaY
-        );
+        this.internalPositions.set(nodeId, {
+          x: startPos.x + deltaX,
+          y: startPos.y + deltaY,
+        });
       }
       
       this.requestRender();
     } else if (data.type === 'up') {
-      // 拖拽结束
+      // 拖拽结束，批量同步位置到外部
+      const changes: Array<{ id: string; x: number; y: number }> = [];
+      for (const [nodeId, pos] of this.internalPositions) {
+        changes.push({ id: nodeId, x: pos.x, y: pos.y });
+      }
+      
+      // 清空内部位置
+      this.internalPositions.clear();
+      
+      // 重置状态
       this.state = { kind: 'idle' };
+      this.isDragging = false;
+      
+      // 批量通知位置变化（优先使用批量回调）
+      if (changes.length > 0) {
+        if (this.onNodesPositionChange) {
+          this.onNodesPositionChange(changes);
+        } else if (this.onNodePositionChange) {
+          // 降级：逐个通知
+          for (const change of changes) {
+            this.onNodePositionChange(change.id, change.x, change.y);
+          }
+        }
+      }
+      
       // 通知拖拽结束
       this.onDragStateChange?.(false);
     }
@@ -621,6 +669,8 @@ export class GraphController {
     } else if (data.type === 'up') {
       // 拖拽结束
       this.state = { kind: 'idle' };
+      // 重置拖拽状态
+      this.isDragging = false;
       // 通知拖拽结束
       this.onDragStateChange?.(false);
     }
@@ -1022,10 +1072,27 @@ export class GraphController {
   }
 
   /**
-   * 清除布局缓存（保留接口兼容性）
+   * 清除布局缓存
+   * 在节点数据变化或函数切换时调用
    */
   clearLayoutCache(): void {
-    // 不再使用缓存，此方法保留为空
+    this.layoutCache.clear();
+  }
+
+  /**
+   * 使指定节点的缓存失效
+   * @param nodeId - 节点 ID
+   */
+  invalidateNodeCache(nodeId: string): void {
+    this.layoutCache.invalidate(nodeId);
+  }
+
+  /**
+   * 批量使节点缓存失效
+   * @param nodeIds - 节点 ID 列表
+   */
+  invalidateNodeCaches(nodeIds: string[]): void {
+    this.layoutCache.invalidateMany(nodeIds);
   }
 
   // ============================================================
@@ -1034,9 +1101,160 @@ export class GraphController {
 
   /**
    * 计算渲染数据
+   * 根据拖拽状态选择快速或完整渲染路径
    * @returns 完整的渲染数据
    */
   computeRenderData(): RenderData {
+    // 视口拖拽时使用最快路径（只更新 viewport，复用其他数据）
+    if (this.state.kind === 'dragging-viewport' && this.cachedRenderData.layoutBoxes?.size) {
+      return this.computeRenderDataViewportOnly();
+    }
+    // 节点拖拽时使用快速路径（更新位置，重新计算边）
+    if (this.isDragging && this.cachedRenderData.layoutBoxes?.size) {
+      return this.computeRenderDataFast();
+    }
+    // 否则使用完整路径（检查缓存，必要时重新计算）
+    return this.computeRenderDataFull();
+  }
+
+  /**
+   * 最快渲染路径 - 仅视口变化
+   * 视口拖拽时，节点画布坐标不变，只需更新 viewport
+   */
+  private computeRenderDataViewportOnly(): RenderData {
+    // 只更新 viewport 和交互提示，其他数据复用缓存
+    const hint = this.computeInteractionHint(this.cachedRenderData.layoutBoxes);
+    
+    return {
+      ...this.cachedRenderData,
+      viewport: { ...this.viewport },
+      hint,
+    };
+  }
+
+  /**
+   * 快速渲染路径
+   * 拖拽时仅更新位置，不重新计算布局
+   * 使用 internalPositions 获取拖拽中的节点位置
+   */
+  private computeRenderDataFast(): RenderData {
+    const graphData = this.getGraphData();
+    if (!graphData) {
+      return createEmptyRenderData();
+    }
+
+    // 批量更新缓存中的位置（优先使用 internalPositions）
+    const updates: Array<{ nodeId: string; x: number; y: number }> = [];
+    for (const node of graphData.nodes) {
+      const internalPos = this.internalPositions.get(node.id);
+      updates.push({
+        nodeId: node.id,
+        x: internalPos?.x ?? node.position.x,
+        y: internalPos?.y ?? node.position.y,
+      });
+    }
+    this.layoutCache.updatePositions(updates);
+
+    // 更新 cachedRenderData 中的 layoutBoxes 位置（优先使用 internalPositions）
+    const layoutBoxes = this.cachedRenderData.layoutBoxes;
+    if (layoutBoxes) {
+      for (const node of graphData.nodes) {
+        const box = layoutBoxes.get(node.id);
+        if (box) {
+          const internalPos = this.internalPositions.get(node.id);
+          box.x = internalPos?.x ?? node.position.x;
+          box.y = internalPos?.y ?? node.position.y;
+        }
+      }
+    }
+
+    // 重新计算边和交互提示（位置变化会影响边的路径）
+    const paths: RenderPath[] = [];
+    const layoutBoxHandles = new Map<string, HandlePosition[]>();
+    
+    // 从缓存获取 Handle 位置
+    for (const node of graphData.nodes) {
+      const handles = this.layoutCache.getHandles(node.id);
+      if (handles) {
+        layoutBoxHandles.set(node.id, handles);
+      }
+    }
+
+    // 计算所有边
+    for (const edge of graphData.edges) {
+      const sourceHandles = layoutBoxHandles.get(edge.source);
+      const targetHandles = layoutBoxHandles.get(edge.target);
+      const sourceBox = layoutBoxes?.get(edge.source);
+      const targetBox = layoutBoxes?.get(edge.target);
+      
+      if (!sourceBox || !targetBox) continue;
+      
+      const sourceHandle = sourceHandles?.find(h => h.handleId === edge.sourceHandle);
+      const targetHandle = targetHandles?.find(h => h.handleId === edge.targetHandle);
+      
+      const sourceX = sourceHandle?.x ?? sourceBox.x + sourceBox.width;
+      const sourceY = sourceHandle?.y ?? sourceBox.y + sourceBox.height / 2;
+      const targetX = targetHandle?.x ?? targetBox.x;
+      const targetY = targetHandle?.y ?? targetBox.y + targetBox.height / 2;
+      
+      const isExec = edge.sourceHandle?.includes('exec') || edge.targetHandle?.includes('exec') || false;
+      const edgeDataColor = edge.data?.color;
+      // 从缓存的 Handle 获取 pinColor
+      const sourcePinColor = (sourceHandle as HandlePosition & { pinColor?: string })?.pinColor;
+      const edgeColor = isExec 
+        ? EDGE_LAYOUT.EXEC_COLOR 
+        : edgeDataColor ?? sourcePinColor ?? EDGE_LAYOUT.DEFAULT_DATA_COLOR;
+
+      const points = computeEdgePath(sourceX, sourceY, targetX, targetY);
+      const edgeId = `${edge.source}-${edge.sourceHandle}-${edge.target}-${edge.targetHandle}`;
+      const selected = this.selectedEdgeIds.has(edgeId);
+
+      paths.push({
+        id: `edge-${edgeId}`,
+        points,
+        color: edgeColor,
+        width: selected ? EDGE_LAYOUT.SELECTED_WIDTH : EDGE_LAYOUT.WIDTH,
+        dashed: false,
+        animated: false,
+        arrowEnd: false,
+      });
+    }
+
+    // 更新 overlays
+    const overlays: OverlayInfo[] = [];
+    for (const node of graphData.nodes) {
+      if (this.selectedNodeIds.has(node.id)) {
+        const layoutBox = layoutBoxes?.get(node.id);
+        if (layoutBox) {
+          const screenPos = this.canvasToScreen(layoutBox.x, layoutBox.y);
+          overlays.push({
+            nodeId: node.id,
+            screenX: screenPos.x,
+            screenY: screenPos.y,
+            width: layoutBox.width * this.viewport.zoom,
+            height: layoutBox.height * this.viewport.zoom,
+          });
+        }
+      }
+    }
+
+    // 计算交互提示
+    const hint = this.computeInteractionHint(layoutBoxes);
+
+    return {
+      ...this.cachedRenderData,
+      viewport: { ...this.viewport },
+      paths,
+      hint,
+      overlays,
+    };
+  }
+
+  /**
+   * 完整渲染路径
+   * 检查缓存，必要时重新计算布局
+   */
+  private computeRenderDataFull(): RenderData {
     const graphData = this.getGraphData();
     if (!graphData) {
       return createEmptyRenderData();
@@ -1051,15 +1269,46 @@ export class GraphController {
     const triangles: RenderTriangle[] = [];
     const overlays: OverlayInfo[] = [];
 
-    // 首先计算所有节点的 LayoutBox（统一布局系统）
+    // 首先计算所有节点的 LayoutBox（使用缓存优化）
     const layoutBoxes = new Map<string, LayoutBox>();
     const layoutBoxHandles = new Map<string, HandlePosition[]>();
     for (const node of graphData.nodes) {
       try {
-        const layoutBox = computeNodeLayoutBox(node, node.position.x, node.position.y);
+        // 计算数据哈希
+        const dataHash = computeNodeDataHash(node);
+        
+        // 检查缓存是否有效
+        let layoutBox: LayoutBox;
+        let handles: HandlePosition[];
+        
+        if (this.layoutCache.isValid(node.id, dataHash)) {
+          // 缓存命中，复用布局
+          layoutBox = this.layoutCache.get(node.id, dataHash)!;
+          // 更新位置（缓存的布局可能位置过时）
+          layoutBox.x = node.position.x;
+          layoutBox.y = node.position.y;
+          handles = this.layoutCache.getHandles(node.id) ?? [];
+          // 更新 Handle 位置
+          const cachedBox = this.layoutCache.get(node.id);
+          if (cachedBox) {
+            const dx = node.position.x - cachedBox.x;
+            const dy = node.position.y - cachedBox.y;
+            if (dx !== 0 || dy !== 0) {
+              for (const h of handles) {
+                h.x += dx;
+                h.y += dy;
+              }
+            }
+          }
+        } else {
+          // 缓存未命中，重新计算
+          layoutBox = computeNodeLayoutBox(node, node.position.x, node.position.y);
+          handles = extractHandlePositions(layoutBox);
+          // 存入缓存（Handle 格式已经匹配）
+          this.layoutCache.set(node.id, layoutBox, handles, dataHash);
+        }
+        
         layoutBoxes.set(node.id, layoutBox);
-        // 提取 Handle 位置
-        const handles = extractHandlePositions(layoutBox);
         layoutBoxHandles.set(node.id, handles);
       } catch (e) {
         console.warn(`Failed to compute LayoutBox for node ${node.id}:`, e);

@@ -12,7 +12,7 @@ import type {
   SizingMode,
   NormalizedPadding,
 } from './types';
-import { getContainerConfig, normalizePadding, layoutConfig } from './LayoutConfig';
+import { getContainerConfig, normalizePadding } from './LayoutConfig';
 
 // ============================================================================
 // Figma Paint 类型（简化版，用于解析 fills）
@@ -163,29 +163,13 @@ function getFigmaCrossAxisAlign(cfg: ContainerConfig, isHorizontal: boolean): 's
 // 文本测量
 // ============================================================================
 
-// 缓存的 Canvas 上下文（用于文本测量）
-let measureContext: CanvasRenderingContext2D | null = null;
+import { textMeasureCache } from './TextMeasureCache';
 
 /**
- * 获取用于测量的 Canvas 上下文
- */
-function getMeasureContext(): CanvasRenderingContext2D {
-  if (!measureContext) {
-    const canvas = document.createElement('canvas');
-    measureContext = canvas.getContext('2d')!;
-  }
-  return measureContext;
-}
-
-/**
- * 精确测量文本宽度
+ * 精确测量文本宽度（使用缓存）
  */
 function measureTextWidth(text: string, fontSize: number, fontWeight?: number): number {
-  const ctx = getMeasureContext();
-  const fontFamily = layoutConfig.text.fontFamily;
-  const weight = fontWeight ?? 400;
-  ctx.font = `${weight} ${fontSize}px ${fontFamily}`;
-  return ctx.measureText(text).width;
+  return textMeasureCache.measureText(text, fontSize, fontWeight ?? 400);
 }
 
 // ============================================================================

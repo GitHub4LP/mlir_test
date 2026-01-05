@@ -203,14 +203,26 @@ export class CanvasNodeEditor implements INodeEditor {
     });
     
     // 适配 GraphController 回调到 INodeEditor 接口
+    // 单节点位置变化（拖拽结束时调用，已废弃，保留兼容）
     this.controller.onNodePositionChange = (nodeId, x, y) => {
       const change: NodeChange = {
         type: 'position',
         id: nodeId,
         position: { x, y },
-        dragging: true,
+        dragging: false, // 拖拽结束
       };
       this.onNodesChange?.([change]);
+    };
+    
+    // 批量节点位置变化（拖拽结束时调用）
+    this.controller.onNodesPositionChange = (changes) => {
+      const nodeChanges: NodeChange[] = changes.map(c => ({
+        type: 'position' as const,
+        id: c.id,
+        position: { x: c.x, y: c.y },
+        dragging: false, // 拖拽结束
+      }));
+      this.onNodesChange?.(nodeChanges);
     };
     
     this.controller.onSelectionChange = (nodeIds, edgeIds) => {
@@ -304,6 +316,36 @@ export class CanvasNodeEditor implements INodeEditor {
   // ============================================================
 
   setNodes(nodes: EditorNode[]): void {
+    // 拖拽时：只更新 data，不覆盖 position（避免事件循环）
+    const state = this.controller?.getState();
+    if (state?.kind === 'dragging-node') {
+      // 拖拽中，只更新 data 变化的节点
+      const oldNodesMap = new Map(this.nodes.map(n => [n.id, n]));
+      let hasDataChanges = false;
+      
+      for (const node of nodes) {
+        const oldNode = oldNodesMap.get(node.id);
+        if (!oldNode || oldNode.data !== node.data) {
+          hasDataChanges = true;
+          break;
+        }
+      }
+      
+      if (hasDataChanges) {
+        // 合并：保留旧的 position，使用新的 data
+        this.nodes = nodes.map(n => {
+          const oldNode = oldNodesMap.get(n.id);
+          if (oldNode) {
+            return { ...n, position: oldNode.position };
+          }
+          return n;
+        });
+      }
+      // 不触发渲染，拖拽时由 GraphController 内部管理渲染
+      return;
+    }
+    
+    // 非拖拽状态：正常更新
     this.nodes = nodes;
     
     // 同步选择状态
@@ -311,7 +353,6 @@ export class CanvasNodeEditor implements INodeEditor {
     this.controller?.syncSelectionFromExternal(selectedIds);
     
     // 只有在非拖拽状态时才清除缓存
-    const state = this.controller?.getState();
     if (state?.kind === 'idle') {
       this.controller?.clearLayoutCache();
     }

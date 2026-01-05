@@ -2,7 +2,8 @@
   "name": "p",
   "path": "./p",
   "dialects": [
-    "arith"
+    "arith",
+    "vector"
   ],
   "mainFunctionId": "main",
   "customFunctionIds": [
