@@ -13,6 +13,7 @@ import {
   getConstraintDescriptor as getDescriptor,
 } from '../services/constraintResolver';
 import { setConstraintResolver } from './typeColorCache';
+import { apiUrl } from '../services/apiClient';
 
 export type { ConstraintDef, ConstraintRule };
 
@@ -103,7 +104,7 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch('/api/types/');
+      const response = await fetch(apiUrl('/types/'));
       if (!response.ok) {
         throw new Error(`Failed to load type constraints: ${response.statusText}`);
       }

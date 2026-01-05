@@ -44,8 +44,8 @@ export interface EditorContainerProps {
   /** Canvas 图形后端（仅 rendererType='canvas' 时有效） */
   canvasBackend?: CanvasBackendType;
   
-  /** 创建编辑器实例的工厂函数 */
-  createEditor: (type: RendererType, canvasBackend?: CanvasBackendType) => INodeEditor | null;
+  /** 创建编辑器实例的工厂函数（异步，支持动态加载） */
+  createEditor: (type: RendererType, canvasBackend?: CanvasBackendType) => Promise<INodeEditor | null>;
   
   /** 连接请求处理（验证并添加边） */
   onConnect?: (request: ConnectionRequest) => void;
@@ -379,9 +379,16 @@ export function EditorContainer({
     callbacksRef.current.onEdgeDoubleClick?.(edgeId);
   }, []);
   
+  // 编辑器加载状态
+  const [isEditorLoading, setIsEditorLoading] = useState(true);
+  const [editorLoadError, setEditorLoadError] = useState<string | null>(null);
+  
   // 创建/切换编辑器 - 依赖 rendererType 和 canvasBackend
   useEffect(() => {
     if (!containerRef.current) return;
+    
+    // 标记取消，防止竞态条件
+    let cancelled = false;
     
     // 卸载旧编辑器
     if (editorRef.current) {
@@ -392,6 +399,10 @@ export function EditorContainer({
     // 清空容器内容
     containerRef.current.innerHTML = '';
     
+    // 设置加载状态
+    setIsEditorLoading(true);
+    setEditorLoadError(null);
+    
     // 创建新的子容器（避免 createRoot 冲突）
     const subContainer = document.createElement('div');
     subContainer.style.width = '100%';
@@ -401,55 +412,75 @@ export function EditorContainer({
     subContainer.style.left = '0';
     containerRef.current.appendChild(subContainer);
     
-    // 创建新编辑器
-    const editor = createEditor(rendererType, canvasBackend);
-    if (!editor) {
-      console.warn(`EditorContainer: failed to create editor for type "${rendererType}" with backend "${canvasBackend}"`);
-      return;
-    }
-    
-    editorRef.current = editor;
-    
-    // 绑定事件回调
-    editor.onNodesChange = handleNodesChange;
-    editor.onSelectionChange = handleSelectionChange;
-    editor.onViewportChange = handleViewportChange;
-    editor.onConnect = handleConnect;
-    editor.onDrop = handleDrop;
-    editor.onDeleteRequest = handleDeleteRequest;
-    editor.onEdgeDoubleClick = handleEdgeDoubleClick;
-    editor.onTypeLabelClick = handleTypeLabelClick;
-    
-    // Canvas 渲染器特有的回调
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const canvasEditor = editor as any;
-    // 使用 'in' 操作符检查属性是否存在（包括值为 null 的情况）
-    if ('onParamNameClick' in canvasEditor) {
-      canvasEditor.onParamNameClick = handleParamNameClick;
-    }
-    if ('onReturnNameClick' in canvasEditor) {
-      canvasEditor.onReturnNameClick = handleReturnNameClick;
-    }
-    
-    // 挂载到子容器
-    editor.mount(subContainer);
-    
-    // 同步当前数据到新编辑器
-    const state = useEditorStore.getState();
-    editor.setNodes(state.nodes);
-    editor.setEdges(state.edges);
-    if (state.viewport.x !== 0 || state.viewport.y !== 0 || state.viewport.zoom !== 1) {
-      editor.setViewport(state.viewport);
-    }
-    // 同步选择状态
-    if (state.selection.nodeIds.length > 0 || state.selection.edgeIds.length > 0) {
-      editor.setSelection(state.selection);
-    }
-    
-    // 通知就绪
-    callbacksRef.current.onEditorReady?.(editor);
+    // 异步创建编辑器
+    (async () => {
+      try {
+        const editor = await createEditor(rendererType, canvasBackend);
+        
+        // 检查是否已取消（渲染器切换或组件卸载）
+        if (cancelled) {
+          editor?.unmount();
+          return;
+        }
+        
+        if (!editor) {
+          setEditorLoadError(`Failed to create editor for "${rendererType}"`);
+          setIsEditorLoading(false);
+          return;
+        }
+        
+        editorRef.current = editor;
+        
+        // 绑定事件回调
+        editor.onNodesChange = handleNodesChange;
+        editor.onSelectionChange = handleSelectionChange;
+        editor.onViewportChange = handleViewportChange;
+        editor.onConnect = handleConnect;
+        editor.onDrop = handleDrop;
+        editor.onDeleteRequest = handleDeleteRequest;
+        editor.onEdgeDoubleClick = handleEdgeDoubleClick;
+        editor.onTypeLabelClick = handleTypeLabelClick;
+        
+        // Canvas 渲染器特有的回调
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const canvasEditor = editor as any;
+        // 使用 'in' 操作符检查属性是否存在（包括值为 null 的情况）
+        if ('onParamNameClick' in canvasEditor) {
+          canvasEditor.onParamNameClick = handleParamNameClick;
+        }
+        if ('onReturnNameClick' in canvasEditor) {
+          canvasEditor.onReturnNameClick = handleReturnNameClick;
+        }
+        
+        // 挂载到子容器
+        editor.mount(subContainer);
+        
+        // 同步当前数据到新编辑器
+        const state = useEditorStore.getState();
+        editor.setNodes(state.nodes);
+        editor.setEdges(state.edges);
+        if (state.viewport.x !== 0 || state.viewport.y !== 0 || state.viewport.zoom !== 1) {
+          editor.setViewport(state.viewport);
+        }
+        // 同步选择状态
+        if (state.selection.nodeIds.length > 0 || state.selection.edgeIds.length > 0) {
+          editor.setSelection(state.selection);
+        }
+        
+        // 通知就绪
+        callbacksRef.current.onEditorReady?.(editor);
+        setIsEditorLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('EditorContainer: failed to load editor', err);
+          setEditorLoadError(err instanceof Error ? err.message : 'Unknown error');
+          setIsEditorLoading(false);
+        }
+      }
+    })();
     
     return () => {
+      cancelled = true;
       if (editorRef.current) {
         editorRef.current.unmount();
         editorRef.current = null;
@@ -626,6 +657,27 @@ export function EditorContainer({
         ref={containerRef} 
         className="w-full h-full relative"
       />
+      
+      {/* 编辑器加载状态 */}
+      {isEditorLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-gray-400 text-sm">Loading {rendererType} renderer...</span>
+          </div>
+        </div>
+      )}
+      
+      {/* 编辑器加载错误 */}
+      {editorLoadError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-50">
+          <div className="flex flex-col items-center gap-3 text-center px-4">
+            <span className="text-red-400 text-lg">⚠</span>
+            <span className="text-red-400 text-sm">Failed to load renderer</span>
+            <span className="text-gray-500 text-xs">{editorLoadError}</span>
+          </div>
+        </div>
+      )}
       
       {/* 编辑器控制栏（右上角：渲染器切换 + 性能监控） */}
       <EditorControlBar />

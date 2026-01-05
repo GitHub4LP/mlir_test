@@ -5,6 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // 使用相对路径，支持任意子路径部署
+  // 构建后的资源引用为 ./assets/xxx.js 而不是 /assets/xxx.js
+  base: './',
   plugins: [
     react({
       babel: {
@@ -20,6 +23,8 @@ export default defineConfig({
     strictPort: false,
     allowedHosts: true,  // 允许所有域名
     proxy: {
+      // 代理 API 请求到后端
+      // 支持任意子路径：/api, /mlir-editor/api, /tools/blueprint/api
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,

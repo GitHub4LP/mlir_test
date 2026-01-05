@@ -6,8 +6,7 @@
 
 import type { Project, StoredProject } from '../types';
 import { dehydrateProject, loadAndHydrateProject } from './projectHydration';
-
-const API_BASE_URL = '/api';
+import { apiUrl } from './apiClient';
 
 /**
  * Response type for save operation
@@ -111,7 +110,7 @@ export async function saveProject(
 
   // 使用 POST + 请求体传递路径，避免 URL 编码问题
   const response = await fetch(
-    `${API_BASE_URL}/projects/save`,
+    apiUrl('/projects/save'),
     {
       method: 'POST',
       headers: {
@@ -141,7 +140,7 @@ export async function loadProject(path: string): Promise<Project> {
 
   // 使用 POST + 请求体传递路径，避免 URL 编码问题
   const response = await fetch(
-    `${API_BASE_URL}/projects/load`,
+    apiUrl('/projects/load'),
     {
       method: 'POST',
       headers: {
@@ -178,7 +177,7 @@ export async function createProject(
     throw new ProjectPersistenceError('Project path is required');
   }
 
-  const response = await fetch(`${API_BASE_URL}/projects/`, {
+  const response = await fetch(apiUrl('/projects/'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -202,7 +201,7 @@ export async function deleteProject(path: string): Promise<void> {
 
   // 使用 POST + 请求体传递路径，避免 URL 编码问题
   const response = await fetch(
-    `${API_BASE_URL}/projects/delete`,
+    apiUrl('/projects/delete'),
     {
       method: 'POST',
       headers: {

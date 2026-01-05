@@ -31,6 +31,7 @@ import { useEditorStore } from '../core/stores/editorStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { useRendererStore } from '../stores/rendererStore';
 import { handlePinnedTypeChange, type TypeChangeHandlerDeps } from '../services/typeChangeHandler';
+import { apiUrl } from '../services/apiClient';
 
 // Layout components
 import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar } from '../components/layout';
@@ -415,9 +416,6 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     setConnectionError(null);
   }, []);
 
-  // API base URL
-  const API_BASE_URL = '/api';
-
   // 切换到 Code 视图时：保存 + 预览
   const handleSwitchToCode = useCallback(async () => {
     if (!project?.path) return;
@@ -445,7 +443,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       
       // 3. 调用 Preview API 生成 MLIR
       addLog('info', 'Generating MLIR code...');
-      const response = await fetch(`${API_BASE_URL}/build/preview`, {
+      const response = await fetch(apiUrl('/build/preview'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectPath: project.path }),
@@ -486,7 +484,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       await saveProjectToPath(project.path);
       
       // 执行
-      const response = await fetch(`${API_BASE_URL}/build/execute`, {
+      const response = await fetch(apiUrl('/build/execute'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectPath: project.path }),
@@ -538,7 +536,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       await saveProjectToPath(project.path);
       
       // 构建
-      const response = await fetch(`${API_BASE_URL}/build`, {
+      const response = await fetch(apiUrl('/build'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -9,6 +9,7 @@
  */
 
 import type { DialectInfo, OperationDef, ArgumentDef, ResultDef } from '../types';
+import { apiUrl } from './apiClient';
 
 // ============================================================================
 // Raw JSON Type Definitions
@@ -452,7 +453,7 @@ export function parseDialectJson(json: RawDialectJson, dialectName?: string): Di
  * (regions, isPure, isTerminator, etc.) already computed.
  */
 export async function fetchDialect(dialectName: string): Promise<DialectInfo> {
-  const response = await fetch(`/api/dialects/${dialectName}`);
+  const response = await fetch(apiUrl(`/dialects/${dialectName}`));
   if (!response.ok) {
     throw new Error(`Failed to fetch dialect ${dialectName}: ${response.statusText}`);
   }
@@ -465,7 +466,7 @@ export async function fetchDialect(dialectName: string): Promise<DialectInfo> {
  * Fetches and parses all available dialects
  */
 export async function fetchAllDialects(): Promise<DialectInfo[]> {
-  const response = await fetch('/api/dialects/');
+  const response = await fetch(apiUrl('/dialects/'));
   if (!response.ok) {
     throw new Error(`Failed to fetch dialects list: ${response.statusText}`);
   }

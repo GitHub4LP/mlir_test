@@ -116,9 +116,12 @@ export class WebGPUBackend implements IGPUBackend {
     }
     
     // 请求适配器
-    const adapter = await navigator.gpu.requestAdapter({
-      powerPreference: 'high-performance',
-    });
+    // 注：Windows 上 powerPreference 被忽略 (crbug.com/369219127)，不传递以避免警告
+    const isWindows = navigator.platform?.toLowerCase().includes('win') 
+      || navigator.userAgent?.toLowerCase().includes('windows');
+    const adapter = await navigator.gpu.requestAdapter(
+      isWindows ? undefined : { powerPreference: 'high-performance' }
+    );
     
     if (!adapter) {
       throw new Error('No WebGPU adapter found');

@@ -2,11 +2,10 @@
  * 渲染器状态存储
  * 
  * 管理当前选中的渲染后端、视口状态和视图模式。
- * 使用 zustand persist 中间件持久化到 localStorage。
+ * 不持久化，每次刷新使用默认值。
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { EditorViewport } from '../editor/types';
 
 /** 渲染器类型（3 种主选项） */
@@ -92,52 +91,40 @@ function formatTime(date: Date): string {
  * 渲染器存储
  */
 export const useRendererStore = create<RendererState & RendererActions>()(
-  persist(
-    (set) => ({
-      // 初始状态
-      currentRenderer: 'reactflow',
-      canvasBackend: 'canvas2d',
-      textRenderMode: 'gpu',
-      edgeRenderMode: 'gpu',
-      viewport: DEFAULT_VIEWPORT,
-      viewMode: 'graph',
-      mlirCode: '',
-      mlirVerified: false,
-      outputLogs: [],
-      isProcessing: false,
+  (set) => ({
+    // 初始状态
+    currentRenderer: 'reactflow',
+    canvasBackend: 'canvas2d',
+    textRenderMode: 'gpu',
+    edgeRenderMode: 'gpu',
+    viewport: DEFAULT_VIEWPORT,
+    viewMode: 'graph',
+    mlirCode: '',
+    mlirVerified: false,
+    outputLogs: [],
+    isProcessing: false,
 
-      // 操作
-      setCurrentRenderer: (type) => set({ currentRenderer: type }),
-      
-      setCanvasBackend: (backend) => set({ canvasBackend: backend }),
-      
-      setTextRenderMode: (mode) => set({ textRenderMode: mode }),
-      
-      setEdgeRenderMode: (mode) => set({ edgeRenderMode: mode }),
-      
-      setViewport: (viewport) => set({ viewport }),
-      
-      setViewMode: (mode) => set({ viewMode: mode }),
-      
-      setMlirCode: (code, verified) => set({ mlirCode: code, mlirVerified: verified }),
-      
-      addLog: (type, message) => set((state) => ({
-        outputLogs: [...state.outputLogs, { time: formatTime(new Date()), type, message }],
-      })),
-      
-      clearLogs: () => set({ outputLogs: [] }),
-      
-      setProcessing: (processing) => set({ isProcessing: processing }),
-    }),
-    {
-      name: 'renderer-storage',
-      // 持久化渲染器相关状态（不持久化视口、代码、日志）
-      partialize: (state) => ({
-        currentRenderer: state.currentRenderer,
-        canvasBackend: state.canvasBackend,
-        textRenderMode: state.textRenderMode,
-        edgeRenderMode: state.edgeRenderMode,
-      }),
-    }
-  )
+    // 操作
+    setCurrentRenderer: (type) => set({ currentRenderer: type }),
+    
+    setCanvasBackend: (backend) => set({ canvasBackend: backend }),
+    
+    setTextRenderMode: (mode) => set({ textRenderMode: mode }),
+    
+    setEdgeRenderMode: (mode) => set({ edgeRenderMode: mode }),
+    
+    setViewport: (viewport) => set({ viewport }),
+    
+    setViewMode: (mode) => set({ viewMode: mode }),
+    
+    setMlirCode: (code, verified) => set({ mlirCode: code, mlirVerified: verified }),
+    
+    addLog: (type, message) => set((state) => ({
+      outputLogs: [...state.outputLogs, { time: formatTime(new Date()), type, message }],
+    })),
+    
+    clearLogs: () => set({ outputLogs: [] }),
+    
+    setProcessing: (processing) => set({ isProcessing: processing }),
+  })
 );

@@ -117,66 +117,6 @@
             ]
           }
         }
-      },
-      {
-        "id": "node_1767604372318_5fyg2wn",
-        "type": "operation",
-        "position": {
-          "x": 240.3326073543128,
-          "y": 647.8178914265734
-        },
-        "data": {
-          "fullName": "vector.to_elements",
-          "attributes": {},
-          "execOuts": [],
-          "regionPins": [],
-          "inputTypes": {
-            "source": [
-              "AnyVectorOfAnyRank",
-              "BF16",
-              "F128",
-              "F16",
-              "F32",
-              "F4E2M1FN",
-              "F64",
-              "F6E2M3FN",
-              "F6E3M2FN",
-              "F80",
-              "F8E3M4",
-              "F8E4M3",
-              "F8E4M3B11FNUZ",
-              "F8E4M3FN",
-              "F8E4M3FNUZ",
-              "F8E5M2",
-              "F8E5M2FNUZ",
-              "F8E8M0FNU",
-              "I1",
-              "I128",
-              "I16",
-              "I32",
-              "I64",
-              "I8",
-              "Index",
-              "NoneType",
-              "SI1",
-              "SI16",
-              "SI32",
-              "SI64",
-              "SI8",
-              "TF32",
-              "UI1",
-              "UI16",
-              "UI32",
-              "UI64",
-              "UI8"
-            ]
-          },
-          "outputTypes": {
-            "elements": [
-              "Variadic<AnyType>"
-            ]
-          }
-        }
       }
     ],
     "edges": [

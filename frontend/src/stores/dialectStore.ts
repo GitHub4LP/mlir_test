@@ -8,8 +8,7 @@
 import { create } from 'zustand';
 import type { DialectInfo, OperationDef } from '../types';
 import { useTypeConstraintStore } from './typeConstraintStore';
-
-const API_BASE_URL = '/api';
+import { apiUrl } from '../services/apiClient';
 
 interface DialectStoreState {
   /** List of available dialect names (loaded at startup) */
@@ -77,7 +76,7 @@ export const useDialectStore = create<DialectState>((set, get) => ({
     set(s => ({ loading: new Set(s.loading).add('__init__') }));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/dialects/`);
+      const response = await fetch(apiUrl('/dialects/'));
       if (!response.ok) {
         throw new Error(`Failed to fetch dialect list: ${response.statusText}`);
       }
@@ -134,7 +133,7 @@ export const useDialectStore = create<DialectState>((set, get) => ({
     }));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/dialects/${name}`);
+      const response = await fetch(apiUrl(`/dialects/${name}`));
       if (!response.ok) {
         console.warn(`Failed to load dialect ${name}: ${response.statusText}`);
         return null;

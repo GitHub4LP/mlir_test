@@ -17,6 +17,7 @@
 
 import type { GraphNode, GraphEdge, BlueprintNodeData, OperationDef, FunctionEntryData, FunctionReturnData } from '../types';
 import { PortRef, PortKind } from './port';
+import { apiUrl } from './apiClient';
 
 /**
  * 后端图节点模型
@@ -350,7 +351,7 @@ export async function executeGraph(
 ): Promise<ExecuteGraphResponse> {
   const graph = convertToBackendGraph(nodes, edges);
   
-  const response = await fetch('/api/graph/execute', {
+  const response = await fetch(apiUrl('/graph/execute'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -376,7 +377,7 @@ export async function buildGraph(
 ): Promise<{ success: boolean; mlir_code: string; verified: boolean; error?: string }> {
   const graph = convertToBackendGraph(nodes, edges);
   
-  const response = await fetch('/api/graph/build', {
+  const response = await fetch(apiUrl('/graph/build'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
