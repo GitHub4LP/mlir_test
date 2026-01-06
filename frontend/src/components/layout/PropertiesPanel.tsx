@@ -19,6 +19,7 @@ import type {
 } from '../../types';
 import { AttributeEditor } from '../AttributeEditor';
 import { UnifiedTypeSelector } from '../UnifiedTypeSelector';
+import { TraitsDisplay } from '../TraitsDisplay';
 import { useEditorStore } from '../../core/stores/editorStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { useTypeChangeHandler } from '../../hooks';
@@ -457,6 +458,13 @@ function OperationNodePanel({ node, data }: OperationNodePanelProps) {
         summary={operation.summary}
       />
       
+      {/* 显示操作的 Traits */}
+      {operation.traits && operation.traits.length > 0 && (
+        <CollapsibleSection title="Traits" defaultExpanded={false}>
+          <TraitsDisplay operationTraits={operation.traits} />
+        </CollapsibleSection>
+      )}
+      
       <AttributesSection
         nodeId={node.id}
         attributes={attrDefs}
@@ -489,14 +497,17 @@ function EntryNodePanel({ node, data }: EntryNodePanelProps) {
   const updateParameter = useProjectStore(state => state.updateParameter);
   const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
   
-  // 获取当前函数的参数列表
-  const parameters = useMemo(() => {
+  // 获取当前函数的参数列表和推断的 traits
+  const { parameters, inferredTraits } = useMemo(() => {
     const func = getCurrentFunction();
-    if (!func || func.id !== functionId) return [];
-    return func.parameters.map(p => ({
-      name: p.name,
-      constraint: p.constraint,
-    }));
+    if (!func || func.id !== functionId) return { parameters: [], inferredTraits: [] };
+    return {
+      parameters: func.parameters.map(p => ({
+        name: p.name,
+        constraint: p.constraint,
+      })),
+      inferredTraits: func.traits || [],
+    };
   }, [getCurrentFunction, functionId]);
   
   // 参数操作
@@ -556,6 +567,13 @@ function EntryNodePanel({ node, data }: EntryNodePanelProps) {
         nodeType="Function Entry"
         operationName={functionName}
       />
+      
+      {/* 显示推断的函数 Traits（仅非 main 函数） */}
+      {!isMain && inferredTraits.length > 0 && (
+        <CollapsibleSection title="Inferred Traits" defaultExpanded={false}>
+          <TraitsDisplay functionTraits={inferredTraits} />
+        </CollapsibleSection>
+      )}
       
       <ParametersSection
         title="Parameters"
@@ -684,8 +702,15 @@ interface CallNodePanelProps {
 }
 
 function CallNodePanel({ node, data }: CallNodePanelProps) {
-  const { functionName, inputs = [], outputs = [], inputTypes = {}, outputTypes = {}, portStates = {} } = data;
+  const { functionId, functionName, inputs = [], outputs = [], inputTypes = {}, outputTypes = {}, portStates = {} } = data;
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+  
+  // 获取被调用函数的 traits
+  const getFunctionById = useProjectStore(state => state.getFunctionById);
+  const calledFunctionTraits = useMemo(() => {
+    const func = getFunctionById(functionId);
+    return func?.traits || [];
+  }, [getFunctionById, functionId]);
   
   // 构建端口列表
   const ports = useMemo(() => {
@@ -748,6 +773,13 @@ function CallNodePanel({ node, data }: CallNodePanelProps) {
         nodeType="Function Call"
         operationName={functionName}
       />
+      
+      {/* 显示被调用函数的 Traits */}
+      {calledFunctionTraits.length > 0 && (
+        <CollapsibleSection title="Function Traits" defaultExpanded={false}>
+          <TraitsDisplay functionTraits={calledFunctionTraits} />
+        </CollapsibleSection>
+      )}
       
       <CallNodeSection
         functionName={functionName}

@@ -22,6 +22,7 @@ import type { EditorNode, EditorEdge, EditorViewport, NodeChange, ConnectionRequ
 import type { OperationDef, BlueprintNodeData, GraphState, FunctionEntryData, FunctionReturnData, DataPin } from '../../types';
 import { validateConnection } from '../../editor/adapters/reactflow/connectionUtils';
 import { triggerTypePropagationWithSignature, type DialectFilterConfig } from '../../services/typePropagation';
+import { inferFunctionTraits } from '../../services/typePropagation/traitsInference';
 import { computeReachableDialects } from '../../services/dialectDependency';
 import { dataInHandle, dataOutHandle } from '../../services/port';
 import { getDisplayType } from '../../services/typeSelectorRenderer';
@@ -96,6 +97,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
   const currentFunctionId = useProjectStore(state => state.currentFunctionId);
   const updateFunctionGraph = useProjectStore(state => state.updateFunctionGraph);
   const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
+  const setFunctionTraits = useProjectStore(state => state.setFunctionTraits);
   const getFunctionById = useProjectStore(state => state.getFunctionById);
   const selectFunction = useProjectStore(state => state.selectFunction);
   
@@ -170,6 +172,7 @@ export function useGraphEditor(): UseGraphEditorReturn {
     const latestNodes = useEditorStore.getState().nodes;
     const latestEdges = useEditorStore.getState().edges;
     const latestProject = useProjectStore.getState().project;
+    const latestGetFunctionById = useProjectStore.getState().getFunctionById;
     
     // 构建方言过滤配置
     const dialectFilter: DialectFilterConfig | undefined = latestProject ? {
@@ -178,13 +181,18 @@ export function useGraphEditor(): UseGraphEditorReturn {
     } : undefined;
     
     const result = triggerTypePropagationWithSignature(
-      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter
+      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, latestGetFunctionById
     );
     
     setNodesStore(result.nodes);
     const updatedEdges = updateEdgeColors(result.nodes, latestEdges);
     setEdgesStore(updatedEdges);
-  }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, setNodesStore, setEdgesStore]);
+    
+    // 更新推断的 traits（仅非 main 函数）
+    if (!currentFunction.isMain && result.inferredTraits) {
+      setFunctionTraits(currentFunction.id, result.inferredTraits);
+    }
+  }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, setNodesStore, setEdgesStore, setFunctionTraits]);
   
   // 监听函数参数/返回值变化，自动触发类型传播
   // 这确保添加/删除参数后，新端口能获得正确的 portStates
@@ -219,8 +227,17 @@ export function useGraphEditor(): UseGraphEditorReturn {
     const graphState = convertToGraphStateRef.current();
     if (graphState.nodes.length > 0) {
       updateFunctionGraph(functionId, graphState);
+      
+      // 保存时也更新 traits（仅非 main 函数）
+      const func = getFunctionById(functionId);
+      if (func && !func.isMain) {
+        const latestNodes = useEditorStore.getState().nodes;
+        const latestEdges = useEditorStore.getState().edges;
+        const inferredTraits = inferFunctionTraits(latestNodes, latestEdges, func);
+        setFunctionTraits(functionId, inferredTraits);
+      }
     }
-  }, [updateFunctionGraph]);
+  }, [updateFunctionGraph, getFunctionById, setFunctionTraits]);
   
   const loadFunctionGraph = useCallback((functionId: string) => {
     const func = getFunctionById(functionId);
@@ -233,23 +250,29 @@ export function useGraphEditor(): UseGraphEditorReturn {
     
     // 获取最新的 project 用于方言过滤
     const latestProject = useProjectStore.getState().project;
+    const latestGetFunctionById = useProjectStore.getState().getFunctionById;
     const dialectFilter: DialectFilterConfig | undefined = latestProject ? {
       getReachableDialects: (fId: string) => computeReachableDialects(fId, latestProject),
       filterConstraintsByDialects,
     } : undefined;
     
     const result = triggerTypePropagationWithSignature(
-      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter
+      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, latestGetFunctionById
     );
     
     const edgesWithColors = updateEdgeColors(result.nodes, graphEdges);
     
     loadGraph(result.nodes, edgesWithColors);
     
+    // 更新推断的 traits（仅非 main 函数）
+    if (!func.isMain && result.inferredTraits) {
+      setFunctionTraits(func.id, result.inferredTraits);
+    }
+    
     queueMicrotask(() => {
       isLoadingFromStoreRef.current = false;
     });
-  }, [getFunctionById, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, loadGraph]);
+  }, [getFunctionById, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, loadGraph, setFunctionTraits]);
   
   // ============================================================
   // 函数切换

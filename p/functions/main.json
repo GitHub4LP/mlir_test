@@ -8,6 +8,7 @@
       "constraint": "I32"
     }
   ],
+  "traits": [],
   "graph": {
     "nodes": [
       {
@@ -82,9 +83,6 @@
               "label": ""
             }
           ],
-          "pinnedTypes": {
-            "data-in-arg0": "I32"
-          },
           "inputTypes": {
             "arg0": [
               "I32"
@@ -117,17 +115,14 @@
               "label": ""
             }
           ],
-          "pinnedTypes": {
-            "data-out-ret1": "F32"
-          },
           "inputTypes": {
             "arg0": [
-              "F32"
+              "F16"
             ]
           },
           "outputTypes": {
             "ret1": [
-              "F32"
+              "F16"
             ]
           }
         }
@@ -145,7 +140,7 @@
           "execOuts": [],
           "regionPins": [],
           "pinnedTypes": {
-            "data-out-out": "F32"
+            "data-out-out": "F16"
           },
           "inputTypes": {
             "in": [
@@ -154,7 +149,7 @@
           },
           "outputTypes": {
             "out": [
-              "F32"
+              "F16"
             ]
           }
         }
@@ -200,7 +195,7 @@
           "regionPins": [],
           "inputTypes": {
             "in": [
-              "F32"
+              "F16"
             ]
           },
           "outputTypes": {

@@ -37,5 +37,8 @@ export { CodeView, type CodeViewProps } from './CodeView';
 export { LeftPanelTabs, type LeftPanelTabsProps } from './LeftPanelTabs';
 export { TypeConstraintPanel } from './TypeConstraintPanel';
 
+// Traits 显示组件
+export { TraitsDisplay } from './TraitsDisplay';
+
 // MainLayout 已移动到 app/ 目录
 // 使用: import { MainLayout } from './app/MainLayout'

@@ -13,12 +13,12 @@
  * - 使用 editorStore 管理节点/边状态
  */
 
-import { useCallback, useState, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
 import type { Node } from '@xyflow/react';
 
 import { LeftPanelTabs } from '../components/LeftPanelTabs';
 import { CreateProjectDialog, OpenProjectDialog, SaveProjectDialog } from '../components/ProjectDialog';
-import { CodeView } from '../components/CodeView';
+import { CodeSkeleton } from '../components/CodeView';
 import { EditorContainer } from './components/EditorContainer';
 import { useEditorFactory } from './hooks/useEditorFactory';
 import { useGraphEditor } from './hooks/useGraphEditor';
@@ -35,6 +35,9 @@ import { apiUrl } from '../services/apiClient';
 
 // Layout components
 import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar } from '../components/layout';
+
+// 懒加载 CodeView 组件
+const CodeView = lazy(() => import('../components/CodeView'));
 
 /**
  * Props for MainLayout component
@@ -154,6 +157,13 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   const effectiveSelectedNode = selectedNode && nodes.find(n => n.id === selectedNode.id)
     ? selectedNode
     : null;
+
+  // 当 selection 被清空时（如函数切换），同步清除 selectedNode
+  useEffect(() => {
+    if (selection.nodeIds.length === 0) {
+      setSelectedNode(null);
+    }
+  }, [selection.nodeIds.length]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -456,7 +466,10 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
         addLog('success', `MLIR generated (${data.verified ? 'verified' : 'unverified'})`);
       } else {
         setMlirCode('', false);
-        addLog('error', data.error || 'Preview failed');
+        const errorMsg = data.error || 'Preview failed';
+        addLog('error', errorMsg);
+        // 在控制台输出完整响应以便调试
+        console.error('Preview API error:', data);
       }
     } catch (error) {
       setMlirCode('', false);
@@ -630,12 +643,23 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
               />
             )}
             
-            {/* Code View */}
+            {/* Code View - 懒加载 */}
             {viewMode === 'code' && (
-              <CodeView
-                onRunClick={handleRun}
-                onBuildClick={handleBuild}
-              />
+              <Suspense fallback={
+                <div className="flex flex-col h-full bg-gray-900">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+                    <span className="text-xs text-gray-400">MLIR</span>
+                  </div>
+                  <div className="flex-1">
+                    <CodeSkeleton />
+                  </div>
+                </div>
+              }>
+                <CodeView
+                  onRunClick={handleRun}
+                  onBuildClick={handleBuild}
+                />
+              </Suspense>
             )}
 
             {connectionError && viewMode === 'graph' && (

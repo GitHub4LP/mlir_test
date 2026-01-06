@@ -653,12 +653,23 @@ class ProjectBuilder:
             buildable = self._get_buildable_types_set()
             needs_fallback = False
             
+            def get_single_type(type_value: list[str] | str | None) -> str | None:
+                """从有效集合中获取单一类型"""
+                if type_value is None:
+                    return None
+                if isinstance(type_value, str):
+                    return type_value
+                if isinstance(type_value, list) and len(type_value) == 1:
+                    return type_value[0]
+                return None
+            
             for node in graph_copy.nodes:
                 if node.type == 'operation':
                     output_types_dict = node.data.get('outputTypes', {})
-                    for port_name, type_name in output_types_dict.items():
-                        if type_name not in buildable:
-                            concrete_types = self._get_concrete_types(type_name)
+                    for port_name, type_value in output_types_dict.items():
+                        type_name = get_single_type(type_value)
+                        if type_name is None or type_name not in buildable:
+                            concrete_types = self._get_concrete_types(type_name) if type_name else []
                             if not concrete_types or len(concrete_types) > 1:
                                 needs_fallback = True
                                 break

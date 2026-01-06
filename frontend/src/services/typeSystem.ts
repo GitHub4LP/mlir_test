@@ -324,26 +324,64 @@ export const TYPE_PROPAGATION_TRAITS = {
   SAME_OPERANDS_AND_RESULT_TYPE: 'SameOperandsAndResultType',
   ALL_TYPES_MATCH: 'AllTypesMatch',
   SAME_TYPE_OPERANDS: 'SameTypeOperands',
+  SAME_OPERANDS_ELEMENT_TYPE: 'SameOperandsElementType',
+  SAME_OPERANDS_AND_RESULT_ELEMENT_TYPE: 'SameOperandsAndResultElementType',
 } as const;
 
 /**
+ * 检查操作是否具有指定的 trait
+ * 
+ * 支持精确匹配和包含匹配（用于处理参数化 trait）
+ */
+function hasTraitByName(operation: OperationDef, traitName: string): boolean {
+  return operation.traits.some(
+    trait => trait === traitName || trait.includes(traitName)
+  );
+}
+
+/**
  * Checks if an operation has the SameOperandsAndResultType trait
+ * 
+ * 该 trait 表示所有输入和输出端口的类型必须相同
  */
 export function hasSameOperandsAndResultTypeTrait(operation: OperationDef): boolean {
-  return operation.traits.some(
-    trait => trait === TYPE_PROPAGATION_TRAITS.SAME_OPERANDS_AND_RESULT_TYPE ||
-             trait.includes(TYPE_PROPAGATION_TRAITS.SAME_OPERANDS_AND_RESULT_TYPE)
-  );
+  return hasTraitByName(operation, TYPE_PROPAGATION_TRAITS.SAME_OPERANDS_AND_RESULT_TYPE);
 }
 
 /**
  * Checks if an operation has the AllTypesMatch trait
  */
 export function hasAllTypesMatchTrait(operation: OperationDef): boolean {
-  return operation.traits.some(
-    trait => trait === TYPE_PROPAGATION_TRAITS.ALL_TYPES_MATCH ||
-             trait.includes(TYPE_PROPAGATION_TRAITS.ALL_TYPES_MATCH)
-  );
+  return hasTraitByName(operation, TYPE_PROPAGATION_TRAITS.ALL_TYPES_MATCH);
+}
+
+/**
+ * Checks if an operation has the SameTypeOperands trait
+ * 
+ * 该 trait 表示所有输入端口的类型必须相同（不包括输出端口）
+ */
+export function hasSameTypeOperandsTrait(operation: OperationDef): boolean {
+  return hasTraitByName(operation, TYPE_PROPAGATION_TRAITS.SAME_TYPE_OPERANDS);
+}
+
+/**
+ * Checks if an operation has the SameOperandsElementType trait
+ * 
+ * 该 trait 表示所有输入端口的元素类型必须相同
+ * 用于容器类型（Tensor、Vector、MemRef）的元素类型传播
+ */
+export function hasSameOperandsElementTypeTrait(operation: OperationDef): boolean {
+  return hasTraitByName(operation, TYPE_PROPAGATION_TRAITS.SAME_OPERANDS_ELEMENT_TYPE);
+}
+
+/**
+ * Checks if an operation has the SameOperandsAndResultElementType trait
+ * 
+ * 该 trait 表示所有输入和输出端口的元素类型必须相同
+ * 用于容器类型（Tensor、Vector、MemRef）的元素类型传播
+ */
+export function hasSameOperandsAndResultElementTypeTrait(operation: OperationDef): boolean {
+  return hasTraitByName(operation, TYPE_PROPAGATION_TRAITS.SAME_OPERANDS_AND_RESULT_ELEMENT_TYPE);
 }
 
 // ============================================================================

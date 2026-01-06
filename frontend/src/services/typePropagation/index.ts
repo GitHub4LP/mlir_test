@@ -25,5 +25,23 @@ export {
 } from './propagator';
 export type { DialectFilterConfig } from './propagator';
 export { triggerTypePropagation, triggerTypePropagationWithSignature } from './trigger';
-export type { PropagationGraph, TypeSource, PropagationResult } from './types';
+export type { PropagationGraph, ExtendedPropagationGraph, PropagationEdge, EdgeKind, TypeSource, PropagationResult } from './types';
 export type { PropagationTriggerResult } from './trigger';
+
+// 元素类型工具
+export { 
+  isContainerType, 
+  extractElementType, 
+  getContainerStructure, 
+  applyElementToStructure 
+} from './elementType';
+export type { ContainerStructure } from './elementType';
+
+// 扩展传播图
+export { buildExtendedPropagationGraph, toSimplePropagationGraph } from './graph';
+
+// 元素类型传播算法
+export { propagateTypesWithElementEdges } from './elementPropagation';
+
+// Traits 推断
+export { inferFunctionTraits } from './traitsInference';

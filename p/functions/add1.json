@@ -13,6 +13,11 @@
       "constraint": "AnySignlessIntegerOrIndex"
     }
   ],
+  "traits": [
+    {
+      "kind": "SameOperandsAndResultType"
+    }
+  ],
   "graph": {
     "nodes": [
       {

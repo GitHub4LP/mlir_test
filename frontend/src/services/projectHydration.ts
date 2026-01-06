@@ -351,6 +351,8 @@ export function dehydrateFunctionDef(func: FunctionDef): StoredFunctionDef {
  * Hydrate a stored function definition to runtime format
  * Entry/Return 节点从 FunctionDef 重建 outputs/inputs
  * Function-call 节点需要 getFunctionById 来重建 inputs/outputs
+ * 
+ * 注意：traits 从存储中恢复，加载图后会由类型传播系统重新推断并更新
  */
 export function hydrateFunctionDef(
   func: StoredFunctionDef,
@@ -358,8 +360,10 @@ export function hydrateFunctionDef(
   getFunctionById?: (id: string) => FunctionDef | undefined  // 用于重建 function-call 节点
 ): FunctionDef {
   // 先创建 FunctionDef（不包含 graph）
+  // 保留已保存的 traits，加载图后会由类型传播系统重新推断
   const functionDef: FunctionDef = {
     ...func,
+    traits: func.traits ?? [],  // 保留已保存的 traits
     graph: {
       nodes: [],
       edges: func.graph.edges,

@@ -220,11 +220,14 @@ async def preview_project(request: ProjectRequest):
             error=str(e),
         )
     except Exception as e:
+        import traceback
+        error_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        print(f"[Preview Error] {error_detail}")
         return PreviewResponse(
             success=False,
             mlirCode="",
             verified=False,
-            error=str(e),
+            error=error_detail,
         )
 
 

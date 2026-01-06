@@ -217,15 +217,19 @@ export interface PinRow {
 // 函数类型
 
 /**
- * 函数级别的 Trait，描述参数/返回值之间的类型关系
+ * 函数级别的 Trait（使用 MLIR 标准名称）
  * 
- * 用于泛型函数：当参数使用类型约束时，Trait 定义哪些端口类型必须相同
+ * 从函数图结构自动推断，用于 Call 节点的类型传播优化
+ * 
+ * 支持的 traits：
+ * - SameOperandsAndResultType: 所有参数和返回值类型相同
+ * - SameTypeOperands: 所有参数类型相同
+ * - SameOperandsElementType: 所有参数的元素类型相同（容器类型）
+ * - SameOperandsAndResultElementType: 所有参数和返回值的元素类型相同（容器类型）
  */
 export interface FunctionTrait {
-  /** Trait 类型 */
-  kind: 'SameType';
-  /** 参与此 Trait 的端口名（参数名或返回值名，返回值用 "return:name" 格式） */
-  ports: string[];
+  /** MLIR 标准 trait 名称 */
+  kind: 'SameOperandsAndResultType' | 'SameTypeOperands' | 'SameOperandsElementType' | 'SameOperandsAndResultElementType';
 }
 
 export interface FunctionDef {

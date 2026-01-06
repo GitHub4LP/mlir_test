@@ -118,12 +118,18 @@ class GraphState(BaseModel):
     edges: list[GraphEdge]
 
 
+class FunctionTrait(BaseModel):
+    """函数级别的 Trait"""
+    kind: str  # 'SameOperandsAndResultType' | 'SameTypeOperands' | 'SameOperandsElementType' | 'SameOperandsAndResultElementType'
+
+
 class FunctionDef(BaseModel):
     """函数定义"""
     id: str
     name: str
     parameters: list[ParameterDef]
     returnTypes: list[TypeDef]
+    traits: list[FunctionTrait] = []  # 函数级别的 Traits
     graph: GraphState
     isMain: bool
 

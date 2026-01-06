@@ -13,6 +13,11 @@
       "constraint": "AnyFloat"
     }
   ],
+  "traits": [
+    {
+      "kind": "SameOperandsAndResultType"
+    }
+  ],
   "graph": {
     "nodes": [
       {

@@ -20,12 +20,35 @@ export interface TypeSource {
 }
 
 /**
+ * 传播边类型
+ * 
+ * - 'full': 完整类型传播（SameOperandsAndResultType, SameTypeOperands）
+ * - 'element': 元素类型传播（SameOperandsElementType, SameOperandsAndResultElementType）
+ */
+export type EdgeKind = 'full' | 'element';
+
+/**
+ * 传播边信息
+ */
+export interface PropagationEdge {
+  target: VariableId;
+  kind: EdgeKind;
+}
+
+/**
  * 传播图：描述类型如何从一个端口流向另一个端口
  * 
  * 键：源变量 ID (PortRef.key)
- * 值：可以传播到的目标变量 ID 集合
+ * 值：可以传播到的目标边集合（包含边类型）
+ * 
+ * 注意：为了向后兼容，同时支持旧的 Set<VariableId> 格式
  */
 export type PropagationGraph = Map<VariableId, Set<VariableId>>;
+
+/**
+ * 扩展传播图：支持边类型标记
+ */
+export type ExtendedPropagationGraph = Map<VariableId, PropagationEdge[]>;
 
 /**
  * 传播结果

@@ -938,6 +938,51 @@
   color: var(--label-color);
 }
 
+/* ============================================================
+   TraitsDisplay 组件样式
+   ============================================================ */
+
+.rf-traits-display {
+  padding: 4px 0;
+}
+
+.rf-traits-display-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rf-trait-item {
+  padding: 4px 8px;
+  background-color: rgba(55, 65, 81, 0.3);
+  border-radius: 4px;
+}
+
+.rf-trait-name {
+  font-size: var(--label-font-size);
+  color: var(--label-color);
+}
+
+/* 类型传播相关的 trait 用粗体显示 */
+.rf-trait-name.rf-trait-type-propagation {
+  font-weight: 600;
+}
+
+.rf-trait-ports-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.rf-trait-port-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  background-color: rgba(59, 130, 246, 0.2);
+  border-radius: 3px;
+  color: #93c5fd;
+}
+
 
 /* ============================================================
    DOMRenderer 生成的 DOM 元素样式

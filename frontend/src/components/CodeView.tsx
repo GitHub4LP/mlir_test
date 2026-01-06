@@ -22,7 +22,7 @@ export interface CodeViewProps {
 }
 
 /** 加载骨架屏 */
-function CodeSkeleton() {
+export function CodeSkeleton() {
   return (
     <div className="p-3 space-y-2 animate-pulse">
       <div className="h-3 bg-gray-700 rounded w-3/4" />

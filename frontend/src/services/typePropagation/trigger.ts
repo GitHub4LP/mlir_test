@@ -8,6 +8,7 @@
  * - 使用框架无关的 EditorNode/EditorEdge 类型
  * - 不依赖任何渲染框架（React Flow、Vue Flow 等）
  * - 传播完成后更新 portStateStore，供所有渲染器读取
+ * - 自动推断函数 traits 并更新 FunctionDef
  */
 
 import type { EditorNode, EditorEdge } from '../../editor/types';
@@ -16,6 +17,7 @@ import { computePropagation, applyPropagationResult, type DialectFilterConfig } 
 import { getDisplayType } from '../typeSelectorRenderer';
 import { dataOutHandle, dataInHandle } from '../port';
 import { usePortStateStore, makePortKey, type PortState as StorePortState } from '../../stores/portStateStore';
+import { inferFunctionTraits, type InferredFunctionTrait } from './traitsInference';
 
 /**
  * 从传播后的节点提取 Entry/Return 端口的 displayType
@@ -59,7 +61,7 @@ function extractSignatureDisplayTypes(
 }
 
 /**
- * 类型传播结果（包含签名变化信息）
+ * 类型传播结果（包含签名变化信息和推断的 traits）
  */
 export interface PropagationTriggerResult {
   /** 更新后的节点列表 */
@@ -69,6 +71,8 @@ export interface PropagationTriggerResult {
     parameters: Record<string, string>;
     returnTypes: Record<string, string>;
   };
+  /** 推断的函数 traits（用于同步到 FunctionDef.traits） */
+  inferredTraits: InferredFunctionTrait[];
 }
 
 /**
@@ -83,6 +87,7 @@ export interface PropagationTriggerResult {
  * @param pickConstraintName - 选择约束名称
  * @param findSubsetConstraints - 找出所有元素集合是给定集合子集的约束名
  * @param dialectFilter - 方言过滤配置（可选）
+ * @param getFunctionById - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
  * @returns 更新后的节点列表（包含传播结果）
  */
 export function triggerTypePropagation(
@@ -92,10 +97,11 @@ export function triggerTypePropagation(
   getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
   findSubsetConstraints?: (E: string[]) => string[],
-  dialectFilter?: DialectFilterConfig
+  dialectFilter?: DialectFilterConfig,
+  getFunctionById?: (functionId: string) => FunctionDef | null
 ): EditorNode[] {
   const result = triggerTypePropagationWithSignature(
-    nodes, edges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter
+    nodes, edges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, getFunctionById
   );
   return result.nodes;
 }
@@ -113,6 +119,7 @@ export function triggerTypePropagation(
  * @param pickConstraintName - 选择约束名称
  * @param findSubsetConstraints - 找出所有元素集合是给定集合子集的约束名
  * @param dialectFilter - 方言过滤配置（可选）
+ * @param getFunctionById - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
  */
 export function triggerTypePropagationWithSignature(
   nodes: EditorNode[],
@@ -121,7 +128,8 @@ export function triggerTypePropagationWithSignature(
   getConstraintElements: (constraint: string) => string[],
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
   findSubsetConstraints?: (E: string[]) => string[],
-  dialectFilter?: DialectFilterConfig
+  dialectFilter?: DialectFilterConfig,
+  getFunctionById?: (functionId: string) => FunctionDef | null
 ): PropagationTriggerResult {
   // 使用新的 computePropagation 函数
   const propagationResult = computePropagation(
@@ -131,12 +139,19 @@ export function triggerTypePropagationWithSignature(
     getConstraintElements,
     pickConstraintName,
     findSubsetConstraints || (() => []),
-    dialectFilter
+    dialectFilter,
+    getFunctionById
   );
   
   // 应用传播结果到节点（包含 portStates）
   const updatedNodes = applyPropagationResult(nodes, propagationResult);
   const signature = extractSignatureDisplayTypes(updatedNodes);
+  
+  // 推断函数 traits（仅对自定义函数，非 main 函数）
+  let inferredTraits: InferredFunctionTrait[] = [];
+  if (currentFunction && !currentFunction.isMain) {
+    inferredTraits = inferFunctionTraits(nodes, edges, currentFunction);
+  }
   
   // 同时更新 portStateStore（兼容现有代码，后续可移除）
   const portStatesMap = new Map<string, StorePortState>();
@@ -151,6 +166,6 @@ export function triggerTypePropagationWithSignature(
   }
   usePortStateStore.getState().updatePortStates(portStatesMap);
   
-  return { nodes: updatedNodes, signature };
+  return { nodes: updatedNodes, signature, inferredTraits };
 }
 

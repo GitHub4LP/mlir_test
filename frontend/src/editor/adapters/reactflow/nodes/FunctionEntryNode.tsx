@@ -8,11 +8,10 @@
 
 import { memo, useCallback, useMemo, useEffect } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
-import type { FunctionEntryData, FunctionTrait, GraphNode } from '../../../../types';
+import type { FunctionEntryData, GraphNode } from '../../../../types';
 import { getTypeColor } from '../../../../services/typeSystem';
 import { useReactStore, projectStore } from '../../../../stores';
 import { UnifiedTypeSelector } from '../../../../components/UnifiedTypeSelector';
-import { FunctionTraitsEditor } from '../../../../components/FunctionTraitsEditor';
 import { EditableName } from '../../../../components/shared';
 import { dataOutHandle } from '../../../../services/port';
 import { useCurrentFunction, useTypeChangeHandler } from '../../../../hooks';
@@ -47,18 +46,11 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
   const removeParameter = useReactStore(projectStore, state => state.removeParameter);
   const updateParameter = useReactStore(projectStore, state => state.updateParameter);
   const getCurrentFunction = useReactStore(projectStore, state => state.getCurrentFunction);
-  const setFunctionTraits = useReactStore(projectStore, state => state.setFunctionTraits);
 
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
   
-  const traits = currentFunction?.traits || [];
-  const returnTypes = currentFunction?.returnTypes || [];
   const parameters = useMemo(() => currentFunction?.parameters || [], [currentFunction?.parameters]);
-
-  const handleTraitsChange = useCallback((newTraits: FunctionTrait[]) => {
-    setFunctionTraits(functionId, newTraits);
-  }, [functionId, setFunctionTraits]);
 
   const handleAddParameter = useCallback(() => {
     const func = getCurrentFunction();
@@ -251,17 +243,7 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
         rootClassName="rf-node"
       />
       
-      {/* Traits editor - 作为额外的 DOM 元素 */}
-      {!isMain && (
-        <div className="rf-traits-container">
-          <FunctionTraitsEditor
-            parameters={parameters}
-            returnTypes={returnTypes}
-            traits={traits}
-            onChange={handleTraitsChange}
-          />
-        </div>
-      )}
+      {/* Traits 编辑器已移除 - traits 现在由系统自动推断 */}
     </div>
   );
 });
