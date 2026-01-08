@@ -65,7 +65,7 @@ class TestProjectAPI:
         assert data["path"] == temp_project_dir
         
         # Verify files were created
-        project_file = Path(temp_project_dir) / "project.json"
+        project_file = Path(temp_project_dir) / "project.mlir.json"
         assert project_file.exists()
         
         functions_dir = Path(temp_project_dir) / "functions"
@@ -88,8 +88,8 @@ class TestProjectAPI:
         data = response.json()
         assert data["status"] == "saved"
         
-        # Verify project.json was created
-        project_file = Path(temp_project_dir) / "project.json"
+        # Verify project.mlir.json was created
+        project_file = Path(temp_project_dir) / "project.mlir.json"
         assert project_file.exists()
         
         with open(project_file, "r") as f:
@@ -120,7 +120,7 @@ class TestProjectAPI:
         loaded_project = data["project"]
         assert loaded_project["name"] == "Test Project"
         assert loaded_project["mainFunction"]["id"] == "main"
-        # dialects 从节点自动提取，空项目无节点则为�?        assert loaded_project["dialects"] == []
+        # dialects 从节点自动提取，空项目无节点则为�?        assert loaded_project["dialects"] == []
 
     def test_load_nonexistent_project(self, temp_project_dir):
         """Test loading a project that doesn't exist."""
@@ -250,6 +250,6 @@ class TestProjectAPI:
         
         # Verify all data is preserved
         assert loaded["name"] == project["name"]
-        # dialects 从节点自动提取，空项目无节点则为�?        assert loaded["dialects"] == []
+        # dialects 从节点自动提取，空项目无节点则为�?        assert loaded["dialects"] == []
         assert loaded["mainFunction"]["parameters"] == project["mainFunction"]["parameters"]
         assert loaded["mainFunction"]["returnTypes"] == project["mainFunction"]["returnTypes"]

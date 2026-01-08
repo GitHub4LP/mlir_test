@@ -105,25 +105,25 @@ export interface INodeEditor {
   onVariadicRemove: ((nodeId: string, groupName: string) => void) | null;
   
   /** 参数添加回调 */
-  onParameterAdd: ((functionId: string) => void) | null;
+  onParameterAdd: ((functionName: string) => void) | null;
   
   /** 参数移除回调 */
-  onParameterRemove: ((functionId: string, parameterName: string) => void) | null;
+  onParameterRemove: ((functionName: string, parameterName: string) => void) | null;
   
   /** 参数重命名回调 */
-  onParameterRename: ((functionId: string, oldName: string, newName: string) => void) | null;
+  onParameterRename: ((functionName: string, oldName: string, newName: string) => void) | null;
   
   /** 返回值添加回调 */
-  onReturnTypeAdd: ((functionId: string) => void) | null;
+  onReturnTypeAdd: ((functionName: string) => void) | null;
   
   /** 返回值移除回调 */
-  onReturnTypeRemove: ((functionId: string, returnName: string) => void) | null;
+  onReturnTypeRemove: ((functionName: string, returnName: string) => void) | null;
   
   /** 返回值重命名回调 */
-  onReturnTypeRename: ((functionId: string, oldName: string, newName: string) => void) | null;
+  onReturnTypeRename: ((functionName: string, oldName: string, newName: string) => void) | null;
   
   /** Traits 变更回调 */
-  onTraitsChange: ((functionId: string, traits: FunctionTrait[]) => void) | null;
+  onTraitsChange: ((functionName: string, traits: FunctionTrait[]) => void) | null;
   
   /** 类型标签点击回调（用于显示类型选择器） */
   onTypeLabelClick: ((nodeId: string, handleId: string, canvasX: number, canvasY: number) => void) | null;

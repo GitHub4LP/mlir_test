@@ -35,7 +35,6 @@ describe('Return I32 → addi propagation', () => {
       type: 'function-return',
       position: { x: 0, y: 0 },
       data: {
-        functionId: 'main',
         functionName: 'main',
         branchName: '',
         inputs: [{
@@ -46,7 +45,6 @@ describe('Return I32 → addi propagation', () => {
           color: '#fff',
         }],
         execIn: { id: 'exec-in', label: '' },
-        isMain: true,
       } as FunctionReturnData,
     };
 

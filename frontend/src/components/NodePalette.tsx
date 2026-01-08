@@ -22,9 +22,9 @@ export interface NodePaletteProps {
   /** Callback when a function is dragged to the canvas */
   onFunctionDragStart?: (event: React.DragEvent, func: FunctionDef) => void;
   /** Callback when a function is selected for editing */
-  onFunctionSelect?: (functionId: string) => void;
+  onFunctionSelect?: (functionName: string) => void;
   /** Callback after a function has been deleted */
-  onFunctionDeleted?: (functionId: string) => void;
+  onFunctionDeleted?: (functionName: string) => void;
 }
 
 /**
@@ -74,20 +74,20 @@ function OperationItem({ operation, onDragStart, onClick }: OperationItemProps) 
 interface FunctionItemProps {
   func: FunctionDef;
   isSelected: boolean;
-  currentFunctionId?: string | null;
+  currentFunctionName?: string | null;
   isDeleting: boolean;
   onDragStart?: (event: React.DragEvent, func: FunctionDef) => void;
-  onSelect: (id: string) => void;
-  onRename: (id: string, newName: string) => void;
-  onDeleteRequest: (id: string) => void;
-  onDeleteConfirm: (id: string) => void;
+  onSelect: (name: string) => void;
+  onRename: (name: string, newName: string) => void;
+  onDeleteRequest: (name: string) => void;
+  onDeleteConfirm: (name: string) => void;
   onDeleteCancel: () => void;
 }
 
 const FunctionItem = memo(function FunctionItem({
   func,
   isSelected,
-  currentFunctionId,
+  currentFunctionName,
   isDeleting,
   onDragStart,
   onSelect,
@@ -101,8 +101,9 @@ const FunctionItem = memo(function FunctionItem({
   const inputRef = useRef<HTMLInputElement>(null);
   const deleteRef = useRef<HTMLDivElement>(null);
   
-  const isCurrentFunction = func.id === currentFunctionId;
-  const getFunctionById = useProjectStore(state => state.getFunctionById);
+  const isMain = func.name === 'main';
+  const isCurrentFunction = func.name === currentFunctionName;
+  const getFunctionByName = useProjectStore(state => state.getFunctionByName);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -119,8 +120,8 @@ const FunctionItem = memo(function FunctionItem({
   }, [isDeleting]);
 
   const handleDragStart = useCallback((event: React.DragEvent) => {
-    if (func.isMain || isCurrentFunction) return;
-    const latestFunc = getFunctionById(func.id);
+    if (isMain || isCurrentFunction) return;
+    const latestFunc = getFunctionByName(func.name);
     if (!latestFunc) return;
     
     const functionCallData = generateFunctionCallData(latestFunc);
@@ -128,22 +129,22 @@ const FunctionItem = memo(function FunctionItem({
     event.dataTransfer.setData('text/plain', latestFunc.name);
     event.dataTransfer.effectAllowed = 'copy';
     onDragStart?.(event, latestFunc);
-  }, [func.id, func.isMain, isCurrentFunction, getFunctionById, onDragStart]);
+  }, [func.name, isMain, isCurrentFunction, getFunctionByName, onDragStart]);
 
   const handleDoubleClick = useCallback(() => {
-    if (!func.isMain) {
+    if (!isMain) {
       setIsEditing(true);
       setEditName(func.name);
     }
-  }, [func.isMain, func.name]);
+  }, [isMain, func.name]);
 
   const handleRenameSubmit = useCallback(() => {
     const trimmedName = editName.trim();
     if (trimmedName && trimmedName !== func.name && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmedName)) {
-      onRename(func.id, trimmedName);
+      onRename(func.name, trimmedName);
     }
     setIsEditing(false);
-  }, [editName, func.id, func.name, onRename]);
+  }, [editName, func.name, onRename]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -156,16 +157,16 @@ const FunctionItem = memo(function FunctionItem({
 
   const handleDeleteClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!func.isMain) {
-      onDeleteRequest(func.id);
+    if (!isMain) {
+      onDeleteRequest(func.name);
     }
-  }, [func.id, func.isMain, onDeleteRequest]);
+  }, [func.name, isMain, onDeleteRequest]);
 
   const paramTypes = func.parameters.map(p => p.constraint).join(', ');
   const returnTypes = func.returnTypes.map(r => r.constraint).join(', ');
   const signature = `(${paramTypes}) -> (${returnTypes})`;
   
-  const canDrag = !func.isMain && !isCurrentFunction;
+  const canDrag = !isMain && !isCurrentFunction;
 
   // 删除确认状态
   if (isDeleting) {
@@ -176,7 +177,7 @@ const FunctionItem = memo(function FunctionItem({
         onBlur={onDeleteCancel}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onDeleteCancel();
-          if (e.key === 'Enter') onDeleteConfirm(func.id);
+          if (e.key === 'Enter') onDeleteConfirm(func.name);
         }}
         className="px-2 py-1 rounded border border-red-500 bg-red-900/30 mb-1 outline-none"
       >
@@ -184,7 +185,7 @@ const FunctionItem = memo(function FunctionItem({
           <span className="text-xs text-red-300">Delete "{func.name}"?</span>
           <div className="flex gap-1">
             <button
-              onMouseDown={(e) => { e.preventDefault(); onDeleteConfirm(func.id); }}
+              onMouseDown={(e) => { e.preventDefault(); onDeleteConfirm(func.name); }}
               className="px-1.5 py-0.5 text-[10px] bg-red-600 text-white rounded hover:bg-red-500"
             >
               Yes
@@ -205,24 +206,24 @@ const FunctionItem = memo(function FunctionItem({
     <div
       draggable={canDrag}
       onDragStart={canDrag ? handleDragStart : undefined}
-      onClick={() => onSelect(func.id)}
+      onClick={() => onSelect(func.name)}
       onDoubleClick={handleDoubleClick}
       className={`px-2 py-1 rounded border transition-colors mb-1 ${
         isSelected
           ? 'bg-blue-600/30 border-blue-500/50'
-          : func.isMain
+          : isMain
             ? 'border-green-700 hover:border-green-500 hover:bg-gray-700'
             : isCurrentFunction
               ? 'border-purple-700 bg-gray-800 opacity-50 cursor-not-allowed'
               : 'border-purple-700 hover:border-purple-500 hover:bg-gray-700 cursor-grab'
       }`}
-      title={func.isMain ? 'Main function' : isCurrentFunction ? 'Cannot call current function' : signature}
+      title={isMain ? 'Main function' : isCurrentFunction ? 'Cannot call current function' : signature}
     >
       <div className="flex items-center gap-1.5">
         <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white ${
-          func.isMain ? 'bg-green-600' : 'bg-purple-600'
+          isMain ? 'bg-green-600' : 'bg-purple-600'
         }`}>
-          {func.isMain ? 'M' : 'F'}
+          {isMain ? 'M' : 'F'}
         </div>
         
         {isEditing ? (
@@ -242,7 +243,7 @@ const FunctionItem = memo(function FunctionItem({
           </span>
         )}
 
-        {!func.isMain && !isEditing && (
+        {!isMain && !isEditing && (
           <button
             onClick={handleDeleteClick}
             className="p-0.5 text-gray-500 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors"
@@ -255,7 +256,7 @@ const FunctionItem = memo(function FunctionItem({
         )}
       </div>
       
-      {!func.isMain && (
+      {!isMain && (
         <div className="text-[10px] text-gray-400 truncate ml-5">
           {signature}
         </div>
@@ -263,12 +264,10 @@ const FunctionItem = memo(function FunctionItem({
     </div>
   );
 }, (prev, next) => {
-  return prev.func.id === next.func.id &&
-    prev.func.name === next.func.name &&
-    prev.func.isMain === next.func.isMain &&
+  return prev.func.name === next.func.name &&
     prev.isSelected === next.isSelected &&
     prev.isDeleting === next.isDeleting &&
-    prev.currentFunctionId === next.currentFunctionId &&
+    prev.currentFunctionName === next.currentFunctionName &&
     JSON.stringify(prev.func.parameters) === JSON.stringify(next.func.parameters) &&
     JSON.stringify(prev.func.returnTypes) === JSON.stringify(next.func.returnTypes);
 });
@@ -427,7 +426,7 @@ export function NodePalette({
 
   // Project store
   const project = useProjectStore(state => state.project);
-  const currentFunctionId = useProjectStore(state => state.currentFunctionId);
+  const currentFunctionName = useProjectStore(state => state.currentFunctionName);
   const addFunction = useProjectStore(state => state.addFunction);
   const removeFunction = useProjectStore(state => state.removeFunction);
   const renameFunction = useProjectStore(state => state.renameFunction);
@@ -458,26 +457,26 @@ export function NodePalette({
   }, [dialects, searchQuery]);
 
   // Handlers
-  const handleFunctionSelect = useCallback((functionId: string) => {
-    onFunctionSelect?.(functionId);
-    selectFunction(functionId);
+  const handleFunctionSelect = useCallback((functionName: string) => {
+    onFunctionSelect?.(functionName);
+    selectFunction(functionName);
   }, [selectFunction, onFunctionSelect]);
 
   const handleCreate = useCallback((name: string) => {
     const newFunc = addFunction(name);
     if (newFunc) {
-      handleFunctionSelect(newFunc.id);
+      handleFunctionSelect(newFunc.name);
     }
     setIsCreating(false);
   }, [addFunction, handleFunctionSelect]);
 
-  const handleRename = useCallback((functionId: string, newName: string) => {
-    renameFunction(functionId, newName);
+  const handleRename = useCallback((functionName: string, newName: string) => {
+    renameFunction(functionName, newName);
   }, [renameFunction]);
 
-  const handleDeleteConfirm = useCallback((functionId: string) => {
-    if (removeFunction(functionId)) {
-      onFunctionDeleted?.(functionId);
+  const handleDeleteConfirm = useCallback((functionName: string) => {
+    if (removeFunction(functionName)) {
+      onFunctionDeleted?.(functionName);
     }
     setDeletingId(null);
   }, [removeFunction, onFunctionDeleted]);
@@ -599,11 +598,11 @@ export function NodePalette({
                 ) : (
                   filteredFunctions.map(func => (
                     <FunctionItem
-                      key={func.id}
+                      key={func.name}
                       func={func}
-                      isSelected={func.id === currentFunctionId}
-                      currentFunctionId={currentFunctionId}
-                      isDeleting={deletingId === func.id}
+                      isSelected={func.name === currentFunctionName}
+                      currentFunctionName={currentFunctionName}
+                      isDeleting={deletingId === func.name}
                       onDragStart={onFunctionDragStart}
                       onSelect={handleFunctionSelect}
                       onRename={handleRename}

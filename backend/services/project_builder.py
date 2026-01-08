@@ -64,12 +64,10 @@ class FunctionGraph:
 @dataclass
 class FunctionDef:
     """函数定义"""
-    id: str
     name: str
     parameters: list[dict[str, str]]  # [{name, constraint}]
     returnTypes: list[dict[str, str]]  # [{name, constraint}]
     graph: FunctionGraph
-    isMain: bool = False
 
 
 @dataclass
@@ -183,14 +181,15 @@ class ProjectBuilder:
         output_types: list[str]
     ) -> None:
         """阶段1：收集函数实例（DFS）"""
-        type_key = (func_def.id, tuple(input_types), tuple(output_types))
+        type_key = (func_def.name, tuple(input_types), tuple(output_types))
         
         # 已访问，跳过
         if type_key in self._visited_keys:
             return
         self._visited_keys.add(type_key)
         
-        func_name = func_def.name if func_def.isMain else self._generate_specialized_name(
+        is_main = func_def.name == 'main'
+        func_name = func_def.name if is_main else self._generate_specialized_name(
             func_def.name, input_types, output_types
         )
         print(f"[COLLECT] func={func_name} inputs={input_types} outputs={output_types}")
@@ -207,10 +206,10 @@ class ProjectBuilder:
         # 递归处理所有 function-call 节点
         for node in graph_with_types.nodes:
             if node.type == 'function-call':
-                callee_id = node.data.get('functionId', '')
-                callee_def = self.all_functions.get(callee_id)
+                callee_name = node.data.get('functionName', '')
+                callee_def = self.all_functions.get(callee_name)
                 if not callee_def:
-                    raise ValueError(f"Function '{callee_id}' not found")
+                    raise ValueError(f"Function '{callee_name}' not found")
                 
                 # 推断调用点类型
                 call_types = self._infer_call_site_types(node, graph_with_types)
@@ -236,10 +235,11 @@ class ProjectBuilder:
         output_types = pending.output_types
         graph_with_types = pending.graph_with_types
         
-        type_key = (func_def.id, tuple(input_types), tuple(output_types))
+        type_key = (func_def.name, tuple(input_types), tuple(output_types))
         
         # 生成函数名
-        if func_def.isMain or func_def.id == 'main':
+        is_main = func_def.name == 'main'
+        if is_main:
             func_name = func_def.name
         else:
             func_name = self._generate_specialized_name(func_def.name, input_types, output_types)
@@ -299,9 +299,9 @@ class ProjectBuilder:
     
     def _collect_functions(self, project: Project) -> dict[str, FunctionDef]:
         """收集所有函数定义"""
-        functions = {project.mainFunction.id: project.mainFunction}
+        functions = {project.mainFunction.name: project.mainFunction}
         for f in project.customFunctions:
-            functions[f.id] = f
+            functions[f.name] = f
         return functions
     
     def _get_constraint_defs(self) -> dict[str, Any]:
@@ -391,13 +391,13 @@ class ProjectBuilder:
         print(f"  data keys: {list(data.keys())}")
         print(f"  inputs: {inputs}")
         print(f"  outputs: {outputs}")
-        print(f"  functionId: {data.get('functionId')}")
+        print(f"  functionName: {data.get('functionName')}")
         
         # 如果 inputs 或 outputs 为空，尝试从 FunctionDef 重建
         if not inputs or not outputs:
-            function_id = data.get('functionId')
-            if function_id:
-                callee_def = self.all_functions.get(function_id)
+            function_name = data.get('functionName')
+            if function_name:
+                callee_def = self.all_functions.get(function_name)
                 if callee_def:
                     print("  [DEBUG] Rebuilding inputs/outputs from FunctionDef")
                     # 从 FunctionDef 重建 inputs
@@ -1341,21 +1341,21 @@ class ProjectBuilder:
         两阶段构建：被调用函数已在阶段1收集、阶段2构建完成，直接查找即可。
         """
         data = node.data
-        callee_id = data.get('functionId', '')
+        callee_name = data.get('functionName', '')
         
         # 从调用点推断类型
         call_types = self._infer_call_site_types(node, graph)
         if not call_types:
-            raise ValueError(f"Cannot infer call site types for '{callee_id}'")
+            raise ValueError(f"Cannot infer call site types for '{callee_name}'")
         
         input_types = call_types['input_types']
         output_types = call_types['output_types']
-        type_key = (callee_id, tuple(input_types), tuple(output_types))
+        type_key = (callee_name, tuple(input_types), tuple(output_types))
         
         # 获取已构建的函数（两阶段构建保证已存在）
         callee_func = self.built_functions.get(type_key)
         if not callee_func:
-            raise ValueError(f"Function '{callee_id}' not found for types {input_types}/{output_types}")
+            raise ValueError(f"Function '{callee_name}' not found for types {input_types}/{output_types}")
         
         # 收集输入参数
         arguments = self._collect_node_inputs(node, graph)
@@ -1556,12 +1556,10 @@ def build_project_from_dict(project_dict: dict) -> ir.Module:
     
     def parse_function(f: dict) -> FunctionDef:
         return FunctionDef(
-            id=f['id'],
             name=f['name'],
             parameters=f.get('parameters', []),
             returnTypes=f.get('returnTypes', []),
             graph=parse_graph(f['graph']),
-            isMain=f.get('isMain', False),
         )
     
     project = Project(

@@ -6,6 +6,8 @@
  * - Operation 节点：属性编辑
  * - Entry/Return 节点：参数/返回值管理
  * - 所有节点：端口类型编辑
+ * 
+ * 重构：支持通过 props 传入回调，以便在 VS Code 模式下使用
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -16,6 +18,7 @@ import type {
   FunctionReturnData, 
   FunctionCallData,
   ArgumentDef,
+  FunctionDef,
 } from '../../types';
 import { AttributeEditor } from '../AttributeEditor';
 import { UnifiedTypeSelector } from '../UnifiedTypeSelector';
@@ -215,7 +218,7 @@ interface PortTypesSectionProps {
     constraint: string;
     displayType: string;
     canEdit: boolean;
-    options: string[];  // 可选的约束名列表
+    options: string[];
   }>;
   onTypeChange: (portId: string, type: string, constraint: string) => void;
 }
@@ -303,14 +306,45 @@ function CallNodeSection({ functionName, inputs, outputs }: CallNodeSectionProps
   );
 }
 
+// ============ 回调接口定义 ============
+/** 属性面板操作回调 */
+export interface PropertiesPanelCallbacks {
+  /** 更新节点数据 */
+  onUpdateNode?: (nodeId: string, updater: (node: Node) => Node) => void;
+  /** 类型变更 */
+  onTypeChange?: (nodeId: string, portId: string, type: string, constraint: string) => void;
+  /** 添加参数 */
+  onAddParameter?: (functionName: string, param: { name: string; constraint: string }) => void;
+  /** 删除参数 */
+  onRemoveParameter?: (functionName: string, name: string) => void;
+  /** 更新参数 */
+  onUpdateParameter?: (functionName: string, oldName: string, param: { name: string; constraint: string }) => void;
+  /** 添加返回值 */
+  onAddReturnType?: (functionName: string, ret: { name: string; constraint: string }) => void;
+  /** 删除返回值 */
+  onRemoveReturnType?: (functionName: string, name: string) => void;
+  /** 更新返回值 */
+  onUpdateReturnType?: (functionName: string, oldName: string, ret: { name: string; constraint: string }) => void;
+  /** 删除边 */
+  onRemoveEdges?: (edgeIds: string[]) => void;
+  /** 获取边列表 */
+  getEdges?: () => Array<{ id: string; source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }>;
+  /** 获取函数定义 */
+  getFunctionByName?: (name: string) => FunctionDef | undefined;
+  /** 获取当前函数 */
+  getCurrentFunction?: () => FunctionDef | null;
+}
+
 // ============ 主组件 ============
 export interface PropertiesPanelProps {
   selectedNode: Node | null;
   /** 选中的节点数量（用于多选检测） */
   selectedCount?: number;
+  /** 操作回调（可选，默认使用 store） */
+  callbacks?: PropertiesPanelCallbacks;
 }
 
-export function PropertiesPanel({ selectedNode, selectedCount = 1 }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedNode, selectedCount = 1, callbacks }: PropertiesPanelProps) {
   // 多选状态
   if (selectedCount > 1) {
     return (
@@ -335,28 +369,25 @@ export function PropertiesPanel({ selectedNode, selectedCount = 1 }: PropertiesP
       <h2 className="text-lg font-semibold text-white mb-4">Properties</h2>
       
       {nodeType === 'operation' && (
-        <OperationNodePanel node={selectedNode} data={nodeData as BlueprintNodeData} />
+        <OperationNodePanel node={selectedNode} data={nodeData as BlueprintNodeData} callbacks={callbacks} />
       )}
       
       {nodeType === 'function-entry' && (
-        <EntryNodePanel node={selectedNode} data={nodeData as FunctionEntryData} />
+        <EntryNodePanel node={selectedNode} data={nodeData as FunctionEntryData} callbacks={callbacks} />
       )}
       
       {nodeType === 'function-return' && (
-        <ReturnNodePanel node={selectedNode} data={nodeData as FunctionReturnData} />
+        <ReturnNodePanel node={selectedNode} data={nodeData as FunctionReturnData} callbacks={callbacks} />
       )}
       
       {nodeType === 'function-call' && (
-        <CallNodePanel node={selectedNode} data={nodeData as FunctionCallData} />
+        <CallNodePanel node={selectedNode} data={nodeData as FunctionCallData} callbacks={callbacks} />
       )}
     </div>
   );
 }
 
-
-/**
- * 从有效集合（string[]）提取显示类型
- */
+/** 从有效集合（string[]）提取显示类型 */
 function getTypeFromEffectiveSet(effectiveSet: string[] | undefined, fallback: string): string {
   if (effectiveSet && effectiveSet.length > 0) {
     return effectiveSet[0];
@@ -364,16 +395,31 @@ function getTypeFromEffectiveSet(effectiveSet: string[] | undefined, fallback: s
   return fallback;
 }
 
+
 // ============ Operation 节点面板 ============
 interface OperationNodePanelProps {
   node: Node;
   data: BlueprintNodeData;
+  callbacks?: PropertiesPanelCallbacks;
 }
 
-function OperationNodePanel({ node, data }: OperationNodePanelProps) {
+function OperationNodePanel({ node, data, callbacks }: OperationNodePanelProps) {
   const { operation, attributes = {}, inputTypes = {}, outputTypes = {}, portStates = {} } = data;
-  const updateNode = useEditorStore(state => state.updateNode);
-  const { handleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+  
+  // 使用 store 或回调
+  const storeUpdateNode = useEditorStore(state => state.updateNode);
+  const updateNode = useMemo(() => {
+    return callbacks?.onUpdateNode ?? ((nodeId: string, updater: (n: Node) => Node) => {
+      storeUpdateNode(nodeId, (n) => updater(n as Node) as typeof n);
+    });
+  }, [callbacks, storeUpdateNode]);
+  
+  const { handleTypeChange: storeHandleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+  const handleTypeChange = useMemo(() => {
+    return callbacks?.onTypeChange 
+      ? (portId: string, type: string, constraint: string) => callbacks.onTypeChange!(node.id, portId, type, constraint)
+      : storeHandleTypeChange;
+  }, [callbacks, node.id, storeHandleTypeChange]);
   
   // 获取操作定义的属性列表
   const attrDefs = useMemo(() => {
@@ -485,22 +531,41 @@ function OperationNodePanel({ node, data }: OperationNodePanelProps) {
 interface EntryNodePanelProps {
   node: Node;
   data: FunctionEntryData;
+  callbacks?: PropertiesPanelCallbacks;
 }
 
-function EntryNodePanel({ node, data }: EntryNodePanelProps) {
-  const { functionId, functionName, isMain, outputs = [], outputTypes = {}, portStates = {} } = data;
-  const { handleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+function EntryNodePanel({ node, data, callbacks }: EntryNodePanelProps) {
+  const { functionName, outputs = [], outputTypes = {}, portStates = {} } = data;
+  const isMain = functionName === 'main';
+  
+  // 使用 store 或回调
+  const { handleTypeChange: storeHandleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+  const handleTypeChange = useMemo(() => {
+    return callbacks?.onTypeChange 
+      ? (portId: string, type: string, constraint: string) => callbacks.onTypeChange!(node.id, portId, type, constraint)
+      : storeHandleTypeChange;
+  }, [callbacks, node.id, storeHandleTypeChange]);
   
   // 从 projectStore 获取参数操作方法
-  const addParameter = useProjectStore(state => state.addParameter);
-  const removeParameter = useProjectStore(state => state.removeParameter);
-  const updateParameter = useProjectStore(state => state.updateParameter);
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  const storeAddParameter = useProjectStore(state => state.addParameter);
+  const storeRemoveParameter = useProjectStore(state => state.removeParameter);
+  const storeUpdateParameter = useProjectStore(state => state.updateParameter);
+  const storeGetCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  
+  const addParameter = useMemo(() => callbacks?.onAddParameter ?? storeAddParameter, [callbacks, storeAddParameter]);
+  const removeParameter = useMemo(() => callbacks?.onRemoveParameter ?? storeRemoveParameter, [callbacks, storeRemoveParameter]);
+  const updateParameter = useMemo(() => callbacks?.onUpdateParameter ?? storeUpdateParameter, [callbacks, storeUpdateParameter]);
+  const getCurrentFunction = useMemo(() => callbacks?.getCurrentFunction ?? storeGetCurrentFunction, [callbacks, storeGetCurrentFunction]);
+  
+  const storeEdges = useEditorStore(state => state.edges);
+  const storeRemoveEdges = useEditorStore(state => state.removeEdges);
+  const getEdges = useMemo(() => callbacks?.getEdges ?? (() => storeEdges), [callbacks, storeEdges]);
+  const removeEdges = useMemo(() => callbacks?.onRemoveEdges ?? storeRemoveEdges, [callbacks, storeRemoveEdges]);
   
   // 获取当前函数的参数列表和推断的 traits
   const { parameters, inferredTraits } = useMemo(() => {
     const func = getCurrentFunction();
-    if (!func || func.id !== functionId) return { parameters: [], inferredTraits: [] };
+    if (!func || func.name !== functionName) return { parameters: [], inferredTraits: [] };
     return {
       parameters: func.parameters.map(p => ({
         name: p.name,
@@ -508,35 +573,35 @@ function EntryNodePanel({ node, data }: EntryNodePanelProps) {
       })),
       inferredTraits: func.traits || [],
     };
-  }, [getCurrentFunction, functionId]);
+  }, [getCurrentFunction, functionName]);
   
   // 参数操作
   const handleAddParameter = useCallback(() => {
     const existingNames = parameters.map(p => p.name);
     const newName = generateParameterName(existingNames);
-    addParameter(functionId, { name: newName, constraint: 'AnyType' });
-  }, [functionId, parameters, addParameter]);
+    addParameter(functionName, { name: newName, constraint: 'AnyType' });
+  }, [functionName, parameters, addParameter]);
   
   const handleRemoveParameter = useCallback((name: string) => {
     // 删除与该端口相关的边
     const handleId = `data-out-${name}`;
-    const edges = useEditorStore.getState().edges;
+    const edges = getEdges();
     const edgesToRemove = edges.filter(e => 
       (e.source === node.id && e.sourceHandle === handleId)
     ).map(e => e.id);
     if (edgesToRemove.length > 0) {
-      useEditorStore.getState().removeEdges(edgesToRemove);
+      removeEdges(edgesToRemove);
     }
     
-    removeParameter(functionId, name);
-  }, [functionId, removeParameter, node.id]);
+    removeParameter(functionName, name);
+  }, [functionName, removeParameter, node.id, getEdges, removeEdges]);
   
   const handleRenameParameter = useCallback((oldName: string, newName: string) => {
     const param = parameters.find(p => p.name === oldName);
     if (param) {
-      updateParameter(functionId, oldName, { ...param, name: newName });
+      updateParameter(functionName, oldName, { ...param, name: newName });
     }
-  }, [functionId, parameters, updateParameter]);
+  }, [functionName, parameters, updateParameter]);
   
   // 构建端口列表
   const ports = useMemo(() => {
@@ -597,55 +662,74 @@ function EntryNodePanel({ node, data }: EntryNodePanelProps) {
 interface ReturnNodePanelProps {
   node: Node;
   data: FunctionReturnData;
+  callbacks?: PropertiesPanelCallbacks;
 }
 
-function ReturnNodePanel({ node, data }: ReturnNodePanelProps) {
-  const { functionId, functionName, isMain, inputs = [], inputTypes = {}, portStates = {} } = data;
-  const { handleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+function ReturnNodePanel({ node, data, callbacks }: ReturnNodePanelProps) {
+  const { functionName, inputs = [], inputTypes = {}, portStates = {} } = data;
+  const isMain = functionName === 'main';
+  
+  // 使用 store 或回调
+  const { handleTypeChange: storeHandleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+  const handleTypeChange = useMemo(() => {
+    return callbacks?.onTypeChange 
+      ? (portId: string, type: string, constraint: string) => callbacks.onTypeChange!(node.id, portId, type, constraint)
+      : storeHandleTypeChange;
+  }, [callbacks, node.id, storeHandleTypeChange]);
   
   // 从 projectStore 获取返回值操作方法
-  const addReturnType = useProjectStore(state => state.addReturnType);
-  const removeReturnType = useProjectStore(state => state.removeReturnType);
-  const updateReturnType = useProjectStore(state => state.updateReturnType);
-  const getCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  const storeAddReturnType = useProjectStore(state => state.addReturnType);
+  const storeRemoveReturnType = useProjectStore(state => state.removeReturnType);
+  const storeUpdateReturnType = useProjectStore(state => state.updateReturnType);
+  const storeGetCurrentFunction = useProjectStore(state => state.getCurrentFunction);
+  
+  const addReturnType = useMemo(() => callbacks?.onAddReturnType ?? storeAddReturnType, [callbacks, storeAddReturnType]);
+  const removeReturnType = useMemo(() => callbacks?.onRemoveReturnType ?? storeRemoveReturnType, [callbacks, storeRemoveReturnType]);
+  const updateReturnType = useMemo(() => callbacks?.onUpdateReturnType ?? storeUpdateReturnType, [callbacks, storeUpdateReturnType]);
+  const getCurrentFunction = useMemo(() => callbacks?.getCurrentFunction ?? storeGetCurrentFunction, [callbacks, storeGetCurrentFunction]);
+  
+  const storeEdges = useEditorStore(state => state.edges);
+  const storeRemoveEdges = useEditorStore(state => state.removeEdges);
+  const getEdges = useMemo(() => callbacks?.getEdges ?? (() => storeEdges), [callbacks, storeEdges]);
+  const removeEdges = useMemo(() => callbacks?.onRemoveEdges ?? storeRemoveEdges, [callbacks, storeRemoveEdges]);
   
   // 获取当前函数的返回值列表
   const returnTypes = useMemo(() => {
     const func = getCurrentFunction();
-    if (!func || func.id !== functionId) return [];
+    if (!func || func.name !== functionName) return [];
     return func.returnTypes.map(r => ({
       name: r.name,
       constraint: r.constraint,
     }));
-  }, [getCurrentFunction, functionId]);
+  }, [getCurrentFunction, functionName]);
   
   // 返回值操作
   const handleAddReturnType = useCallback(() => {
     const existingNames = returnTypes.map(r => r.name);
     const newName = generateReturnTypeName(existingNames);
-    addReturnType(functionId, { name: newName, constraint: 'AnyType' });
-  }, [functionId, returnTypes, addReturnType]);
+    addReturnType(functionName, { name: newName, constraint: 'AnyType' });
+  }, [functionName, returnTypes, addReturnType]);
   
   const handleRemoveReturnType = useCallback((name: string) => {
     // 删除与该端口相关的边
     const handleId = `data-in-${name}`;
-    const edges = useEditorStore.getState().edges;
+    const edges = getEdges();
     const edgesToRemove = edges.filter(e => 
       (e.target === node.id && e.targetHandle === handleId)
     ).map(e => e.id);
     if (edgesToRemove.length > 0) {
-      useEditorStore.getState().removeEdges(edgesToRemove);
+      removeEdges(edgesToRemove);
     }
     
-    removeReturnType(functionId, name);
-  }, [functionId, removeReturnType, node.id]);
+    removeReturnType(functionName, name);
+  }, [functionName, removeReturnType, node.id, getEdges, removeEdges]);
   
   const handleRenameReturnType = useCallback((oldName: string, newName: string) => {
     const ret = returnTypes.find(r => r.name === oldName);
     if (ret) {
-      updateReturnType(functionId, oldName, { ...ret, name: newName });
+      updateReturnType(functionName, oldName, { ...ret, name: newName });
     }
-  }, [functionId, returnTypes, updateReturnType]);
+  }, [functionName, returnTypes, updateReturnType]);
   
   // 构建端口列表
   const ports = useMemo(() => {
@@ -699,18 +783,28 @@ function ReturnNodePanel({ node, data }: ReturnNodePanelProps) {
 interface CallNodePanelProps {
   node: Node;
   data: FunctionCallData;
+  callbacks?: PropertiesPanelCallbacks;
 }
 
-function CallNodePanel({ node, data }: CallNodePanelProps) {
-  const { functionId, functionName, inputs = [], outputs = [], inputTypes = {}, outputTypes = {}, portStates = {} } = data;
-  const { handleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+function CallNodePanel({ node, data, callbacks }: CallNodePanelProps) {
+  const { functionName, inputs = [], outputs = [], inputTypes = {}, outputTypes = {}, portStates = {} } = data;
+  
+  // 使用 store 或回调
+  const { handleTypeChange: storeHandleTypeChange } = useTypeChangeHandler({ nodeId: node.id });
+  const handleTypeChange = useMemo(() => {
+    return callbacks?.onTypeChange 
+      ? (portId: string, type: string, constraint: string) => callbacks.onTypeChange!(node.id, portId, type, constraint)
+      : storeHandleTypeChange;
+  }, [callbacks, node.id, storeHandleTypeChange]);
   
   // 获取被调用函数的 traits
-  const getFunctionById = useProjectStore(state => state.getFunctionById);
+  const storeGetFunctionByName = useProjectStore(state => state.getFunctionByName);
+  const getFunctionByName = useMemo(() => callbacks?.getFunctionByName ?? storeGetFunctionByName, [callbacks, storeGetFunctionByName]);
+  
   const calledFunctionTraits = useMemo(() => {
-    const func = getFunctionById(functionId);
+    const func = getFunctionByName(functionName);
     return func?.traits || [];
-  }, [getFunctionById, functionId]);
+  }, [getFunctionByName, functionName]);
   
   // 构建端口列表
   const ports = useMemo(() => {

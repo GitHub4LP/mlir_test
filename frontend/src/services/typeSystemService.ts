@@ -384,13 +384,13 @@ export function getInternalConnectedConstraints(
  * 对于参数端口：查找连接到 Call 节点输入的源端口类型
  * 对于返回值端口：查找连接到 Call 节点输出的目标端口约束
  * 
- * @param functionId - 函数 ID
+ * @param functionName - 函数名
  * @param portName - 端口名（参数名或返回值名）
  * @param portKind - 端口类型：'param' 或 'return'
  * @param project - 项目数据
  */
 export function getExternalConnectedConstraints(
-  functionId: string,
+  functionName: string,
   portName: string,
   portKind: 'param' | 'return',
   project: Project
@@ -407,7 +407,7 @@ export function getExternalConnectedConstraints(
       if (node.type !== 'function-call') continue;
       
       const callData = node.data as FunctionCallData;
-      if (callData.functionId !== functionId) continue;
+      if (callData.functionName !== functionName) continue;
       
       // 找到对应的端口
       if (portKind === 'param') {

@@ -77,7 +77,7 @@ export function subscribeStore<T, S>(
  * const state = accessor.get();
  * 
  * // 更新状态
- * accessor.set({ currentFunctionId: 'main' });
+ * accessor.set({ currentFunctionName: 'main' });
  * 
  * // 订阅变化
  * const unsubscribe = accessor.subscribe((state, prevState) => {
@@ -124,8 +124,8 @@ export function createStoreAccessor<T>(store: IStore<T>) {
  * const unsubscribeAll = batchSubscribe([
  *   {
  *     store: projectStore,
- *     selector: (s) => s.currentFunctionId,
- *     callback: (id) => console.log('Function changed:', id),
+ *     selector: (s) => s.currentFunctionName,
+ *     callback: (name) => console.log('Function changed:', name),
  *   },
  *   {
  *     store: typeConstraintStore,

@@ -282,20 +282,22 @@ export function extractPortConstraints(
 
       case 'function-entry': {
         const data = node.data as FunctionEntryData;
+        const isMain = data.functionName === 'main';
         const parameters = currentFunction?.parameters || data.outputs.map(p => ({ name: p.name, constraint: p.typeConstraint }));
         for (const param of parameters) {
           const portRef = dataOut(node.id, param.name);
-          constraints.set(portRef.key, data.isMain ? param.constraint : 'AnyType');
+          constraints.set(portRef.key, isMain ? param.constraint : 'AnyType');
         }
         break;
       }
 
       case 'function-return': {
         const data = node.data as FunctionReturnData;
+        const isMain = data.functionName === 'main';
         const returnTypes = currentFunction?.returnTypes || data.inputs.map(p => ({ name: p.name, constraint: p.typeConstraint }));
         for (const ret of returnTypes) {
           const portRef = dataIn(node.id, ret.name);
-          constraints.set(portRef.key, data.isMain ? ret.constraint : 'AnyType');
+          constraints.set(portRef.key, isMain ? ret.constraint : 'AnyType');
         }
         break;
       }
@@ -334,7 +336,7 @@ export function extractPortConstraints(
  * @param edges - 当前函数图的边（EditorEdge 类型）
  * @param currentFunction - 当前函数定义
  * @param getConstraintElements - 获取约束映射到的类型约束集合元素
- * @param getFunctionById - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
+ * @param getFunctionByName - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
  * @returns 可选的具体类型列表
  */
 export function computeOptionsExcludingSelf(
@@ -343,7 +345,7 @@ export function computeOptionsExcludingSelf(
   edges: EditorEdge[],
   currentFunction: FunctionDef | undefined,
   getConstraintElements: (constraint: string) => string[],
-  getFunctionById?: (functionId: string) => FunctionDef | null
+  getFunctionByName?: (functionName: string) => FunctionDef | null
 ): string[] {
   // 1. 提取端口原始约束（传入 currentFunction 以正确处理 Entry/Return 节点）
   const portConstraints = extractPortConstraints(nodes, currentFunction);
@@ -358,7 +360,7 @@ export function computeOptionsExcludingSelf(
   const sourcesWithoutSelf = allSources.filter(s => s.portRef.key !== portKey);
   
   // 3. 构建传播图（包含 Call 节点的被调用函数 traits）
-  const graph = buildPropagationGraph(nodes, edges, currentFunction, getFunctionById);
+  const graph = buildPropagationGraph(nodes, edges, currentFunction, getFunctionByName);
   
   // 4. 执行传播（无自己）
   const result = propagateTypes(graph, sourcesWithoutSelf, portConstraints, getConstraintElements);

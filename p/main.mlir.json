@@ -1,0 +1,130 @@
+{
+  "project": {
+    "name": "p"
+  },
+  "function": {
+    "name": "main",
+    "parameters": [],
+    "returnTypes": [
+      {
+        "name": "result",
+        "constraint": "I32"
+      }
+    ],
+    "traits": [],
+    "directDialects": [
+      "arith"
+    ],
+    "graph": {
+      "nodes": [
+        {
+          "id": "entry",
+          "type": "function-entry",
+          "position": {
+            "x": 100.0,
+            "y": 200.0
+          },
+          "data": {
+            "execOut": {
+              "id": "exec-out",
+              "label": ""
+            }
+          }
+        },
+        {
+          "id": "return-0",
+          "type": "function-return",
+          "position": {
+            "x": 947.9685668669792,
+            "y": 198.0063932190888
+          },
+          "data": {
+            "branchName": "",
+            "execIn": {
+              "id": "exec-in",
+              "label": ""
+            }
+          }
+        },
+        {
+          "id": "node_1767763720039_3w8l6x9",
+          "type": "function-call",
+          "position": {
+            "x": 497.27855929201314,
+            "y": 201.73348333628348
+          },
+          "data": {
+            "functionName": "add1",
+            "execIn": {
+              "id": "exec-in",
+              "label": ""
+            },
+            "execOuts": [
+              {
+                "id": "exec-out-0",
+                "label": ""
+              }
+            ],
+            "inputTypes": {
+              "arg0": [
+                "I32"
+              ]
+            },
+            "outputTypes": {
+              "ret0": [
+                "I32"
+              ]
+            }
+          }
+        },
+        {
+          "id": "node_1767763728208_3etwswj",
+          "type": "operation",
+          "position": {
+            "x": 222.0444096816272,
+            "y": 320.2609204161248
+          },
+          "data": {
+            "fullName": "arith.constant",
+            "attributes": {
+              "value": "2"
+            },
+            "execOuts": [],
+            "regionPins": [],
+            "outputTypes": {
+              "result": [
+                "I32"
+              ]
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "node_1767763720039_3w8l6x9",
+          "sourceHandle": "data-out-ret0",
+          "target": "return-0",
+          "targetHandle": "data-in-result"
+        },
+        {
+          "source": "node_1767763720039_3w8l6x9",
+          "sourceHandle": "exec-out-0",
+          "target": "return-0",
+          "targetHandle": "exec-in"
+        },
+        {
+          "source": "node_1767763728208_3etwswj",
+          "sourceHandle": "data-out-result",
+          "target": "node_1767763720039_3w8l6x9",
+          "targetHandle": "data-in-arg0"
+        },
+        {
+          "source": "entry",
+          "sourceHandle": "exec-out",
+          "target": "node_1767763720039_3w8l6x9",
+          "targetHandle": "exec-in"
+        }
+      ]
+    }
+  }
+}

@@ -11,9 +11,10 @@
  * - 不直接导入 @xyflow/react
  * - 通过 EditorContainer + INodeEditor 接口与编辑器交互
  * - 使用 editorStore 管理节点/边状态
+ * - 使用 PlatformBridge 抽象 API 调用和输出
  */
 
-import { useCallback, useState, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, lazy, Suspense, useMemo, type ReactNode } from 'react';
 import type { Node } from '@xyflow/react';
 
 import { LeftPanelTabs } from '../components/LeftPanelTabs';
@@ -31,7 +32,7 @@ import { useEditorStore } from '../core/stores/editorStore';
 import { useTypeConstraintStore } from '../stores/typeConstraintStore';
 import { useRendererStore } from '../stores/rendererStore';
 import { handlePinnedTypeChange, type TypeChangeHandlerDeps } from '../services/typeChangeHandler';
-import { apiUrl } from '../services/apiClient';
+import { getPlatformBridge, type PlatformBridge } from '../platform';
 
 // Layout components
 import { ConnectionErrorToast, PropertiesPanel, ProjectToolbar } from '../components/layout';
@@ -77,10 +78,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   const textRenderMode = useRendererStore(state => state.textRenderMode);
   const edgeRenderMode = useRendererStore(state => state.edgeRenderMode);
   const viewMode = useRendererStore(state => state.viewMode);
-  const setMlirCode = useRendererStore(state => state.setMlirCode);
-  const addLog = useRendererStore(state => state.addLog);
   const setProcessing = useRendererStore(state => state.setProcessing);
-  const clearLogs = useRendererStore(state => state.clearLogs);
   
   // 编辑器实例引用
   const editorRef = useRef<INodeEditor | null>(null);
@@ -144,7 +142,7 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   
   // Get project state
   const project = useProjectStore(state => state.project);
-  const currentFunctionId = useProjectStore(state => state.currentFunctionId);
+  const currentFunctionName = useProjectStore(state => state.currentFunctionName);
   const createProject = useProjectStore(state => state.createProject);
 
   // Initialize dialect store on mount
@@ -225,30 +223,30 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
   }, []);
 
   const handleFunctionDeleted = useCallback(() => {
-    const currentId = useProjectStore.getState().currentFunctionId;
-    if (currentId) {
-      loadFunctionGraph(currentId);
+    const currentName = useProjectStore.getState().currentFunctionName;
+    if (currentName) {
+      loadFunctionGraph(currentName);
     }
   }, [loadFunctionGraph]);
 
   const handleProjectCreated = useCallback(() => {
-    const mainId = useProjectStore.getState().currentFunctionId;
-    if (mainId) {
-      loadFunctionGraph(mainId);
+    const mainName = useProjectStore.getState().currentFunctionName;
+    if (mainName) {
+      loadFunctionGraph(mainName);
     }
   }, [loadFunctionGraph]);
 
   const handleProjectOpened = useCallback(() => {
-    const mainId = useProjectStore.getState().currentFunctionId;
-    if (mainId) {
-      loadFunctionGraph(mainId);
+    const mainName = useProjectStore.getState().currentFunctionName;
+    if (mainName) {
+      loadFunctionGraph(mainName);
     }
   }, [loadFunctionGraph]);
 
   // Initialize a default project if none exists
   useEffect(() => {
     if (!project) {
-      createProject('Untitled Project', './untitled_project', ['arith', 'func']);
+      createProject('Untitled Project', './untitled_project');
       setTimeout(() => {
         handleProjectCreated();
       }, 0);
@@ -380,16 +378,16 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
 
   // 参数重命名处理（Canvas 渲染器）
   const updateParameter = useProjectStore(state => state.updateParameter);
-  const handleParameterRename = useCallback((functionId: string, oldName: string, newName: string) => {
+  const handleParameterRename = useCallback((functionName: string, oldName: string, newName: string) => {
     if (oldName === newName) return;
     
     // 获取当前参数信息
     const project = useProjectStore.getState().project;
     if (!project) return;
     
-    const func = project.mainFunction.id === functionId
+    const func = functionName === 'main'
       ? project.mainFunction
-      : project.customFunctions.find(f => f.id === functionId);
+      : project.customFunctions.find(f => f.name === functionName);
     
     if (!func) return;
     
@@ -397,21 +395,21 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     if (!param) return;
     
     // 更新参数名称
-    updateParameter(functionId, oldName, { ...param, name: newName });
+    updateParameter(functionName, oldName, { ...param, name: newName });
   }, [updateParameter]);
 
   // 返回值重命名处理（Canvas 渲染器）
   const updateReturnType = useProjectStore(state => state.updateReturnType);
-  const handleReturnTypeRename = useCallback((functionId: string, oldName: string, newName: string) => {
+  const handleReturnTypeRename = useCallback((functionName: string, oldName: string, newName: string) => {
     if (oldName === newName) return;
     
     // 获取当前返回值信息
     const project = useProjectStore.getState().project;
     if (!project) return;
     
-    const func = project.mainFunction.id === functionId
+    const func = functionName === 'main'
       ? project.mainFunction
-      : project.customFunctions.find(f => f.id === functionId);
+      : project.customFunctions.find(f => f.name === functionName);
     
     if (!func) return;
     
@@ -419,77 +417,81 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
     if (!returnType) return;
     
     // 更新返回值名称
-    updateReturnType(functionId, oldName, { ...returnType, name: newName });
+    updateReturnType(functionName, oldName, { ...returnType, name: newName });
   }, [updateReturnType]);
 
   const dismissError = useCallback(() => {
     setConnectionError(null);
   }, []);
 
+  // 获取平台桥接实例
+  const bridge = useMemo<PlatformBridge>(() => getPlatformBridge(), []);
+
   // 切换到 Code 视图时：保存 + 预览
   const handleSwitchToCode = useCallback(async () => {
     if (!project?.path) return;
     
     setProcessing(true);
-    clearLogs();
-    addLog('info', 'Saving current graph...');
+    bridge.clearOutput();
+    bridge.appendOutput('Saving current graph...', 'info');
     
     try {
       // 1. 保存当前图到 projectStore
-      if (currentFunctionId) {
-        saveCurrentGraph(currentFunctionId);
+      if (currentFunctionName) {
+        saveCurrentGraph(currentFunctionName);
       }
       
       // 2. 保存项目到磁盘
-      addLog('info', 'Saving project to disk...');
+      bridge.appendOutput('Saving project to disk...', 'info');
       const saveProjectToPath = useProjectStore.getState().saveProjectToPath;
       const saved = await saveProjectToPath(project.path);
       if (!saved) {
-        addLog('error', 'Failed to save project to disk');
-        setMlirCode('', false);
+        bridge.appendOutput('Failed to save project to disk', 'error');
+        await bridge.showMlirCode('', false);
         setProcessing(false);
         return;
       }
       
       // 3. 调用 Preview API 生成 MLIR
-      addLog('info', 'Generating MLIR code...');
-      const response = await fetch(apiUrl('/build/preview'), {
+      bridge.appendOutput('Generating MLIR code...', 'info');
+      const data = await bridge.callApi<{
+        success: boolean;
+        mlirCode?: string;
+        verified?: boolean;
+        error?: string;
+      }>('/build/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: project.path }),
+        body: { projectPath: project.path },
       });
       
-      const data = await response.json();
-      
       if (data.success) {
-        setMlirCode(data.mlirCode || '', data.verified || false);
-        addLog('success', `MLIR generated (${data.verified ? 'verified' : 'unverified'})`);
+        await bridge.showMlirCode(data.mlirCode || '', data.verified || false);
+        bridge.appendOutput(`MLIR generated (${data.verified ? 'verified' : 'unverified'})`, 'success');
       } else {
-        setMlirCode('', false);
+        await bridge.showMlirCode('', false);
         const errorMsg = data.error || 'Preview failed';
-        addLog('error', errorMsg);
-        // 在控制台输出完整响应以便调试
+        bridge.appendOutput(errorMsg, 'error');
         console.error('Preview API error:', data);
       }
     } catch (error) {
-      setMlirCode('', false);
-      addLog('error', `Preview failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      await bridge.showMlirCode('', false);
+      bridge.appendOutput(`Preview failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setProcessing(false);
     }
-  }, [project?.path, currentFunctionId, saveCurrentGraph, setProcessing, clearLogs, addLog, setMlirCode]);
+  }, [project?.path, currentFunctionName, saveCurrentGraph, setProcessing, bridge]);
 
   // Run - JIT 执行
   const handleRun = useCallback(async () => {
     if (!project?.path) return;
     
     setProcessing(true);
-    addLog('info', 'Saving and executing with JIT...');
+    bridge.appendOutput('Saving and executing with JIT...', 'info');
     
     try {
       // 保存当前图
-      if (currentFunctionId) {
-        saveCurrentGraph(currentFunctionId);
+      if (currentFunctionName) {
+        saveCurrentGraph(currentFunctionName);
       }
       
       // 保存项目到磁盘
@@ -497,51 +499,54 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       await saveProjectToPath(project.path);
       
       // 执行
-      const response = await fetch(apiUrl('/build/execute'), {
+      const data = await bridge.callApi<{
+        success: boolean;
+        mlirCode?: string;
+        verified?: boolean;
+        output?: string;
+        error?: string;
+      }>('/build/execute', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: project.path }),
+        body: { projectPath: project.path },
       });
       
-      const data = await response.json();
-      
       if (data.mlirCode) {
-        setMlirCode(data.mlirCode, data.verified || false);
+        await bridge.showMlirCode(data.mlirCode, data.verified || false);
       }
       
       if (data.success) {
-        addLog('success', 'Execution successful');
+        bridge.appendOutput('Execution successful', 'success');
         if (data.output) {
           data.output.split('\n').forEach((line: string) => {
-            if (line.trim()) addLog('output', line);
+            if (line.trim()) bridge.appendOutput(line, 'output');
           });
         }
       } else {
-        addLog('error', data.error || 'Execution failed');
+        bridge.appendOutput(data.error || 'Execution failed', 'error');
         if (data.output) {
           data.output.split('\n').forEach((line: string) => {
-            if (line.trim()) addLog('output', line);
+            if (line.trim()) bridge.appendOutput(line, 'output');
           });
         }
       }
     } catch (error) {
-      addLog('error', `Execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      bridge.appendOutput(`Execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setProcessing(false);
     }
-  }, [project?.path, currentFunctionId, saveCurrentGraph, setProcessing, addLog, setMlirCode]);
+  }, [project?.path, currentFunctionName, saveCurrentGraph, setProcessing, bridge]);
 
   // Build - 构建项目
   const handleBuild = useCallback(async () => {
     if (!project?.path) return;
     
     setProcessing(true);
-    addLog('info', 'Building project...');
+    bridge.appendOutput('Building project...', 'info');
     
     try {
       // 保存当前图
-      if (currentFunctionId) {
-        saveCurrentGraph(currentFunctionId);
+      if (currentFunctionName) {
+        saveCurrentGraph(currentFunctionName);
       }
       
       // 保存项目到磁盘
@@ -549,39 +554,42 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
       await saveProjectToPath(project.path);
       
       // 构建
-      const response = await fetch(apiUrl('/build'), {
+      const data = await bridge.callApi<{
+        success: boolean;
+        mlirPath?: string;
+        llvmPath?: string;
+        binPath?: string;
+        error?: string;
+      }>('/build', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           projectPath: project.path,
           generateLlvm: true,
           generateExecutable: true,
-        }),
+        },
       });
       
-      const data = await response.json();
-      
       if (data.success) {
-        addLog('success', `MLIR: ${data.mlirPath}`);
+        bridge.appendOutput(`MLIR: ${data.mlirPath}`, 'success');
         if (data.llvmPath) {
-          addLog('success', `LLVM IR: ${data.llvmPath}`);
+          bridge.appendOutput(`LLVM IR: ${data.llvmPath}`, 'success');
         }
         if (data.binPath) {
-          addLog('success', `Executable: ${data.binPath}`);
+          bridge.appendOutput(`Executable: ${data.binPath}`, 'success');
         }
         if (!data.llvmPath && !data.binPath) {
-          addLog('info', 'LLVM tools not found, skipped IR/executable generation');
+          bridge.appendOutput('LLVM tools not found, skipped IR/executable generation', 'info');
         }
-        addLog('success', 'Build completed');
+        bridge.appendOutput('Build completed', 'success');
       } else {
-        addLog('error', data.error || 'Build failed');
+        bridge.appendOutput(data.error || 'Build failed', 'error');
       }
     } catch (error) {
-      addLog('error', `Build failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      bridge.appendOutput(`Build failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setProcessing(false);
     }
-  }, [project?.path, currentFunctionId, saveCurrentGraph, setProcessing, addLog]);
+  }, [project?.path, currentFunctionName, saveCurrentGraph, setProcessing, bridge]);
 
   return (
     <div className="w-full h-screen flex flex-col bg-gray-900">
@@ -704,8 +712,8 @@ export function MainLayout({ header, footer }: MainLayoutProps) {
         isOpen={isSaveDialogOpen}
         onClose={() => setIsSaveDialogOpen(false)}
         onSaveCurrentGraph={() => {
-          if (currentFunctionId) {
-            saveCurrentGraph(currentFunctionId);
+          if (currentFunctionName) {
+            saveCurrentGraph(currentFunctionName);
           }
         }}
       />

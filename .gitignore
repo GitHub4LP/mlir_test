@@ -26,3 +26,9 @@ frontend/node_modules
 mlir_data
 docs
 projects/
+
+# VS Code Extension
+vscode-extension/dist
+vscode-extension/media
+vscode-extension/node_modules
+*.vsix

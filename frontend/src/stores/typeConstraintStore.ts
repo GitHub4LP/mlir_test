@@ -13,7 +13,7 @@ import {
   getConstraintDescriptor as getDescriptor,
 } from '../services/constraintResolver';
 import { setConstraintResolver } from './typeColorCache';
-import { apiUrl } from '../services/apiClient';
+import { apiGet } from '../services/apiClient';
 
 export type { ConstraintDef, ConstraintRule };
 
@@ -104,12 +104,7 @@ export const useTypeConstraintStore = create<TypeConstraintState>((set, get) => 
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch(apiUrl('/types/'));
-      if (!response.ok) {
-        throw new Error(`Failed to load type constraints: ${response.statusText}`);
-      }
-
-      const data: TypeConstraintsResponse = await response.json();
+      const data = await apiGet<TypeConstraintsResponse>('/types/');
       
       // 构建 constraintDefs Map
       const defsMap = new Map<string, ConstraintDef>();

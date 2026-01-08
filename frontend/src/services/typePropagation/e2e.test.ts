@@ -41,7 +41,6 @@ describe('Return I32 → constant propagation', () => {
       type: 'function-return',
       position: { x: 0, y: 0 },
       data: {
-        functionId: 'main',
         functionName: 'main',
         branchName: '',
         inputs: [{
@@ -52,7 +51,6 @@ describe('Return I32 → constant propagation', () => {
           color: '#fff',
         }],
         execIn: { id: 'exec-in', label: '' },
-        isMain: true,
       } as FunctionReturnData,
     };
 

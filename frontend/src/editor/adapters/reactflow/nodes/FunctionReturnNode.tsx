@@ -37,7 +37,7 @@ export type FunctionReturnNodeType = Node<FunctionReturnData, 'function-return'>
 export type FunctionReturnNodeProps = NodeProps<FunctionReturnNodeType>;
 
 export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, selected }: FunctionReturnNodeProps) {
-  const { isMain, portStates = {} } = data;
+  const { portStates = {} } = data;
   
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<FunctionReturnData>(id);
@@ -45,22 +45,23 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
   const addReturnType = useReactStore(projectStore, state => state.addReturnType);
   const removeReturnType = useReactStore(projectStore, state => state.removeReturnType);
   const updateReturnType = useReactStore(projectStore, state => state.updateReturnType);
-  const getFunctionById = useReactStore(projectStore, state => state.getFunctionById);
+  const getFunctionByName = useReactStore(projectStore, state => state.getFunctionByName);
 
   const currentFunction = useCurrentFunction();
   const { handleTypeChange } = useTypeChangeHandler({ nodeId: id });
 
-  const functionId = currentFunction?.id || '';
+  const functionName = currentFunction?.name || '';
+  const isMain = functionName === 'main';
 
   const handleAddReturnType = useCallback(() => {
-    const func = getFunctionById(functionId);
+    const func = getFunctionByName(functionName);
     const existingNames = func?.returnTypes.map(r => r.name || '') || [];
     const newName = generateReturnTypeName(existingNames);
-    if (functionId) addReturnType(functionId, { name: newName, constraint: 'AnyType' });
-  }, [functionId, addReturnType, getFunctionById]);
+    if (functionName) addReturnType(functionName, { name: newName, constraint: 'AnyType' });
+  }, [functionName, addReturnType, getFunctionByName]);
 
   const handleRemoveReturnType = useCallback((returnName: unknown) => {
-    if (typeof returnName === 'string' && functionId) {
+    if (typeof returnName === 'string' && functionName) {
       // 删除与该端口相关的边
       const handleId = dataInHandle(returnName);
       const edges = useEditorStore.getState().edges;
@@ -71,15 +72,15 @@ export const FunctionReturnNode = memo(function FunctionReturnNode({ id, data, s
         useEditorStore.getState().removeEdges(edgesToRemove);
       }
       
-      removeReturnType(functionId, returnName);
+      removeReturnType(functionName, returnName);
     }
-  }, [functionId, removeReturnType, id]);
+  }, [functionName, removeReturnType, id]);
 
   const handleRenameReturnType = useCallback((oldName: string, newName: string) => {
-    const func = getFunctionById(functionId);
+    const func = getFunctionByName(functionName);
     const ret = func?.returnTypes.find(r => r.name === oldName);
-    if (ret && functionId) updateReturnType(functionId, oldName, { ...ret, name: newName });
-  }, [functionId, updateReturnType, getFunctionById]);
+    if (ret && functionName) updateReturnType(functionName, oldName, { ...ret, name: newName });
+  }, [functionName, updateReturnType, getFunctionByName]);
 
   // Sync FunctionDef.returnTypes to editorStore node data.inputs
   useEffect(() => {

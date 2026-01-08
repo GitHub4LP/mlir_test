@@ -37,7 +37,8 @@ export type FunctionEntryNodeType = Node<FunctionEntryData, 'function-entry'>;
 export type FunctionEntryNodeProps = NodeProps<FunctionEntryNodeType>;
 
 export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, selected }: FunctionEntryNodeProps) {
-  const { functionId, isMain, portStates = {} } = data;
+  const { functionName, portStates = {} } = data;
+  const isMain = functionName === 'main';
   
   // 直接更新 editorStore（数据一份，订阅更新）
   const { updateNodeData } = useEditorStoreUpdate<FunctionEntryData>(id);
@@ -56,8 +57,8 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
     const func = getCurrentFunction();
     const existingNames = func?.parameters.map(p => p.name) || [];
     const newName = generateParameterName(existingNames);
-    addParameter(functionId, { name: newName, constraint: 'AnyType' });
-  }, [functionId, addParameter, getCurrentFunction]);
+    addParameter(functionName, { name: newName, constraint: 'AnyType' });
+  }, [functionName, addParameter, getCurrentFunction]);
 
   const handleRemoveParameter = useCallback((paramName: unknown) => {
     if (typeof paramName === 'string') {
@@ -71,15 +72,15 @@ export const FunctionEntryNode = memo(function FunctionEntryNode({ id, data, sel
         useEditorStore.getState().removeEdges(edgesToRemove);
       }
       
-      removeParameter(functionId, paramName);
+      removeParameter(functionName, paramName);
     }
-  }, [functionId, removeParameter, id]);
+  }, [functionName, removeParameter, id]);
 
   const handleRenameParameter = useCallback((oldName: string, newName: string) => {
     const func = getCurrentFunction();
     const param = func?.parameters.find(p => p.name === oldName);
-    if (param) updateParameter(functionId, oldName, { ...param, name: newName });
-  }, [functionId, updateParameter, getCurrentFunction]);
+    if (param) updateParameter(functionName, oldName, { ...param, name: newName });
+  }, [functionName, updateParameter, getCurrentFunction]);
 
   // Sync FunctionDef.parameters to editorStore node data.outputs
   useEffect(() => {

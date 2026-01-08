@@ -1,0 +1,164 @@
+{
+  "name": "mlir-blueprint",
+  "displayName": "MLIR Blueprint",
+  "description": "Visual MLIR node editor - 可视化 MLIR 节点编辑器",
+  "version": "0.1.0",
+  "publisher": "mlir-blueprint",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "extensionPack": [
+    "llvm-vs-code-extensions.vscode-mlir"
+  ],
+  "activationEvents": [
+    "onView:mlirBlueprint.operationsView",
+    "onView:mlirBlueprint.typeConstraintsView",
+    "workspaceContains:main.mlir.json"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mlirBlueprint.openEditor",
+        "title": "Open Editor",
+        "category": "MLIR Blueprint"
+      },
+      {
+        "command": "mlirBlueprint.createProject",
+        "title": "Create Project",
+        "category": "MLIR Blueprint"
+      },
+      {
+        "command": "mlirBlueprint.openProject",
+        "title": "Open Project",
+        "category": "MLIR Blueprint"
+      },
+      {
+        "command": "mlirBlueprint.createFunction",
+        "title": "Create Function",
+        "category": "MLIR Blueprint",
+        "icon": "$(add)"
+      },
+      {
+        "command": "mlirBlueprint.checkConnection",
+        "title": "Check Backend Connection",
+        "category": "MLIR Blueprint"
+      },
+      {
+        "command": "mlirBlueprint.refreshOperations",
+        "title": "Refresh Operations",
+        "category": "MLIR Blueprint",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mlirBlueprint.refreshTypeConstraints",
+        "title": "Refresh Type Constraints",
+        "category": "MLIR Blueprint",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mlirBlueprint.previewMlir",
+        "title": "Preview MLIR Code",
+        "category": "MLIR Blueprint",
+        "icon": "$(code)"
+      },
+      {
+        "command": "mlirBlueprint.saveProject",
+        "title": "Save Project",
+        "category": "MLIR Blueprint",
+        "icon": "$(save)"
+      },
+      {
+        "command": "mlirBlueprint.openFunction",
+        "title": "Open in MLIR Blueprint Editor",
+        "category": "MLIR Blueprint"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mlirBlueprint",
+          "title": "MLIR Blueprint",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "mlirBlueprint": [
+        {
+          "id": "mlirBlueprint.operationsView",
+          "name": "Operations"
+        },
+        {
+          "id": "mlirBlueprint.typeConstraintsView",
+          "name": "Type Constraints"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "mlirBlueprint.operationsView",
+        "contents": "No operations loaded.\n[Check Connection](command:mlirBlueprint.checkConnection)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "mlirBlueprint.refreshOperations",
+          "when": "view == mlirBlueprint.operationsView",
+          "group": "navigation"
+        },
+        {
+          "command": "mlirBlueprint.refreshTypeConstraints",
+          "when": "view == mlirBlueprint.typeConstraintsView",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "mlirBlueprint.openFunction",
+          "when": "resourceExtname == .json && resourceFilename =~ /\\.mlir\\.json$/",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MLIR Blueprint",
+      "properties": {
+        "mlirBlueprint.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "Backend API URL"
+        },
+        "mlirBlueprint.autoStartBackend": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start backend server"
+        },
+        "mlirBlueprint.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python executable (for auto-start)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.16.0",
+    "typescript": "^5.7.0"
+  }
+}

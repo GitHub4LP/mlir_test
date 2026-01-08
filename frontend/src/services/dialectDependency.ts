@@ -29,11 +29,11 @@ export function computeDirectDialects(graph: GraphState): string[] {
 /**
  * 查找函数定义
  */
-export function findFunction(project: Project, functionId: string): FunctionDef | undefined {
-  if (project.mainFunction.id === functionId) {
+export function findFunction(project: Project, functionName: string): FunctionDef | undefined {
+  if (project.mainFunction.name === functionName) {
     return project.mainFunction;
   }
-  return project.customFunctions.find(f => f.id === functionId);
+  return project.customFunctions.find(f => f.name === functionName);
 }
 
 /**
@@ -41,20 +41,20 @@ export function findFunction(project: Project, functionId: string): FunctionDef 
  * 
  * 可达方言 = 直接依赖 ∪ 所有被调用函数的可达方言
  * 
- * @param functionId 函数 ID
+ * @param functionName 函数名
  * @param project 项目
- * @param visited 已访问的函数 ID（防止循环调用死循环）
+ * @param visited 已访问的函数名（防止循环调用死循环）
  */
 export function computeReachableDialects(
-  functionId: string,
+  functionName: string,
   project: Project,
   visited: Set<string> = new Set()
 ): string[] {
   // 防止循环调用
-  if (visited.has(functionId)) return [];
-  visited.add(functionId);
+  if (visited.has(functionName)) return [];
+  visited.add(functionName);
   
-  const func = findFunction(project, functionId);
+  const func = findFunction(project, functionName);
   if (!func) return [];
   
   // 从 directDialects 开始
@@ -63,9 +63,9 @@ export function computeReachableDialects(
   // 遍历 Call 节点，递归收集被调用函数的可达方言
   for (const node of func.graph.nodes) {
     if (node.type === 'function-call') {
-      const callData = node.data as { functionId: string };
+      const callData = node.data as { functionName: string };
       const calledDialects = computeReachableDialects(
-        callData.functionId,
+        callData.functionName,
         project,
         new Set(visited)  // 传递副本，允许不同路径访问同一函数
       );

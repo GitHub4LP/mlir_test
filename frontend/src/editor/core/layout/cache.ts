@@ -54,8 +54,7 @@ export function computeNodeDataHash(node: GraphNode): string {
     const entryData = data as FunctionEntryData;
     relevantData = {
       type: node.type,
-      functionId: entryData.functionId,
-      isMain: entryData.isMain,
+      functionName: entryData.functionName,
       outputs: entryData.outputs,
       pinnedTypes: entryData.pinnedTypes,
       outputTypes: entryData.outputTypes,
@@ -64,8 +63,7 @@ export function computeNodeDataHash(node: GraphNode): string {
     const returnData = data as FunctionReturnData;
     relevantData = {
       type: node.type,
-      functionId: returnData.functionId,
-      isMain: returnData.isMain,
+      functionName: returnData.functionName,
       branchName: returnData.branchName,
       inputs: returnData.inputs,
       pinnedTypes: returnData.pinnedTypes,
@@ -76,7 +74,6 @@ export function computeNodeDataHash(node: GraphNode): string {
     const callData = data as FunctionCallData;
     relevantData = {
       type: node.type,
-      functionId: callData.functionId,
       functionName: callData.functionName,
       inputs: callData.inputs,
       outputs: callData.outputs,

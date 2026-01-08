@@ -1,0 +1,16 @@
+{
+  "name": "mlir-blueprint",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Visual MLIR node editor",
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "uv run uvicorn backend.main:app --reload --port 8000"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0"
+  }
+}

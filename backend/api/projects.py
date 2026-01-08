@@ -1,6 +1,10 @@
 """
 项目管理 API 路由
 
+新文件格式：
+- main.mlir.json: main 函数 + 项目元数据
+- {name}.mlir.json: 自定义函数
+
 设计原则：项目路径放在请求体中，避免 URL 编码问题
 """
 
@@ -27,79 +31,15 @@ class TypeDef(BaseModel):
     constraint: str
 
 
-class PortConfig(BaseModel):
-    """端口配置"""
-    id: str
-    name: str
-    kind: str  # 'input' | 'output'
-    typeConstraint: str
-    concreteType: Optional[str] = None
-    color: str
-
-
-class ArgumentDef(BaseModel):
-    """操作参数"""
-    name: str
-    kind: str  # 'operand' | 'attribute'
-    typeConstraint: str
-    isOptional: bool
-
-
-class ResultDef(BaseModel):
-    """操作结果"""
-    name: str
-    typeConstraint: str
-
-
-class OperationDef(BaseModel):
-    """MLIR 操作"""
-    dialect: str
-    opName: str
-    fullName: str
-    summary: str
-    description: str
-    arguments: list[ArgumentDef]
-    results: list[ResultDef]
-    traits: list[str]
-    assemblyFormat: str
-
-
-class BlueprintNodeData(BaseModel):
-    """Blueprint node data (stored format).
-    
-    Only stores fullName reference, not the full operation definition.
-    The operation definition is loaded from dialect data at runtime.
-    """
-    fullName: str
-    attributes: dict[str, Any]
-    inputTypes: dict[str, str]
-    outputTypes: dict[str, str]
-
-
-class FunctionEntryData(BaseModel):
-    """函数入口节点"""
-    functionId: str
-    outputs: list[PortConfig]
-
-
-class FunctionReturnData(BaseModel):
-    """函数返回节点"""
-    functionId: str
-    inputs: list[PortConfig]
-
-
-class FunctionCallData(BaseModel):
-    """函数调用节点"""
-    functionId: str
-    functionName: str
-    inputs: list[PortConfig]
-    outputs: list[PortConfig]
+class FunctionTrait(BaseModel):
+    """函数级别的 Trait"""
+    kind: str
 
 
 class GraphNode(BaseModel):
     """图节点"""
     id: str
-    type: str  # 'operation' | 'function-entry' | 'function-return' | 'function-call'
+    type: str
     position: dict[str, float]
     data: dict[str, Any]
 
@@ -110,38 +50,32 @@ class GraphEdge(BaseModel):
     sourceHandle: str
     target: str
     targetHandle: str
+    data: Optional[dict[str, Any]] = None
 
 
 class GraphState(BaseModel):
-    """Graph state containing nodes and edges."""
+    """图状态"""
     nodes: list[GraphNode]
     edges: list[GraphEdge]
 
 
-class FunctionTrait(BaseModel):
-    """函数级别的 Trait"""
-    kind: str  # 'SameOperandsAndResultType' | 'SameTypeOperands' | 'SameOperandsElementType' | 'SameOperandsAndResultElementType'
-
-
-class FunctionDef(BaseModel):
-    """函数定义"""
-    id: str
+class StoredFunctionDef(BaseModel):
+    """存储格式的函数定义"""
     name: str
     parameters: list[ParameterDef]
     returnTypes: list[TypeDef]
-    traits: list[FunctionTrait] = []  # 函数级别的 Traits
+    traits: list[FunctionTrait] = []
+    directDialects: list[str] = []
     graph: GraphState
-    isMain: bool
 
 
-class Project(BaseModel):
-    """完整项目"""
-    name: str
-    path: str
-    mainFunction: FunctionDef
-    customFunctions: list[FunctionDef]
-    dialects: list[str]
+class FunctionFile(BaseModel):
+    """函数文件格式"""
+    project: Optional[dict[str, str]] = None
+    function: StoredFunctionDef
 
+
+# --- Request/Response Models ---
 
 class ProjectCreate(BaseModel):
     """创建项目请求"""
@@ -153,23 +87,6 @@ class ProjectResponse(BaseModel):
     """项目响应"""
     name: str
     path: str
-    dialects: list[str] = []
-
-
-class SaveProjectRequest(BaseModel):
-    """保存项目请求"""
-    project: Project
-
-
-class SaveProjectResponse(BaseModel):
-    """保存响应"""
-    status: str
-    path: str
-
-
-class LoadProjectResponse(BaseModel):
-    """加载响应"""
-    project: Project
 
 
 class ProjectPathRequest(BaseModel):
@@ -177,64 +94,80 @@ class ProjectPathRequest(BaseModel):
     projectPath: str
 
 
+class LoadProjectResponse(BaseModel):
+    """加载项目响应"""
+    projectName: str
+    mainFunction: StoredFunctionDef
+    functionNames: list[str]  # 所有函数名（包括 main）
+
+
 # --- Helper Functions ---
 
-def get_project_file_path(project_path: str) -> Path:
-    """获取 project.json 路径"""
-    return Path(project_path) / "project.json"
+def get_main_file_path(project_path: str) -> Path:
+    """获取 main.mlir.json 路径"""
+    return Path(project_path) / "main.mlir.json"
 
 
-def get_functions_dir(project_path: str) -> Path:
-    """获取函数目录路径"""
-    return Path(project_path) / "functions"
+def create_default_main_function() -> StoredFunctionDef:
+    """创建默认的 main 函数"""
+    return StoredFunctionDef(
+        name="main",
+        parameters=[],
+        returnTypes=[{"name": "result", "constraint": "I32"}],
+        traits=[],
+        directDialects=[],
+        graph=GraphState(
+            nodes=[
+                GraphNode(
+                    id="entry",
+                    type="function-entry",
+                    position={"x": 100, "y": 200},
+                    data={"execOut": {"id": "exec-out", "label": ""}}
+                ),
+                GraphNode(
+                    id="return-0",
+                    type="function-return",
+                    position={"x": 500, "y": 200},
+                    data={
+                        "branchName": "",
+                        "execIn": {"id": "exec-in", "label": ""}
+                    }
+                )
+            ],
+            edges=[]
+        )
+    )
 
 
-def ensure_project_directories(project_path: str) -> None:
-    """确保项目目录存在"""
-    path = Path(project_path)
-    path.mkdir(parents=True, exist_ok=True)
-    (path / "functions").mkdir(exist_ok=True)
-    (path / "generated").mkdir(exist_ok=True)
-
-
-def save_function_to_file(functions_dir: Path, func: FunctionDef) -> None:
-    """Save a function definition to a JSON file."""
-    file_path = functions_dir / f"{func.id}.json"
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(func.model_dump(), f, indent=2, ensure_ascii=False)
-
-
-def load_function_from_file(file_path: Path) -> FunctionDef:
-    """Load a function definition from a JSON file."""
+def load_function_file(file_path: Path) -> FunctionFile:
+    """从文件加载函数"""
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return FunctionDef(**data)
+    return FunctionFile(**data)
 
 
-def extract_dialects_from_project(project: Project) -> list[str]:
-    """
-    从项目的所有节点中提取使用的方言列表。
+def save_function_file(file_path: Path, func_file: FunctionFile) -> None:
+    """保存函数到文件"""
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(func_file.model_dump(exclude_none=True), f, indent=2, ensure_ascii=False)
+
+
+def list_function_names(project_path: str) -> list[str]:
+    """列出项目中的所有函数名"""
+    project_dir = Path(project_path)
+    function_names = []
     
-    遍历所有函数的图节点，从 operation 类型节点的 fullName 中提取方言名。
-    """
-    dialects: set[str] = set()
+    for file_path in project_dir.glob("*.mlir.json"):
+        # 文件名格式: {name}.mlir.json，需要去掉 .mlir.json
+        name = file_path.name.replace(".mlir.json", "")
+        function_names.append(name)
     
-    def extract_from_graph(graph: GraphState) -> None:
-        for node in graph.nodes:
-            if node.type == "operation":
-                full_name = node.data.get("fullName", "")
-                if "." in full_name:
-                    dialect = full_name.split(".")[0]
-                    dialects.add(dialect)
+    # 确保 main 在最前面
+    if "main" in function_names:
+        function_names.remove("main")
+        function_names.insert(0, "main")
     
-    # 提取主函数的方言
-    extract_from_graph(project.mainFunction.graph)
-    
-    # 提取自定义函数的方言
-    for func in project.customFunctions:
-        extract_from_graph(func.graph)
-    
-    return sorted(dialects)
+    return function_names
 
 
 # --- API Routes ---
@@ -242,190 +175,90 @@ def extract_dialects_from_project(project: Project) -> list[str]:
 @router.post("/", response_model=ProjectResponse)
 async def create_project(project: ProjectCreate):
     """
-    Create a new MLIR Blueprint project.
+    创建新的 MLIR Blueprint 项目
     
-    Creates a project with a default main function and stores project metadata.
-    Requirements: 1.1
+    创建 main.mlir.json 文件，包含项目元数据和默认 main 函数
     """
     try:
-        ensure_project_directories(project.path)
+        project_dir = Path(project.path)
+        project_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create default main function
-        main_function = FunctionDef(
-            id="main",
-            name="main",
-            parameters=[],
-            returnTypes=[],
-            graph=GraphState(nodes=[], edges=[]),
-            isMain=True
+        # 创建 build 目录
+        (project_dir / "build").mkdir(exist_ok=True)
+        
+        # 创建 main.mlir.json
+        main_func = create_default_main_function()
+        main_file = FunctionFile(
+            project={"name": project.name},
+            function=main_func
         )
         
-        # Create project
-        new_project = Project(
-            name=project.name,
-            path=project.path,
-            mainFunction=main_function,
-            customFunctions=[],
-            dialects=[]
-        )
-        
-        # Save project metadata
-        project_file = get_project_file_path(project.path)
-        project_data = {
-            "name": new_project.name,
-            "path": new_project.path,
-            "dialects": new_project.dialects,
-            "mainFunctionId": main_function.id,
-            "customFunctionIds": []
-        }
-        with open(project_file, "w", encoding="utf-8") as f:
-            json.dump(project_data, f, indent=2, ensure_ascii=False)
-        
-        # Save main function
-        functions_dir = get_functions_dir(project.path)
-        save_function_to_file(functions_dir, main_function)
+        main_path = get_main_file_path(project.path)
+        save_function_file(main_path, main_file)
         
         return ProjectResponse(
-            name=new_project.name,
-            path=new_project.path,
-            dialects=new_project.dialects
+            name=project.name,
+            path=project.path
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create project: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to create project: {str(e)}"
+        )
 
 
 @router.post("/load", response_model=LoadProjectResponse)
 async def load_project(request: ProjectPathRequest):
     """
-    Load an existing project from disk.
+    加载现有项目
     
-    Loads all functions and their node graphs from the project directory.
-    Requirements: 1.3
-    
-    注意：使用 POST + 请求体传递路径，避免 URL 编码问题
+    只加载 main.mlir.json 和函数名列表，其他函数按需加载
     """
     project_path = request.projectPath
-    project_file = get_project_file_path(project_path)
+    main_path = get_main_file_path(project_path)
     
-    if not project_file.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found at {project_path}")
-    
-    try:
-        # Load project metadata
-        with open(project_file, "r", encoding="utf-8") as f:
-            project_data = json.load(f)
-        
-        functions_dir = get_functions_dir(project_path)
-        
-        # Load main function
-        main_function_id = project_data.get("mainFunctionId", "main")
-        main_function_file = functions_dir / f"{main_function_id}.json"
-        
-        if not main_function_file.exists():
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Main function file not found: {main_function_file}"
-            )
-        
-        main_function = load_function_from_file(main_function_file)
-        
-        # Load custom functions
-        custom_functions: list[FunctionDef] = []
-        custom_function_ids = project_data.get("customFunctionIds", [])
-        
-        for func_id in custom_function_ids:
-            func_file = functions_dir / f"{func_id}.json"
-            if func_file.exists():
-                custom_functions.append(load_function_from_file(func_file))
-        
-        # Construct project
-        project = Project(
-            name=project_data.get("name", "Untitled"),
-            path=project_path,
-            mainFunction=main_function,
-            customFunctions=custom_functions,
-            dialects=project_data.get("dialects", [])
+    if not main_path.exists():
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Project not found at {project_path} (missing main.mlir.json)"
         )
-        
-        return LoadProjectResponse(project=project)
     
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid project file format: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load project: {str(e)}")
-
-
-@router.post("/save", response_model=SaveProjectResponse)
-async def save_project(request: SaveProjectRequest):
-    """
-    Save project to disk.
-    
-    Saves all project files to the specified directory.
-    Requirements: 1.2
-    
-    注意：使用 POST + 请求体传递路径，避免 URL 编码问题
-    路径从 project.path 获取
-    
-    函数文件以函数ID命名（函数ID = 函数名），重命名时会自动删除旧文件
-    """
     try:
-        project = request.project
-        project_path = project.path
+        # 加载 main.mlir.json
+        main_file = load_function_file(main_path)
         
-        # Ensure directories exist
-        ensure_project_directories(project_path)
+        # 确保函数名为 main
+        main_file.function.name = "main"
         
-        functions_dir = get_functions_dir(project_path)
+        # 获取项目名
+        project_name = main_file.project.get("name", "Untitled") if main_file.project else "Untitled"
         
-        # 收集所有现有的函数文件
-        existing_files = {f.stem for f in functions_dir.glob("*.json")}
+        # 列出所有函数名
+        function_names = list_function_names(project_path)
         
-        # Save main function
-        save_function_to_file(functions_dir, project.mainFunction)
-        existing_files.discard(project.mainFunction.id)
-        
-        # Save custom functions
-        custom_function_ids: list[str] = []
-        for func in project.customFunctions:
-            save_function_to_file(functions_dir, func)
-            custom_function_ids.append(func.id)
-            existing_files.discard(func.id)
-        
-        # 删除不再存在的函数文件（重命名或删除的函数）
-        for old_file_id in existing_files:
-            old_file = functions_dir / f"{old_file_id}.json"
-            if old_file.exists():
-                old_file.unlink()
-        
-        # 从节点自动计算使用的方言列表（不再手动指定）
-        dialects = extract_dialects_from_project(project)
-        
-        # Save project metadata
-        project_file = get_project_file_path(project_path)
-        project_data = {
-            "name": project.name,
-            "path": project_path,
-            "dialects": dialects,
-            "mainFunctionId": project.mainFunction.id,
-            "customFunctionIds": custom_function_ids
-        }
-        with open(project_file, "w", encoding="utf-8") as f:
-            json.dump(project_data, f, indent=2, ensure_ascii=False)
-        
-        return SaveProjectResponse(status="saved", path=project_path)
-    
+        return LoadProjectResponse(
+            projectName=project_name,
+            mainFunction=main_file.function,
+            functionNames=function_names
+        )
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid project file format: {str(e)}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save project: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to load project: {str(e)}"
+        )
 
 
 @router.post("/delete")
 async def delete_project(request: ProjectPathRequest):
     """
-    Delete a project from disk.
+    删除项目
     
-    Removes all project files from the specified directory.
-    
-    注意：使用 POST + 请求体传递路径，避免 URL 编码问题
+    删除整个项目目录
     """
     import shutil
     
@@ -433,10 +266,16 @@ async def delete_project(request: ProjectPathRequest):
     project_dir = Path(project_path)
     
     if not project_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found at {project_path}")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Project not found at {project_path}"
+        )
     
     try:
         shutil.rmtree(project_dir)
         return {"status": "deleted", "path": project_path}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to delete project: {str(e)}"
+        )

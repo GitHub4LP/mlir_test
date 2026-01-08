@@ -2,6 +2,8 @@
  * 函数节点生成服务
  * 
  * 从函数定义生成 FunctionCallNode 数据，处理签名变更时的同步
+ * 
+ * 新设计：使用 functionName 作为唯一标识（不再使用 functionId）
  */
 
 import type { FunctionDef, FunctionCallData, FunctionReturnData, PortConfig, GraphNode, ExecPin } from '../types';
@@ -11,9 +13,6 @@ import { layoutConfig } from '../editor/adapters/shared/styles';
 
 /**
  * 从 FunctionDef 获取参数的签名类型
- * 
- * FunctionDef.parameters[].constraint 是权威数据源（由类型传播同步）
- * 用于 Call 节点的输入端口
  */
 export function getParameterSignatureTypes(func: FunctionDef): Record<string, string> {
   const result: Record<string, string> = {};
@@ -25,9 +24,6 @@ export function getParameterSignatureTypes(func: FunctionDef): Record<string, st
 
 /**
  * 从 FunctionDef 获取返回值的签名类型
- * 
- * FunctionDef.returnTypes[].constraint 是权威数据源（由类型传播同步）
- * 用于 Call 节点的输出端口
  */
 export function getReturnSignatureTypes(func: FunctionDef): Record<string, string> {
   const result: Record<string, string> = {};
@@ -40,50 +36,41 @@ export function getReturnSignatureTypes(func: FunctionDef): Record<string, strin
 
 /**
  * Creates input port configurations from function parameters
- * 
- * typeConstraint 直接使用 FunctionDef.parameters[].constraint（权威数据源）
  */
 export function createInputPortsFromParams(func: FunctionDef): PortConfig[] {
-  return func.parameters.map((param) => {
-    const constraint = param.constraint;
-    return {
-      id: dataInHandle(param.name),  // 统一格式：data-in-{name}
-      name: param.name,
-      kind: 'input' as const,
-      typeConstraint: constraint,
-      color: getTypeColor(constraint),
-    };
-  });
+  return func.parameters.map((param) => ({
+    id: dataInHandle(param.name),
+    name: param.name,
+    kind: 'input' as const,
+    typeConstraint: param.constraint,
+    color: getTypeColor(param.constraint),
+  }));
 }
 
 /**
  * Creates output port configurations from function return types
- * 
- * typeConstraint 直接使用 FunctionDef.returnTypes[].constraint（权威数据源）
  */
 export function createOutputPortsFromReturns(func: FunctionDef): PortConfig[] {
   return func.returnTypes.map((ret, index) => {
     const name = ret.name || `result_${index}`;
-    const constraint = ret.constraint;
     return {
-      id: dataOutHandle(name),  // 统一格式：data-out-{name}
+      id: dataOutHandle(name),
       name,
       kind: 'output' as const,
-      typeConstraint: constraint,
-      color: getTypeColor(constraint),
+      typeConstraint: ret.constraint,
+      color: getTypeColor(ret.constraint),
     };
   });
 }
 
+
 /**
  * Gets execution outputs from a function's Return nodes
- * Each Return node becomes an exec output on the FunctionCallNode
  */
 export function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
   const returnNodes = func.graph.nodes.filter(n => n.type === 'function-return');
 
   if (returnNodes.length === 0) {
-    // Default single exec output
     return [{ id: 'exec-out', label: '' }];
   }
 
@@ -102,34 +89,26 @@ export function getExecOutputsFromFunction(func: FunctionDef): ExecPin[] {
  */
 export function generateFunctionCallData(func: FunctionDef): FunctionCallData {
   return {
-    functionId: func.id,
     functionName: func.name,
     inputs: createInputPortsFromParams(func),
     outputs: createOutputPortsFromReturns(func),
     execIn: { id: 'exec-in', label: '' },
     execOuts: getExecOutputsFromFunction(func),
-    // 节点头部颜色（创建时确定，不会变化）
     headerColor: layoutConfig.nodeType.call,
   };
 }
 
-
 /**
  * Updates a FunctionCallNode's data when the function signature changes
- * Returns the updated node data, preserving existing connections where possible
  */
 export function updateFunctionCallNodeData(
   existingData: FunctionCallData,
   updatedFunc: FunctionDef
 ): FunctionCallData {
-  const newInputs = createInputPortsFromParams(updatedFunc);
-  const newOutputs = createOutputPortsFromReturns(updatedFunc);
-
   return {
-    functionId: updatedFunc.id,
     functionName: updatedFunc.name,
-    inputs: newInputs,
-    outputs: newOutputs,
+    inputs: createInputPortsFromParams(updatedFunc),
+    outputs: createOutputPortsFromReturns(updatedFunc),
     execIn: existingData.execIn || { id: 'exec-in', label: '' },
     execOuts: getExecOutputsFromFunction(updatedFunc),
   };
@@ -140,18 +119,17 @@ export function updateFunctionCallNodeData(
  */
 export function findFunctionCallNodes(
   nodes: GraphNode[],
-  functionId: string
+  functionName: string
 ): GraphNode[] {
   return nodes.filter(
     (node) =>
       node.type === 'function-call' &&
-      (node.data as FunctionCallData).functionId === functionId
+      (node.data as FunctionCallData).functionName === functionName
   );
 }
 
 /**
  * Updates all function call nodes in a graph when a function signature changes
- * Returns the updated nodes array
  */
 export function updateFunctionCallNodesInGraph(
   nodes: GraphNode[],
@@ -160,7 +138,7 @@ export function updateFunctionCallNodesInGraph(
   return nodes.map((node) => {
     if (
       node.type === 'function-call' &&
-      (node.data as FunctionCallData).functionId === updatedFunc.id
+      (node.data as FunctionCallData).functionName === updatedFunc.name
     ) {
       return {
         ...node,
@@ -172,43 +150,9 @@ export function updateFunctionCallNodesInGraph(
 }
 
 /**
- * Checks if any edges need to be removed due to port changes
- * Returns the IDs of edges that should be removed
- */
-export function findInvalidEdgesAfterSignatureChange(
-  edges: { id: string; source: string; sourceHandle: string; target: string; targetHandle: string }[],
-  functionCallNodeIds: string[],
-  newInputPortIds: Set<string>,
-  newOutputPortIds: Set<string>
-): string[] {
-  const invalidEdgeIds: string[] = [];
-  const nodeIdSet = new Set(functionCallNodeIds);
-
-  for (const edge of edges) {
-    // Check if edge connects to a function call node
-    if (nodeIdSet.has(edge.source)) {
-      // Source is a function call node - check if output port still exists
-      if (!newOutputPortIds.has(edge.sourceHandle)) {
-        invalidEdgeIds.push(edge.id);
-      }
-    }
-    if (nodeIdSet.has(edge.target)) {
-      // Target is a function call node - check if input port still exists
-      if (!newInputPortIds.has(edge.targetHandle)) {
-        invalidEdgeIds.push(edge.id);
-      }
-    }
-  }
-
-  return invalidEdgeIds;
-}
-
-/**
  * Creates a palette entry for a custom function
- * This allows the function to appear in the node palette
  */
 export interface FunctionPaletteEntry {
-  id: string;
   name: string;
   category: 'custom-functions';
   description: string;
@@ -220,7 +164,6 @@ export function createFunctionPaletteEntry(func: FunctionDef): FunctionPaletteEn
   const returnTypes = func.returnTypes.map((r) => r.constraint).join(', ');
 
   return {
-    id: `func_${func.id}`,
     name: func.name,
     category: 'custom-functions',
     description: `(${paramTypes}) -> (${returnTypes})`,

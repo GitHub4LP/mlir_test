@@ -24,7 +24,7 @@ import { PortRef, dataIn, dataOut } from '../port';
 /**
  * 函数查找器类型
  */
-export type FunctionLookup = (functionId: string) => FunctionDef | null;
+export type FunctionLookup = (functionName: string) => FunctionDef | null;
 
 /**
  * 收集操作节点的所有输入端口（operands）
@@ -156,7 +156,7 @@ export function buildPropagationGraph(
     if (node.type !== 'function-call') continue;
 
     const callData = node.data as FunctionCallData;
-    const calledFunction = getFunctionById?.(callData.functionId);
+    const calledFunction = getFunctionById?.(callData.functionName);
     
     if (!calledFunction) continue;
 
@@ -340,7 +340,7 @@ export function buildExtendedPropagationGraph(
     if (node.type !== 'function-call') continue;
 
     const callData = node.data as FunctionCallData;
-    const calledFunction = getFunctionById?.(callData.functionId);
+    const calledFunction = getFunctionById?.(callData.functionName);
     
     if (!calledFunction?.traits) continue;
 

@@ -22,9 +22,9 @@ export function useDialectFilter(): DialectFilterConfig | undefined {
   const filterConstraintsByDialects = useTypeConstraintStore(state => state.filterConstraintsByDialects);
   
   // 获取函数的可达方言集
-  const getReachableDialects = useCallback((functionId: string): string[] => {
+  const getReachableDialects = useCallback((functionName: string): string[] => {
     if (!project) return [];
-    return computeReachableDialects(functionId, project);
+    return computeReachableDialects(functionName, project);
   }, [project]);
   
   // 构建 DialectFilterConfig
@@ -52,7 +52,7 @@ export function createDialectFilterConfig(): DialectFilterConfig | undefined {
   if (!project) return undefined;
   
   return {
-    getReachableDialects: (functionId: string) => computeReachableDialects(functionId, project),
+    getReachableDialects: (functionName: string) => computeReachableDialects(functionName, project),
     filterConstraintsByDialects,
   };
 }

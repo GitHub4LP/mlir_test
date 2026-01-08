@@ -39,7 +39,7 @@ import { extractTypeSources, extractPortConstraints, computeOptionsExcludingSelf
  */
 export interface DialectFilterConfig {
   /** 获取函数的可达方言集（递归计算） */
-  getReachableDialects: (functionId: string) => string[];
+  getReachableDialects: (functionName: string) => string[];
   /** 按方言过滤约束名 */
   filterConstraintsByDialects: (constraints: string[], dialects: string[]) => string[];
 }
@@ -61,7 +61,7 @@ export function getAllowedDialectsForPort(
   varId: VariableId,
   nodes: EditorNode[],
   currentFunction: FunctionDef | undefined,
-  getReachableDialects: (functionId: string) => string[]
+  getReachableDialects: (functionName: string) => string[]
 ): string[] {
   const portRef = PortRef.parse(varId);
   if (!portRef) return [];
@@ -78,12 +78,12 @@ export function getAllowedDialectsForPort(
     case 'function-entry':
     case 'function-return': {
       if (!currentFunction) return [];
-      return getReachableDialects(currentFunction.id);
+      return getReachableDialects(currentFunction.name);
     }
     
     case 'function-call': {
       const data = node.data as FunctionCallData;
-      return getReachableDialects(data.functionId);
+      return getReachableDialects(data.functionName);
     }
     
     default:
@@ -226,7 +226,7 @@ export function computePortState(
  * @param pickConstraintName - 选择约束名称（来自 store）
  * @param findSubsetConstraints - 找出所有元素集合是有效集合子集的约束名（来自 store）
  * @param dialectFilter - 方言过滤配置（可选，用于按方言过滤 options）
- * @param getFunctionById - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
+ * @param getFunctionByName - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
  */
 export function computePropagation(
   nodes: EditorNode[],
@@ -236,10 +236,10 @@ export function computePropagation(
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
   findSubsetConstraints: (E: string[]) => string[],
   dialectFilter?: DialectFilterConfig,
-  getFunctionById?: (functionId: string) => FunctionDef | null
+  getFunctionByName?: (functionName: string) => FunctionDef | null
 ): PropagationResult & { portStates: Map<VariableId, PortState>; invalidPins: Map<string, string[]> } {
   // 1. 构建传播图（包含 trait 和连线，以及 Call 节点的被调用函数 traits）
-  const graph = buildPropagationGraph(nodes, edges, currentFunction, getFunctionById);
+  const graph = buildPropagationGraph(nodes, edges, currentFunction, getFunctionByName);
 
   // 2. 提取端口约束
   const portConstraints = extractPortConstraints(nodes, currentFunction);
@@ -287,7 +287,7 @@ export function computePropagation(
     
     // 计算 options：用户可以选择的类型（排除自己后的可选集）
     const optionsSet = computeOptionsExcludingSelf(
-      varId, nodes, edges, currentFunction, getConstraintElements, getFunctionById
+      varId, nodes, edges, currentFunction, getConstraintElements, getFunctionByName
     );
     
     // 计算原始 options（未过滤）

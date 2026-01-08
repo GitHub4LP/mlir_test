@@ -50,8 +50,8 @@ export interface EditorContainerProps {
   /** 连接请求处理（验证并添加边） */
   onConnect?: (request: ConnectionRequest) => void;
   
-  /** 拖放处理（添加节点） */
-  onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void;
+  /** 拖放处理（添加节点）- 支持异步 */
+  onDrop?: (x: number, y: number, dataTransfer: DataTransfer) => void | Promise<void>;
   
   /** 删除请求处理 */
   onDeleteRequest?: (nodeIds: string[], edgeIds: string[]) => void;

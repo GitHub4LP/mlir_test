@@ -19,9 +19,9 @@ export interface LeftPanelTabsProps {
   /** NodePalette: 函数拖拽回调 */
   onFunctionDragStart?: (event: React.DragEvent, func: FunctionDef) => void;
   /** NodePalette: 函数选择回调 */
-  onFunctionSelect?: (functionId: string) => void;
+  onFunctionSelect?: (functionName: string) => void;
   /** NodePalette: 函数删除后回调 */
-  onFunctionDeleted?: (functionId: string) => void;
+  onFunctionDeleted?: (functionName: string) => void;
 }
 
 const tabs: { id: TabId; label: string }[] = [

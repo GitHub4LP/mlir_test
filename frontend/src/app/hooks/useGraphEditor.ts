@@ -18,6 +18,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import { useEditorStore } from '../../core/stores/editorStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { useTypeConstraintStore } from '../../stores/typeConstraintStore';
+import { getPlatformBridge } from '../../platform';
 import type { EditorNode, EditorEdge, EditorViewport, NodeChange, ConnectionRequest } from '../../editor/types';
 import type { OperationDef, BlueprintNodeData, GraphState, FunctionEntryData, FunctionReturnData, DataPin } from '../../types';
 import { validateConnection } from '../../editor/adapters/reactflow/connectionUtils';
@@ -26,6 +27,7 @@ import { inferFunctionTraits } from '../../services/typePropagation/traitsInfere
 import { computeReachableDialects } from '../../services/dialectDependency';
 import { dataInHandle, dataOutHandle } from '../../services/port';
 import { getDisplayType } from '../../services/typeSelectorRenderer';
+import { generateFunctionCallData } from '../../services/functionNodeGenerator';
 import {
   generateNodeId,
   generateEdgeId,
@@ -55,7 +57,7 @@ export interface UseGraphEditorReturn {
   // 事件处理
   handleNodesChange: (changes: NodeChange[]) => void;
   handleConnect: (connection: ConnectionRequest) => { success: boolean; error?: string };
-  handleDrop: (x: number, y: number, dataTransfer: DataTransfer) => void;
+  handleDrop: (x: number, y: number, dataTransfer: DataTransfer) => void | Promise<void>;
   handleEdgeDoubleClick: (edgeId: string) => void;
   
   // 编辑操作
@@ -64,9 +66,9 @@ export interface UseGraphEditorReturn {
   deleteSelected: () => void;
   
   // 函数操作
-  handleFunctionSelect: (functionId: string) => void;
-  saveCurrentGraph: (functionId: string) => void;
-  loadFunctionGraph: (functionId: string) => void;
+  handleFunctionSelect: (functionName: string) => void;
+  saveCurrentGraph: (functionName: string) => void;
+  loadFunctionGraph: (functionName: string) => void;
   
   // 视口
   setViewport: (viewport: EditorViewport) => void;
@@ -94,20 +96,20 @@ export function useGraphEditor(): UseGraphEditorReturn {
   const loadGraph = useEditorStore(state => state.loadGraph);
   
   // Project store
-  const currentFunctionId = useProjectStore(state => state.currentFunctionId);
+  const currentFunctionName = useProjectStore(state => state.currentFunctionName);
   const updateFunctionGraph = useProjectStore(state => state.updateFunctionGraph);
   const updateSignatureConstraints = useProjectStore(state => state.updateSignatureConstraints);
   const setFunctionTraits = useProjectStore(state => state.setFunctionTraits);
-  const getFunctionById = useProjectStore(state => state.getFunctionById);
+  const getFunctionByName = useProjectStore(state => state.getFunctionByName);
   const selectFunction = useProjectStore(state => state.selectFunction);
   
   // 获取当前函数
   const currentFunction = useProjectStore(state => {
-    if (!state.project || !state.currentFunctionId) return null;
-    if (state.project.mainFunction.id === state.currentFunctionId) {
+    if (!state.project || !state.currentFunctionName) return null;
+    if (state.project.mainFunction.name === state.currentFunctionName) {
       return state.project.mainFunction;
     }
-    return state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+    return state.project.customFunctions.find(f => f.name === state.currentFunctionName) || null;
   });
   
   // Type constraint store
@@ -172,16 +174,16 @@ export function useGraphEditor(): UseGraphEditorReturn {
     const latestNodes = useEditorStore.getState().nodes;
     const latestEdges = useEditorStore.getState().edges;
     const latestProject = useProjectStore.getState().project;
-    const latestGetFunctionById = useProjectStore.getState().getFunctionById;
+    const latestGetFunctionByName = useProjectStore.getState().getFunctionByName;
     
     // 构建方言过滤配置
     const dialectFilter: DialectFilterConfig | undefined = latestProject ? {
-      getReachableDialects: (functionId: string) => computeReachableDialects(functionId, latestProject),
+      getReachableDialects: (functionName: string) => computeReachableDialects(functionName, latestProject),
       filterConstraintsByDialects,
     } : undefined;
     
     const result = triggerTypePropagationWithSignature(
-      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, latestGetFunctionById
+      latestNodes, latestEdges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, latestGetFunctionByName
     );
     
     setNodesStore(result.nodes);
@@ -189,8 +191,8 @@ export function useGraphEditor(): UseGraphEditorReturn {
     setEdgesStore(updatedEdges);
     
     // 更新推断的 traits（仅非 main 函数）
-    if (!currentFunction.isMain && result.inferredTraits) {
-      setFunctionTraits(currentFunction.id, result.inferredTraits);
+    if (currentFunction.name !== 'main' && result.inferredTraits) {
+      setFunctionTraits(currentFunction.name, result.inferredTraits);
     }
   }, [currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, setNodesStore, setEdgesStore, setFunctionTraits]);
   
@@ -223,24 +225,24 @@ export function useGraphEditor(): UseGraphEditorReturn {
   // 保存/加载图
   // ============================================================
   
-  const saveCurrentGraph = useCallback((functionId: string) => {
+  const saveCurrentGraph = useCallback((functionName: string) => {
     const graphState = convertToGraphStateRef.current();
     if (graphState.nodes.length > 0) {
-      updateFunctionGraph(functionId, graphState);
+      updateFunctionGraph(functionName, graphState);
       
       // 保存时也更新 traits（仅非 main 函数）
-      const func = getFunctionById(functionId);
-      if (func && !func.isMain) {
+      const func = getFunctionByName(functionName);
+      if (func && func.name !== 'main') {
         const latestNodes = useEditorStore.getState().nodes;
         const latestEdges = useEditorStore.getState().edges;
         const inferredTraits = inferFunctionTraits(latestNodes, latestEdges, func);
-        setFunctionTraits(functionId, inferredTraits);
+        setFunctionTraits(functionName, inferredTraits);
       }
     }
-  }, [updateFunctionGraph, getFunctionById, setFunctionTraits]);
+  }, [updateFunctionGraph, getFunctionByName, setFunctionTraits]);
   
-  const loadFunctionGraph = useCallback((functionId: string) => {
-    const func = getFunctionById(functionId);
+  const loadFunctionGraph = useCallback((functionName: string) => {
+    const func = getFunctionByName(functionName);
     if (!func) return;
     
     isLoadingFromStoreRef.current = true;
@@ -250,14 +252,14 @@ export function useGraphEditor(): UseGraphEditorReturn {
     
     // 获取最新的 project 用于方言过滤
     const latestProject = useProjectStore.getState().project;
-    const latestGetFunctionById = useProjectStore.getState().getFunctionById;
+    const latestGetFunctionByName = useProjectStore.getState().getFunctionByName;
     const dialectFilter: DialectFilterConfig | undefined = latestProject ? {
-      getReachableDialects: (fId: string) => computeReachableDialects(fId, latestProject),
+      getReachableDialects: (fName: string) => computeReachableDialects(fName, latestProject),
       filterConstraintsByDialects,
     } : undefined;
     
     const result = triggerTypePropagationWithSignature(
-      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, latestGetFunctionById
+      graphNodes, graphEdges, func, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, latestGetFunctionByName
     );
     
     const edgesWithColors = updateEdgeColors(result.nodes, graphEdges);
@@ -265,26 +267,26 @@ export function useGraphEditor(): UseGraphEditorReturn {
     loadGraph(result.nodes, edgesWithColors);
     
     // 更新推断的 traits（仅非 main 函数）
-    if (!func.isMain && result.inferredTraits) {
-      setFunctionTraits(func.id, result.inferredTraits);
+    if (func.name !== 'main' && result.inferredTraits) {
+      setFunctionTraits(func.name, result.inferredTraits);
     }
     
     queueMicrotask(() => {
       isLoadingFromStoreRef.current = false;
     });
-  }, [getFunctionById, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, loadGraph, setFunctionTraits]);
+  }, [getFunctionByName, getConstraintElements, pickConstraintName, findSubsetConstraints, filterConstraintsByDialects, loadGraph, setFunctionTraits]);
   
   // ============================================================
   // 函数切换
   // ============================================================
   
-  const handleFunctionSelect = useCallback((functionId: string) => {
-    if (currentFunctionId && currentFunctionId !== functionId) {
-      saveCurrentGraph(currentFunctionId);
+  const handleFunctionSelect = useCallback((functionName: string) => {
+    if (currentFunctionName && currentFunctionName !== functionName) {
+      saveCurrentGraph(currentFunctionName);
     }
-    selectFunction(functionId);
-    loadFunctionGraph(functionId);
-  }, [currentFunctionId, saveCurrentGraph, selectFunction, loadFunctionGraph]);
+    selectFunction(functionName);
+    loadFunctionGraph(functionName);
+  }, [currentFunctionName, saveCurrentGraph, selectFunction, loadFunctionGraph]);
   
   // ============================================================
   // 节点变更处理
@@ -359,8 +361,10 @@ export function useGraphEditor(): UseGraphEditorReturn {
   // 拖放处理
   // ============================================================
   
-  const handleDrop = useCallback((x: number, y: number, dataTransfer: DataTransfer) => {
-    // 处理函数调用节点
+  const handleDrop = useCallback(async (x: number, y: number, dataTransfer: DataTransfer) => {
+    const bridge = getPlatformBridge();
+    
+    // 1. 处理函数调用节点
     const functionData = dataTransfer.getData('application/reactflow-function');
     if (functionData) {
       try {
@@ -372,7 +376,6 @@ export function useGraphEditor(): UseGraphEditorReturn {
           data: functionCallData,
         };
         setNodesStore([...nodes, newNode]);
-        // 触发类型传播，更新 portStateStore
         queueMicrotask(() => {
           triggerTypePropagation();
         });
@@ -382,12 +385,107 @@ export function useGraphEditor(): UseGraphEditorReturn {
       }
     }
     
-    // 处理操作节点
-    const data = dataTransfer.getData('application/json');
-    if (!data) return;
+    // 2. 尝试直接获取操作数据（Web 模式）
+    let operationData = dataTransfer.getData('application/json');
+    
+    // 3. 如果没有，尝试 VS Code TreeView 数据或文件拖放
+    // VS Code TreeView 拖放时，text/uri-list 包含我们设置的 resourceUri: mlir-op://arith.addi 或 mlir-func://functionId
+    // 文件拖放时，text/uri-list 包含 file:///path/to/file.mlir.json
+    if (!operationData && bridge.platform === 'vscode') {
+      const uriList = dataTransfer.getData('text/uri-list');
+      if (uriList) {
+        try {
+          // 处理操作拖放: mlir-op://arith.addi -> arith.addi
+          if (uriList.startsWith('mlir-op://')) {
+            const fullName = uriList.replace('mlir-op://', '');
+            if (fullName) {
+              const operation = await bridge.resolveOperationData(fullName);
+              if (operation) {
+                operationData = JSON.stringify(operation);
+              }
+            }
+          }
+          // 处理函数拖放: mlir-func://functionName -> functionName
+          else if (uriList.startsWith('mlir-func://')) {
+            const functionName = uriList.replace('mlir-func://', '');
+            if (functionName) {
+              const funcInfo = await bridge.resolveFunctionData(functionName);
+              if (funcInfo) {
+                // 从 projectStore 获取完整的函数定义
+                const func = getFunctionByName(functionName);
+                if (func) {
+                  const functionCallData = generateFunctionCallData(func);
+                  const newNode: EditorNode = {
+                    id: generateNodeId(),
+                    type: 'function-call',
+                    position: { x, y },
+                    data: functionCallData,
+                  };
+                  setNodesStore([...nodes, newNode]);
+                  queueMicrotask(() => {
+                    triggerTypePropagation();
+                  });
+                  return;
+                }
+              }
+            }
+          }
+          // 处理文件拖放: file:///path/to/function.mlir.json
+          else if (uriList.startsWith('file://')) {
+            // 解析文件路径
+            let filePath = uriList.replace('file:///', '').replace('file://', '');
+            // Windows 路径处理
+            filePath = decodeURIComponent(filePath);
+            
+            // 检查是否是 .mlir.json 文件
+            if (filePath.endsWith('.mlir.json')) {
+              // 提取函数名（去掉 .mlir.json 后缀）
+              const fileName = filePath.split(/[/\\]/).pop() || '';
+              const functionName = fileName.replace('.mlir.json', '');
+              
+              // 不能拖放 main 函数
+              if (functionName === 'main') {
+                console.warn('Cannot create Call node for main function');
+                return;
+              }
+              
+              // 不能拖放当前正在编辑的函数（避免递归调用）
+              if (functionName === currentFunctionName) {
+                console.warn('Cannot create Call node for current function (recursive call)');
+                return;
+              }
+              
+              // 从 projectStore 获取函数定义
+              const func = getFunctionByName(functionName);
+              if (func) {
+                const functionCallData = generateFunctionCallData(func);
+                const newNode: EditorNode = {
+                  id: generateNodeId(),
+                  type: 'function-call',
+                  position: { x, y },
+                  data: functionCallData,
+                };
+                setNodesStore([...nodes, newNode]);
+                queueMicrotask(() => {
+                  triggerTypePropagation();
+                });
+                return;
+              } else {
+                console.warn(`Function not found: ${functionName}`);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to resolve data from TreeView:', err);
+        }
+      }
+    }
+    
+    // 4. 创建节点
+    if (!operationData) return;
     
     try {
-      const operation: OperationDef = JSON.parse(data);
+      const operation: OperationDef = JSON.parse(operationData);
       const newNode: EditorNode = {
         id: generateNodeId(),
         type: 'operation',
@@ -395,14 +493,13 @@ export function useGraphEditor(): UseGraphEditorReturn {
         data: createBlueprintNodeData(operation),
       };
       setNodesStore([...nodes, newNode]);
-      // 触发类型传播，更新 portStateStore
       queueMicrotask(() => {
         triggerTypePropagation();
       });
     } catch (err) {
       console.error('Failed to parse dropped operation:', err);
     }
-  }, [nodes, setNodesStore, triggerTypePropagation]);
+  }, [nodes, setNodesStore, triggerTypePropagation, getFunctionByName, currentFunctionName]);
   
   // ============================================================
   // 边双击删除
@@ -560,8 +657,8 @@ export function useGraphEditor(): UseGraphEditorReturn {
   // ============================================================
   
   useEffect(() => {
-    if (!currentFunctionId || !currentFunction || isLoadingFromStoreRef.current) return;
-    if (currentFunction.isMain) return;
+    if (!currentFunctionName || !currentFunction || isLoadingFromStoreRef.current) return;
+    if (currentFunction.name === 'main') return;
     
     const entryNode = nodes.find(n => n.type === 'function-entry' && n.id === 'entry');
     const returnNode = nodes.find(n => n.type === 'function-return');
@@ -599,8 +696,8 @@ export function useGraphEditor(): UseGraphEditorReturn {
       }
     }
     
-    updateSignatureConstraints(currentFunctionId, parameterConstraints, returnTypeConstraints);
-  }, [nodes, currentFunctionId, currentFunction, updateSignatureConstraints]);
+    updateSignatureConstraints(currentFunctionName, parameterConstraints, returnTypeConstraints);
+  }, [nodes, currentFunctionName, currentFunction, updateSignatureConstraints]);
   
   return {
     nodes,

@@ -89,7 +89,6 @@ function createOperationNode(
 // 创建函数入口节点
 function createEntryNode(id: string, outputs: { id: string; name: string; typeConstraint: string }[]): GraphNode {
   const data: FunctionEntryData = {
-    functionId: 'test-func',
     functionName: 'test',
     outputs: outputs.map(o => ({
       id: o.id,
@@ -99,7 +98,6 @@ function createEntryNode(id: string, outputs: { id: string; name: string; typeCo
       color: '#fff',
     })),
     execOut: { id: 'exec-out', label: '' },
-    isMain: true,
   };
   return {
     id,
@@ -112,7 +110,6 @@ function createEntryNode(id: string, outputs: { id: string; name: string; typeCo
 // 创建函数返回节点
 function createReturnNode(id: string, inputs: { id: string; name: string; typeConstraint: string }[]): GraphNode {
   const data: FunctionReturnData = {
-    functionId: 'test-func',
     functionName: 'test',
     branchName: '',
     inputs: inputs.map(i => ({
@@ -123,7 +120,6 @@ function createReturnNode(id: string, inputs: { id: string; name: string; typeCo
       color: '#fff',
     })),
     execIn: { id: 'exec-in', label: '' },
-    isMain: true,
   };
   return {
     id,

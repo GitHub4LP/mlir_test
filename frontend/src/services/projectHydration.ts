@@ -4,12 +4,15 @@
  * Handles conversion between stored format (JSON files) and runtime format (in memory).
  * - Dehydrate: Strip operation definitions before saving (runtime -> stored)
  * - Hydrate: Fill operation definitions after loading (stored -> runtime)
+ * 
+ * 新格式变更：
+ * - FunctionDef 不再有 id 字段，使用 name 作为唯一标识
+ * - isMain 通过 name === 'main' 派生
+ * - Entry/Return 节点不再存储 functionId、isMain
+ * - FunctionCallData 使用 functionName 而非 functionId
  */
 
-import { useDialectStore } from '../stores/dialectStore';
 import type {
-  Project,
-  StoredProject,
   FunctionDef,
   StoredFunctionDef,
   GraphState,
@@ -34,11 +37,8 @@ import { createInputPortsFromParams, createOutputPortsFromReturns, getExecOutput
 
 /**
  * Strip operation definition from BlueprintNodeData for storage
- * 保存用户意图（pinnedTypes）和传播结果（inputTypes/outputTypes）用于快速还原
- * 不保存 portStates（UI 状态，运行时计算）
  */
 export function dehydrateNodeData(data: BlueprintNodeData): StoredBlueprintNodeData {
-  // 过滤空对象
   const result: StoredBlueprintNodeData = {
     fullName: data.operation.fullName,
     attributes: data.attributes,
@@ -47,20 +47,15 @@ export function dehydrateNodeData(data: BlueprintNodeData): StoredBlueprintNodeD
     regionPins: data.regionPins,
   };
   
-  // 只保存非空的 pinnedTypes
   if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
     result.pinnedTypes = data.pinnedTypes;
   }
-  
-  // 只保存非空的 inputTypes/outputTypes
   if (data.inputTypes && Object.keys(data.inputTypes).length > 0) {
     result.inputTypes = data.inputTypes;
   }
   if (data.outputTypes && Object.keys(data.outputTypes).length > 0) {
     result.outputTypes = data.outputTypes;
   }
-  
-  // 只保存非空的 variadicCounts
   if (data.variadicCounts && Object.keys(data.variadicCounts).length > 0) {
     result.variadicCounts = data.variadicCounts;
   }
@@ -70,8 +65,6 @@ export function dehydrateNodeData(data: BlueprintNodeData): StoredBlueprintNodeD
 
 /**
  * Fill operation definition into StoredBlueprintNodeData from dialectStore
- * 优先使用保存的类型，如果没有则初始化为原始约束的单元素数组
- * （加载后由传播重新计算并覆盖）
  */
 export function hydrateNodeData(
   data: StoredBlueprintNodeData,
@@ -83,11 +76,9 @@ export function hydrateNodeData(
     throw new Error(`Unknown operation: ${data.fullName}. Make sure the dialect is loaded.`);
   }
 
-  // 优先使用保存的类型，如果没有则初始化为原始约束的单元素数组
   const inputTypes: Record<string, string[]> = data.inputTypes || {};
   const outputTypes: Record<string, string[]> = data.outputTypes || {};
   
-  // 填充缺失的端口（使用原始约束的单元素数组）
   for (const arg of operation.arguments) {
     if (arg.kind === 'operand' && !inputTypes[arg.name]) {
       inputTypes[arg.name] = [arg.typeConstraint];
@@ -114,7 +105,6 @@ export function hydrateNodeData(
 
 /**
  * Dehydrate a graph node for storage
- * Entry/Return 节点只保存必要字段，不保存 outputs/inputs、outputTypes/inputTypes、portStates
  */
 export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
   if (node.type === 'operation') {
@@ -128,16 +118,11 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
     const data = node.data as FunctionEntryData;
     const stored: StoredFunctionEntryData = {
       execOut: data.execOut,
-      isMain: data.isMain,
     };
-    // 只保存非空的 pinnedTypes
     if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
       stored.pinnedTypes = data.pinnedTypes;
     }
-    return {
-      ...node,
-      data: stored,
-    };
+    return { ...node, data: stored };
   }
   
   if (node.type === 'function-return') {
@@ -145,27 +130,20 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
     const stored: StoredFunctionReturnData = {
       branchName: data.branchName,
       execIn: data.execIn,
-      isMain: data.isMain,
     };
-    // 只保存非空的 pinnedTypes
     if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
       stored.pinnedTypes = data.pinnedTypes;
     }
-    return {
-      ...node,
-      data: stored,
-    };
+    return { ...node, data: stored };
   }
   
   if (node.type === 'function-call') {
     const data = node.data as FunctionCallData;
     const stored: StoredFunctionCallData = {
-      functionId: data.functionId,
       functionName: data.functionName,
       execIn: data.execIn,
       execOuts: data.execOuts,
     };
-    // 只保存非空的字段
     if (data.pinnedTypes && Object.keys(data.pinnedTypes).length > 0) {
       stored.pinnedTypes = data.pinnedTypes;
     }
@@ -175,10 +153,7 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
     if (data.outputTypes && Object.keys(data.outputTypes).length > 0) {
       stored.outputTypes = data.outputTypes;
     }
-    return {
-      ...node,
-      data: stored,
-    };
+    return { ...node, data: stored };
   }
   
   return node as StoredGraphNode;
@@ -188,11 +163,14 @@ export function dehydrateGraphNode(node: GraphNode): StoredGraphNode {
  * 从 FunctionDef 重建 Entry 节点的 outputs
  */
 function rebuildEntryOutputs(func: FunctionDef): PortConfig[] {
+  const isMain = func.name === 'main';
+  if (isMain) return [];  // main 函数没有参数
+  
   return func.parameters.map((param) => ({
     id: dataOutHandle(param.name),
     name: param.name,
     kind: 'output' as const,
-    typeConstraint: 'AnyType',  // 原始约束是 AnyType（机制）
+    typeConstraint: 'AnyType',
     color: getTypeColor('AnyType'),
   }));
 }
@@ -201,10 +179,11 @@ function rebuildEntryOutputs(func: FunctionDef): PortConfig[] {
  * 从 FunctionDef 重建 Return 节点的 inputs
  */
 function rebuildReturnInputs(func: FunctionDef): PortConfig[] {
+  const isMain = func.name === 'main';
+  
   return func.returnTypes.map((ret, idx) => {
     const name = ret.name || `result_${idx}`;
-    // main 函数硬编码为 I32，普通函数硬编码为 AnyType（机制）
-    const constraint = func.isMain ? 'I32' : 'AnyType';
+    const constraint = isMain ? 'I32' : 'AnyType';
     return {
       id: dataInHandle(name),
       name,
@@ -217,89 +196,94 @@ function rebuildReturnInputs(func: FunctionDef): PortConfig[] {
 
 /**
  * Hydrate a stored graph node to runtime format
- * Entry/Return 节点从 FunctionDef 重建 outputs/inputs
- * Function-call 节点从 FunctionDef 重建 inputs/outputs
- * 不恢复 portStates（运行时计算）
  */
 export function hydrateGraphNode(
   node: StoredGraphNode,
   getOperation: (fullName: string) => OperationDef | undefined,
-  func?: FunctionDef,  // 用于重建 Entry/Return 节点
-  getFunctionById?: (id: string) => FunctionDef | undefined  // 用于重建 function-call 节点
+  func?: FunctionDef,
+  getFunctionByName?: (name: string) => FunctionDef | undefined
 ): GraphNode {
   if (node.type === 'operation') {
     const hydratedData = hydrateNodeData(node.data as StoredBlueprintNodeData, getOperation);
-    // 设置 headerColor（如果 hydratedData 中没有）
     if (!hydratedData.headerColor && hydratedData.operation) {
       hydratedData.headerColor = getDialectColor(hydratedData.operation.dialect);
     }
-    return {
-      ...node,
-      data: hydratedData,
-    };
+    return { ...node, data: hydratedData };
   }
   
   if (node.type === 'function-entry' && func) {
     const stored = node.data as StoredFunctionEntryData;
     const data: FunctionEntryData = {
       ...stored,
-      functionId: func.id,
       functionName: func.name,
       outputs: rebuildEntryOutputs(func),
       outputTypes: {},
-      // 节点头部颜色
       headerColor: layoutConfig.nodeType.entry,
     };
-    return {
-      ...node,
-      data,
-    };
+    return { ...node, data };
   }
   
   if (node.type === 'function-return' && func) {
     const stored = node.data as StoredFunctionReturnData;
     const data: FunctionReturnData = {
       ...stored,
-      functionId: func.id,
       functionName: func.name,
       inputs: rebuildReturnInputs(func),
       inputTypes: {},
-      // 节点头部颜色
       headerColor: layoutConfig.nodeType.return,
     };
-    return {
-      ...node,
-      data,
-    };
+    return { ...node, data };
   }
   
-  if (node.type === 'function-call' && getFunctionById) {
+  if (node.type === 'function-call') {
     const stored = node.data as StoredFunctionCallData;
-    const calleeFunc = getFunctionById(stored.functionId);
+    const calleeFunc = getFunctionByName?.(stored.functionName);
     
-    if (!calleeFunc) {
-      // 如果找不到函数，保留存储的数据（向后兼容）
-      return node as GraphNode;
+    if (calleeFunc) {
+      // 有函数定义，从函数签名重建端口
+      const data: FunctionCallData = {
+        functionName: stored.functionName,
+        inputs: createInputPortsFromParams(calleeFunc),
+        outputs: createOutputPortsFromReturns(calleeFunc),
+        pinnedTypes: stored.pinnedTypes,
+        inputTypes: stored.inputTypes || {},
+        outputTypes: stored.outputTypes || {},
+        execIn: stored.execIn || { id: 'exec-in', label: '' },
+        execOuts: getExecOutputsFromFunction(calleeFunc),
+        headerColor: layoutConfig.nodeType.call,
+      };
+      return { ...node, data };
+    } else {
+      // 找不到函数定义，从存储的类型信息重建端口
+      // 这种情况发生在：1) 函数还没加载 2) 函数已被删除
+      const inputs: PortConfig[] = Object.keys(stored.inputTypes || {}).map(name => ({
+        id: dataInHandle(name),
+        name,
+        kind: 'input' as const,
+        typeConstraint: 'AnyType',
+        color: getTypeColor('AnyType'),
+      }));
+      const outputs: PortConfig[] = Object.keys(stored.outputTypes || {}).map(name => ({
+        id: dataOutHandle(name),
+        name,
+        kind: 'output' as const,
+        typeConstraint: 'AnyType',
+        color: getTypeColor('AnyType'),
+      }));
+      
+      const data: FunctionCallData = {
+        functionName: stored.functionName,
+        inputs,
+        outputs,
+        pinnedTypes: stored.pinnedTypes,
+        inputTypes: stored.inputTypes || {},
+        outputTypes: stored.outputTypes || {},
+        execIn: stored.execIn || { id: 'exec-in', label: '' },
+        execOuts: stored.execOuts || [{ id: 'exec-out-0', label: '' }],
+        headerColor: layoutConfig.nodeType.call,
+      };
+      return { ...node, data };
     }
-    
-    const data: FunctionCallData = {
-      functionId: stored.functionId,
-      functionName: stored.functionName,
-      inputs: createInputPortsFromParams(calleeFunc),
-      outputs: createOutputPortsFromReturns(calleeFunc),
-      pinnedTypes: stored.pinnedTypes,
-      inputTypes: stored.inputTypes || {},
-      outputTypes: stored.outputTypes || {},
-      // 确保 execIn 有默认值（向后兼容旧数据）
-      execIn: stored.execIn || { id: 'exec-in', label: '' },
-      execOuts: getExecOutputsFromFunction(calleeFunc),
-      // 节点头部颜色
-      headerColor: layoutConfig.nodeType.call,
-    };
-    return {
-      ...node,
-      data,
-    };
   }
   
   return node as GraphNode;
@@ -322,17 +306,15 @@ export function dehydrateGraphState(graph: GraphState): StoredGraphState {
 
 /**
  * Hydrate a stored graph state to runtime format
- * Entry/Return 节点需要从 FunctionDef 重建 outputs/inputs
- * Function-call 节点需要从 FunctionDef 重建 inputs/outputs
  */
 export function hydrateGraphState(
   graph: StoredGraphState,
   getOperation: (fullName: string) => OperationDef | undefined,
-  func?: FunctionDef,  // 用于重建 Entry/Return 节点
-  getFunctionById?: (id: string) => FunctionDef | undefined  // 用于重建 function-call 节点
+  func?: FunctionDef,
+  getFunctionByName?: (name: string) => FunctionDef | undefined
 ): GraphState {
   return {
-    nodes: graph.nodes.map(node => hydrateGraphNode(node, getOperation, func, getFunctionById)),
+    nodes: graph.nodes.map(node => hydrateGraphNode(node, getOperation, func, getFunctionByName)),
     edges: graph.edges,
   };
 }
@@ -342,131 +324,51 @@ export function hydrateGraphState(
  */
 export function dehydrateFunctionDef(func: FunctionDef): StoredFunctionDef {
   return {
-    ...func,
+    name: func.name,
+    parameters: func.parameters,
+    returnTypes: func.returnTypes,
+    traits: func.traits,
+    directDialects: func.directDialects,
     graph: dehydrateGraphState(func.graph),
   };
 }
 
 /**
  * Hydrate a stored function definition to runtime format
- * Entry/Return 节点从 FunctionDef 重建 outputs/inputs
- * Function-call 节点需要 getFunctionById 来重建 inputs/outputs
- * 
- * 注意：traits 从存储中恢复，加载图后会由类型传播系统重新推断并更新
  */
 export function hydrateFunctionDef(
   func: StoredFunctionDef,
   getOperation: (fullName: string) => OperationDef | undefined,
-  getFunctionById?: (id: string) => FunctionDef | undefined  // 用于重建 function-call 节点
+  getFunctionByName?: (name: string) => FunctionDef | undefined
 ): FunctionDef {
   // 先创建 FunctionDef（不包含 graph）
-  // 保留已保存的 traits，加载图后会由类型传播系统重新推断
   const functionDef: FunctionDef = {
-    ...func,
-    traits: func.traits ?? [],  // 保留已保存的 traits
-    graph: {
-      nodes: [],
-      edges: func.graph.edges,
-    },
+    name: func.name,
+    parameters: func.parameters,
+    returnTypes: func.returnTypes,
+    traits: func.traits ?? [],
+    directDialects: func.directDialects || [],
+    graph: { nodes: [], edges: func.graph.edges },
   };
   
   // 然后使用 FunctionDef 重建 Entry/Return 节点和 function-call 节点
-  const graph = hydrateGraphState(func.graph, getOperation, functionDef, getFunctionById);
+  const graph = hydrateGraphState(func.graph, getOperation, functionDef, getFunctionByName);
   
-  return {
-    ...functionDef,
-    graph,
-  };
+  return { ...functionDef, graph };
 }
 
 /**
- * Dehydrate a project for storage
- * 
- * 注意：dialects 字段由后端自动计算，前端不需要维护
+ * Extract all operation fullNames from a stored function
  */
-export function dehydrateProject(project: Project): StoredProject {
-  return {
-    ...project,
-    mainFunction: dehydrateFunctionDef(project.mainFunction),
-    customFunctions: project.customFunctions.map(dehydrateFunctionDef),
-  };
-}
-
-/**
- * Hydrate a stored project to runtime format
- * 
- * 注意：这是一个两阶段过程：
- * 1. 先加载所有函数定义（不 hydrate function-call 节点）
- * 2. 然后为 function-call 节点提供 getFunctionById
- */
-export function hydrateProject(
-  project: StoredProject,
-  getOperation: (fullName: string) => OperationDef | undefined
-): Project {
-  // 第一阶段：先加载所有函数定义（不 hydrate function-call 节点）
-  const mainFunction = hydrateFunctionDef(project.mainFunction, getOperation);
-  const customFunctions = project.customFunctions.map(func =>
-    hydrateFunctionDef(func, getOperation)
-  );
-  
-  // 创建 getFunctionById 函数
-  const allFunctions = [mainFunction, ...customFunctions];
-  const functionMap = new Map<string, FunctionDef>();
-  allFunctions.forEach(f => functionMap.set(f.id, f));
-  const getFunctionById = (id: string) => functionMap.get(id);
-  
-  // 第二阶段：重新 hydrate 所有函数，这次包含 function-call 节点
-  const hydratedMainFunction = hydrateFunctionDef(project.mainFunction, getOperation, getFunctionById);
-  const hydratedCustomFunctions = project.customFunctions.map(func =>
-    hydrateFunctionDef(func, getOperation, getFunctionById)
-  );
-  
-  return {
-    ...project,
-    mainFunction: hydratedMainFunction,
-    customFunctions: hydratedCustomFunctions,
-  };
-}
-
-/**
- * Extract all operation fullNames from a stored project
- */
-export function extractOperationFullNames(project: StoredProject): string[] {
+export function extractOperationFullNames(func: StoredFunctionDef): string[] {
   const fullNames: string[] = [];
-
-  const extractFromGraph = (graph: StoredGraphState) => {
-    for (const node of graph.nodes) {
-      if (node.type === 'operation') {
-        const data = node.data as StoredBlueprintNodeData;
-        fullNames.push(data.fullName);
-      }
+  
+  for (const node of func.graph.nodes) {
+    if (node.type === 'operation') {
+      const data = node.data as StoredBlueprintNodeData;
+      fullNames.push(data.fullName);
     }
-  };
-
-  extractFromGraph(project.mainFunction.graph);
-  for (const func of project.customFunctions) {
-    extractFromGraph(func.graph);
   }
-
+  
   return fullNames;
-}
-
-/**
- * Load required dialects and hydrate a project
- * This is the main entry point for loading projects
- * 
- * 注意：dialects 字段由后端自动计算，保证与节点一致
- */
-export async function loadAndHydrateProject(storedProject: StoredProject): Promise<Project> {
-  const store = useDialectStore.getState();
-
-  // 使用后端计算的方言列表加载所需方言
-  const dialects = storedProject.dialects || [];
-
-  if (dialects.length > 0) {
-    await store.loadDialects(dialects);
-  }
-
-  // Hydrate the project
-  return hydrateProject(storedProject, store.getOperation);
 }

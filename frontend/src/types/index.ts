@@ -232,8 +232,12 @@ export interface FunctionTrait {
   kind: 'SameOperandsAndResultType' | 'SameTypeOperands' | 'SameOperandsElementType' | 'SameOperandsAndResultElementType';
 }
 
+/**
+ * 运行时函数定义
+ * 
+ * name 是唯一标识符（来自文件名），isMain 通过 name === 'main' 派生
+ */
 export interface FunctionDef {
-  id: string;
   name: string;
   parameters: ParameterDef[];
   returnTypes: TypeDef[];
@@ -242,7 +246,6 @@ export interface FunctionDef {
   /** 函数直接使用的方言列表（从图中 Operation 节点计算） */
   directDialects: string[];
   graph: GraphState;
-  isMain: boolean;
 }
 
 export interface ParameterDef {
@@ -292,10 +295,10 @@ export interface StoredGraphState {
 }
 
 /**
- * Stored format for FunctionDef (used in JSON files)
+ * 存储格式的 FunctionDef（用于 JSON 文件）
+ * 不包含 isMain（通过文件名判断）
  */
 export interface StoredFunctionDef {
-  id: string;
   name: string;
   parameters: ParameterDef[];
   returnTypes: TypeDef[];
@@ -304,18 +307,29 @@ export interface StoredFunctionDef {
   /** 函数直接使用的方言列表 */
   directDialects: string[];
   graph: StoredGraphState;
-  isMain: boolean;
 }
 
 /**
- * Stored format for Project (used in JSON files)
+ * 函数文件格式（.mlir.json）
  */
-export interface StoredProject {
+export interface FunctionFile {
+  /** 项目元数据（仅 main.mlir.json 有此字段） */
+  project?: {
+    name: string;
+  };
+  /** 函数定义 */
+  function: StoredFunctionDef;
+}
+
+/**
+ * 运行时项目状态
+ * 不再存储 dialects，动态计算
+ */
+export interface Project {
   name: string;
   path: string;
-  mainFunction: StoredFunctionDef;
-  customFunctions: StoredFunctionDef[];
-  dialects: string[];
+  mainFunction: FunctionDef;
+  customFunctions: FunctionDef[];
 }
 
 export interface GraphEdge {
@@ -332,45 +346,39 @@ export interface GraphEdge {
 
 export interface FunctionEntryData extends TypePropagationData {
   [key: string]: unknown;
-  functionId: string;
   functionName: string;
   outputs: PortConfig[];        // Parameter outputs (data pins) - 运行时从 FunctionDef 派生
   execOut: ExecPin;             // Execution output pin
-  isMain: boolean;              // Whether this is the main function entry
   /** 节点头部颜色（创建时计算，不会变化） */
   headerColor?: string;
 }
 
 export interface FunctionReturnData extends TypePropagationData {
   [key: string]: unknown;
-  functionId: string;
   functionName: string;
   branchName: string;           // Branch name for this return (empty = default)
   inputs: PortConfig[];         // Return value inputs (data pins) - 运行时从 FunctionDef 派生
   execIn: ExecPin;              // Execution input pin
-  isMain: boolean;              // Whether this is the main function return
   /** 节点头部颜色（创建时计算，不会变化） */
   headerColor?: string;
 }
 
 /**
  * 存储格式的 FunctionEntryData（只保存必要字段）
- * functionId、functionName、outputs 不保存，从 FunctionDef 派生
+ * functionName、outputs 不保存，从 FunctionDef 派生
  */
 export interface StoredFunctionEntryData {
   execOut: ExecPin;
-  isMain: boolean;
   pinnedTypes?: Record<string, string>;
 }
 
 /**
  * 存储格式的 FunctionReturnData（只保存必要字段）
- * functionId、functionName、inputs 不保存，从 FunctionDef 派生
+ * functionName、inputs 不保存，从 FunctionDef 派生
  */
 export interface StoredFunctionReturnData {
   branchName: string;
   execIn: ExecPin;
-  isMain: boolean;
   pinnedTypes?: Record<string, string>;
 }
 
@@ -379,7 +387,6 @@ export interface StoredFunctionReturnData {
  * inputs、outputs 不保存，从 FunctionDef 派生
  */
 export interface StoredFunctionCallData {
-  functionId: string;
   functionName: string;
   pinnedTypes?: Record<string, string>;
   inputTypes?: Record<string, string[]>;
@@ -390,7 +397,6 @@ export interface StoredFunctionCallData {
 
 export interface FunctionCallData extends TypePropagationData {
   [key: string]: unknown;
-  functionId: string;
   functionName: string;
   inputs: PortConfig[];         // Parameter inputs (data pins) - 运行时从 FunctionDef 派生
   outputs: PortConfig[];        // Return value outputs (data pins) - 运行时从 FunctionDef 派生
@@ -400,14 +406,7 @@ export interface FunctionCallData extends TypePropagationData {
   headerColor?: string;
 }
 
-// Project Types
-export interface Project {
-  name: string;
-  path: string;
-  mainFunction: FunctionDef;
-  customFunctions: FunctionDef[];
-  dialects: string[];
-}
+// Project Types - 移除旧的 Project 定义，已在上面定义
 
 // Execution Types
 export interface ExecutionRequest {

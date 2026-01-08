@@ -76,8 +76,8 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
       return;
     }
     
-    // Create project with empty dialects (will be auto-collected)
-    createProject(trimmedName, trimmedPath, []);
+    // Create project (dialects are auto-collected from used operations)
+    createProject(trimmedName, trimmedPath);
     onCreated?.();
     handleClose();
   }, [name, path, createProject, onCreated, handleClose]);
@@ -295,7 +295,7 @@ export const OpenProjectDialog = memo(function OpenProjectDialog({
               className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none disabled:opacity-50"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Path to the project directory containing project.json
+              Path to the project directory containing project.mlir.json
             </p>
           </div>
           
@@ -461,7 +461,7 @@ export const SaveProjectDialog = memo(function SaveProjectDialog({
                 <span className="text-gray-500">Project:</span> {project.name}
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                {project.customFunctions.length + 1} function(s), {project.dialects.length} dialect(s)
+                {project.customFunctions.length + 1} function(s)
               </div>
             </div>
           )}

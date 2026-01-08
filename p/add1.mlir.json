@@ -1,0 +1,156 @@
+{
+  "function": {
+    "name": "add1",
+    "parameters": [
+      {
+        "name": "arg0",
+        "constraint": "AnySignlessIntegerOrIndex"
+      }
+    ],
+    "returnTypes": [
+      {
+        "name": "ret0",
+        "constraint": "AnySignlessIntegerOrIndex"
+      }
+    ],
+    "traits": [
+      {
+        "kind": "SameOperandsAndResultType"
+      }
+    ],
+    "directDialects": [
+      "arith"
+    ],
+    "graph": {
+      "nodes": [
+        {
+          "id": "entry",
+          "type": "function-entry",
+          "position": {
+            "x": 100.0,
+            "y": 200.0
+          },
+          "data": {
+            "execOut": {
+              "id": "exec-out",
+              "label": ""
+            }
+          }
+        },
+        {
+          "id": "return-0",
+          "type": "function-return",
+          "position": {
+            "x": 1095.592883032199,
+            "y": 193.148698354997
+          },
+          "data": {
+            "branchName": "",
+            "execIn": {
+              "id": "exec-in",
+              "label": ""
+            }
+          }
+        },
+        {
+          "id": "node_1767763685695_bs6vojg",
+          "type": "operation",
+          "position": {
+            "x": 563.8885118602016,
+            "y": 399.7824698721753
+          },
+          "data": {
+            "fullName": "arith.addi",
+            "attributes": {},
+            "execOuts": [],
+            "regionPins": [],
+            "inputTypes": {
+              "lhs": [
+                "I1",
+                "I128",
+                "I16",
+                "I32",
+                "I64",
+                "I8",
+                "Index"
+              ],
+              "rhs": [
+                "I1",
+                "I128",
+                "I16",
+                "I32",
+                "I64",
+                "I8",
+                "Index"
+              ]
+            },
+            "outputTypes": {
+              "result": [
+                "I1",
+                "I128",
+                "I16",
+                "I32",
+                "I64",
+                "I8",
+                "Index"
+              ]
+            }
+          }
+        },
+        {
+          "id": "node_1767763689400_agsdz5p",
+          "type": "operation",
+          "position": {
+            "x": 100.88483359042108,
+            "y": 549.498018359312
+          },
+          "data": {
+            "fullName": "arith.constant",
+            "attributes": {
+              "value": "1"
+            },
+            "execOuts": [],
+            "regionPins": [],
+            "outputTypes": {
+              "result": [
+                "I1",
+                "I128",
+                "I16",
+                "I32",
+                "I64",
+                "I8",
+                "Index"
+              ]
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "node_1767763689400_agsdz5p",
+          "sourceHandle": "data-out-result",
+          "target": "node_1767763685695_bs6vojg",
+          "targetHandle": "data-in-rhs"
+        },
+        {
+          "source": "entry",
+          "sourceHandle": "data-out-arg0",
+          "target": "node_1767763685695_bs6vojg",
+          "targetHandle": "data-in-lhs"
+        },
+        {
+          "source": "node_1767763685695_bs6vojg",
+          "sourceHandle": "data-out-result",
+          "target": "return-0",
+          "targetHandle": "data-in-ret0"
+        },
+        {
+          "source": "entry",
+          "sourceHandle": "exec-out",
+          "target": "return-0",
+          "targetHandle": "exec-in"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "function": {
+    "name": "add2",
+    "parameters": [
+      {
+        "name": "arg0",
+        "constraint": "AnySignlessIntegerOrIndex"
+      }
+    ],
+    "returnTypes": [
+      {
+        "name": "ret0",
+        "constraint": "AnySignlessIntegerOrIndex"
+      }
+    ],
+    "traits": [
+      {
+        "kind": "SameOperandsAndResultType"
+      }
+    ],
+    "directDialects": [],
+    "graph": {
+      "nodes": [
+        {
+          "id": "entry",
+          "type": "function-entry",
+          "position": {
+            "x": 100.0,
+            "y": 200.0
+          },
+          "data": {
+            "execOut": {
+              "id": "exec-out",
+              "label": ""
+            }
+          }
+        },
+        {
+          "id": "return-0",
+          "type": "function-return",
+          "position": {
+            "x": 500.0,
+            "y": 200.0
+          },
+          "data": {
+            "branchName": "",
+            "execIn": {
+              "id": "exec-in",
+              "label": ""
+            }
+          }
+        }
+      ],
+      "edges": []
+    }
+  }
+}

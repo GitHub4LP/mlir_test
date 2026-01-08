@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import type { DialectInfo, OperationDef } from '../types';
 import { useTypeConstraintStore } from './typeConstraintStore';
-import { apiUrl } from '../services/apiClient';
+import { apiGet } from '../services/apiClient';
 
 interface DialectStoreState {
   /** List of available dialect names (loaded at startup) */
@@ -76,12 +76,7 @@ export const useDialectStore = create<DialectState>((set, get) => ({
     set(s => ({ loading: new Set(s.loading).add('__init__') }));
 
     try {
-      const response = await fetch(apiUrl('/dialects/'));
-      if (!response.ok) {
-        throw new Error(`Failed to fetch dialect list: ${response.statusText}`);
-      }
-
-      const dialectNames: string[] = await response.json();
+      const dialectNames = await apiGet<string[]>('/dialects/');
 
       set(s => {
         const newLoading = new Set(s.loading);
@@ -133,13 +128,7 @@ export const useDialectStore = create<DialectState>((set, get) => ({
     }));
 
     try {
-      const response = await fetch(apiUrl(`/dialects/${name}`));
-      if (!response.ok) {
-        console.warn(`Failed to load dialect ${name}: ${response.statusText}`);
-        return null;
-      }
-
-      const dialect: DialectInfo = await response.json();
+      const dialect = await apiGet<DialectInfo>(`/dialects/${name}`);
 
       // 注册类型约束到 typeConstraintStore
       if (dialect.typeConstraints && dialect.typeConstraints.length > 0) {

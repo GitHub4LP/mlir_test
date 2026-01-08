@@ -24,9 +24,10 @@ export default defineConfig({
     allowedHosts: true,  // 允许所有域名
     proxy: {
       // 代理 API 请求到后端
+      // 支持动态端口：从环境变量 BACKEND_PORT 读取，默认 8000
       // 支持任意子路径：/api, /mlir-editor/api, /tools/blueprint/api
       '/api': {
-        target: 'http://localhost:8000',
+        target: `http://localhost:${process.env.BACKEND_PORT || '8000'}`,
         changeOrigin: true,
       },
     },

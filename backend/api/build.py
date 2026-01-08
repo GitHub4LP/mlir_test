@@ -138,56 +138,83 @@ def to_relative_posix(file_path: Path, base_path: Path) -> str:
 
 
 def load_project_metadata(project_path: Path) -> dict:
-    """加载项目元数据"""
-    project_file = project_path / "project.json"
-    if not project_file.exists():
-        raise FileNotFoundError(f"Project file not found: {project_file}")
+    """加载项目元数据（从 main.mlir.json）"""
+    main_file = project_path / "main.mlir.json"
+    if not main_file.exists():
+        raise FileNotFoundError(f"Project file not found: {main_file}")
     
-    with open(project_file, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(main_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    # main.mlir.json 包含 projectName 和 function
+    return {
+        "name": data.get("projectName", project_path.name),
+        "mainFunction": data.get("function", {}),
+    }
 
 
-def load_function_graph(functions_dir: Path, func_id: str) -> dict:
-    """加载函数图"""
-    func_file = functions_dir / f"{func_id}.json"
+def load_function_file(project_path: Path, func_name: str) -> dict:
+    """加载函数文件"""
+    func_file = project_path / f"{func_name}.mlir.json"
     if not func_file.exists():
         raise FileNotFoundError(f"Function file not found: {func_file}")
     
     with open(func_file, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    
+    return data.get("function", {})
+
+
+def list_function_files(project_path: Path) -> list[str]:
+    """列出项目中的所有函数文件（不包括 main）"""
+    function_names = []
+    for file in project_path.glob("*.mlir.json"):
+        # 文件名格式: {name}.mlir.json，需要去掉 .mlir.json
+        name = file.name.replace(".mlir.json", "")
+        if name != "main":
+            function_names.append(name)
+    return function_names
 
 
 def load_project_dict(project_path: str) -> dict:
     """
     加载完整的项目字典
     
-    统一的项目加载逻辑，供所有 API 使用
+    新文件格式：
+    - main.mlir.json: main 函数 + 项目元数据
+    - {name}.mlir.json: 自定义函数
     """
     project_dir = Path(project_path)
     
     if not project_dir.exists():
         raise FileNotFoundError(f"Project not found: {project_path}")
     
+    # 加载 main.mlir.json
     metadata = load_project_metadata(project_dir)
-    functions_dir = project_dir / "functions"
-    
-    # 加载主函数
-    main_func_id = metadata.get("mainFunctionId", "main")
-    main_func_data = load_function_graph(functions_dir, main_func_id)
+    main_func_data = metadata.get("mainFunction", {})
     
     # 加载自定义函数
     custom_functions = []
-    for func_id in metadata.get("customFunctionIds", []):
-        func_data = load_function_graph(functions_dir, func_id)
+    function_names = list_function_files(project_dir)
+    for func_name in function_names:
+        func_data = load_function_file(project_dir, func_name)
         custom_functions.append(func_data)
+    
+    # 从所有函数中收集使用的方言
+    all_dialects = set()
+    if main_func_data.get("directDialects"):
+        all_dialects.update(main_func_data["directDialects"])
+    for func in custom_functions:
+        if func.get("directDialects"):
+            all_dialects.update(func["directDialects"])
     
     return {
         "name": metadata.get("name", project_dir.name),
-        "version": metadata.get("version", "0.0.0"),
+        "version": "0.0.0",  # 版本暂时固定
         "path": project_path,
         "mainFunction": main_func_data,
         "customFunctions": custom_functions,
-        "dialects": metadata.get("dialects", []),
+        "dialects": list(all_dialects),
     }
 
 
@@ -352,7 +379,7 @@ async def get_build_info(request: ProjectRequest):
     
     return BuildInfoResponse(
         projectName=metadata.get("name", project_dir.name),
-        version=metadata.get("version", "0.0.0"),
+        version="0.0.0",  # 版本暂时固定
         platform=os_name,
         arch=arch,
     )

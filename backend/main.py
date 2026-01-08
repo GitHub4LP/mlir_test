@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import projects, dialects, execution, graph, build, types
+from backend.api import projects, dialects, execution, graph, build, types, functions
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ app = FastAPI(
 )
 
 # CORS 配置
+# 允许 Web 开发服务器和 VS Code Webview 来源
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -69,14 +70,23 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        # VS Code Webview 使用 vscode-webview:// 协议
+        # 但 CORS 不支持自定义协议，VS Code Webview 会通过 localhost 访问
+        # 允许任意 localhost 端口以支持动态端口
+        "http://localhost:*",
+        "http://127.0.0.1:*",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # 允许所有来源（开发模式）
+    # 生产环境应该限制具体来源
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 
 # 注册路由
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(functions.router, prefix="/api/functions", tags=["functions"])
 app.include_router(dialects.router, prefix="/api/dialects", tags=["dialects"])
 app.include_router(execution.router, prefix="/api/execution", tags=["execution"])
 app.include_router(graph.router, prefix="/api/graph", tags=["graph"])

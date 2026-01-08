@@ -87,7 +87,7 @@ export interface PropagationTriggerResult {
  * @param pickConstraintName - 选择约束名称
  * @param findSubsetConstraints - 找出所有元素集合是给定集合子集的约束名
  * @param dialectFilter - 方言过滤配置（可选）
- * @param getFunctionById - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
+ * @param getFunctionByName - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
  * @returns 更新后的节点列表（包含传播结果）
  */
 export function triggerTypePropagation(
@@ -98,10 +98,10 @@ export function triggerTypePropagation(
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
   findSubsetConstraints?: (E: string[]) => string[],
   dialectFilter?: DialectFilterConfig,
-  getFunctionById?: (functionId: string) => FunctionDef | null
+  getFunctionByName?: (functionName: string) => FunctionDef | null
 ): EditorNode[] {
   const result = triggerTypePropagationWithSignature(
-    nodes, edges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, getFunctionById
+    nodes, edges, currentFunction, getConstraintElements, pickConstraintName, findSubsetConstraints, dialectFilter, getFunctionByName
   );
   return result.nodes;
 }
@@ -119,7 +119,7 @@ export function triggerTypePropagation(
  * @param pickConstraintName - 选择约束名称
  * @param findSubsetConstraints - 找出所有元素集合是给定集合子集的约束名
  * @param dialectFilter - 方言过滤配置（可选）
- * @param getFunctionById - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
+ * @param getFunctionByName - 函数查找器（可选，用于获取 Call 节点被调用函数的 Traits）
  */
 export function triggerTypePropagationWithSignature(
   nodes: EditorNode[],
@@ -129,7 +129,7 @@ export function triggerTypePropagationWithSignature(
   pickConstraintName: (types: string[], nodeDialect: string | null, pinnedName: string | null) => string | null,
   findSubsetConstraints?: (E: string[]) => string[],
   dialectFilter?: DialectFilterConfig,
-  getFunctionById?: (functionId: string) => FunctionDef | null
+  getFunctionByName?: (functionName: string) => FunctionDef | null
 ): PropagationTriggerResult {
   // 使用新的 computePropagation 函数
   const propagationResult = computePropagation(
@@ -140,7 +140,7 @@ export function triggerTypePropagationWithSignature(
     pickConstraintName,
     findSubsetConstraints || (() => []),
     dialectFilter,
-    getFunctionById
+    getFunctionByName
   );
   
   // 应用传播结果到节点（包含 portStates）
@@ -149,7 +149,7 @@ export function triggerTypePropagationWithSignature(
   
   // 推断函数 traits（仅对自定义函数，非 main 函数）
   let inferredTraits: InferredFunctionTrait[] = [];
-  if (currentFunction && !currentFunction.isMain) {
+  if (currentFunction && currentFunction.name !== 'main') {
     inferredTraits = inferFunctionTraits(nodes, edges, currentFunction);
   }
   

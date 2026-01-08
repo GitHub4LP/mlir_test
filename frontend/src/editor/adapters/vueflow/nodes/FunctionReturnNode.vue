@@ -54,19 +54,19 @@ const { handleTypeChange } = useTypeChangeHandler(props.id);
 const currentFunction = useVueStore(
   projectStore,
   (state) => {
-    if (!state.project || !state.currentFunctionId) return null;
-    return state.project.mainFunction.id === state.currentFunctionId
+    if (!state.project || !state.currentFunctionName) return null;
+    return state.currentFunctionName === 'main'
       ? state.project.mainFunction
-      : state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+      : state.project.customFunctions.find(f => f.name === state.currentFunctionName) || null;
   }
 );
 
 // 获取节点数据
 const nodeData = computed(() => props.data as FunctionReturnData);
-const isMain = computed(() => nodeData.value.isMain || false);
+const functionName = computed(() => nodeData.value.functionName);
+const isMain = computed(() => functionName.value === 'main');
 const portStates = computed(() => nodeData.value.portStates || {});
 
-const functionId = computed(() => currentFunction.value?.id || '');
 const returnTypes = computed(() => currentFunction.value?.returnTypes || []);
 
 // 将 props 转换为 GraphNode 格式
@@ -118,28 +118,28 @@ watch(returnTypes, (newReturns) => {
 // 返回值操作
 function handleAddReturnType() {
   const state = projectStore.getState();
-  const func = state.getFunctionById(functionId.value);
+  const func = state.getFunctionByName(functionName.value);
   const existingNames = func?.returnTypes.map(r => r.name || '') || [];
   const newName = generateReturnTypeName(existingNames);
-  if (functionId.value) {
-    state.addReturnType(functionId.value, { name: newName, constraint: 'AnyType' });
+  if (functionName.value) {
+    state.addReturnType(functionName.value, { name: newName, constraint: 'AnyType' });
   }
 }
 
 function handleRemoveReturnType(returnName: unknown) {
-  if (typeof returnName === 'string' && functionId.value) {
+  if (typeof returnName === 'string' && functionName.value) {
     const state = projectStore.getState();
-    state.removeReturnType(functionId.value, returnName);
+    state.removeReturnType(functionName.value, returnName);
   }
 }
 
 function handleRenameReturnType(oldName: unknown, newName: unknown) {
-  if (typeof oldName === 'string' && typeof newName === 'string' && functionId.value) {
+  if (typeof oldName === 'string' && typeof newName === 'string' && functionName.value) {
     const state = projectStore.getState();
-    const func = state.getFunctionById(functionId.value);
+    const func = state.getFunctionByName(functionName.value);
     const ret = func?.returnTypes.find(r => r.name === oldName);
     if (ret) {
-      state.updateReturnType(functionId.value, oldName, { ...ret, name: newName });
+      state.updateReturnType(functionName.value, oldName, { ...ret, name: newName });
     }
   }
 }

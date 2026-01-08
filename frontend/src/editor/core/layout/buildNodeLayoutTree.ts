@@ -321,7 +321,7 @@ function collectOperationPins(data: BlueprintNodeData): { inputs: PinInfo[]; out
 function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs: PinInfo[] } {
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
-  const isMain = data.isMain;
+  const isMain = data.functionName === 'main';
   const portStates = data.portStates;
 
   // 输出：execOut
@@ -360,7 +360,7 @@ function collectEntryPins(data: FunctionEntryData): { inputs: PinInfo[]; outputs
 function collectReturnPins(data: FunctionReturnData): { inputs: PinInfo[]; outputs: PinInfo[] } {
   const inputs: PinInfo[] = [];
   const outputs: PinInfo[] = [];
-  const isMain = data.isMain;
+  const isMain = data.functionName === 'main';
   const portStates = data.portStates;
 
   // 输入：execIn
@@ -865,9 +865,9 @@ function buildPinArea(node: GraphNode, config: LayoutConfig, hasBottomRadius: bo
   const isEntry = node.type === 'function-entry';
   const isReturn = node.type === 'function-return';
   const isMain = isEntry 
-    ? (node.data as FunctionEntryData).isMain 
+    ? (node.data as FunctionEntryData).functionName === 'main'
     : isReturn 
-      ? (node.data as FunctionReturnData).isMain 
+      ? (node.data as FunctionReturnData).functionName === 'main'
       : false;
   const needsAddButton = (isEntry || isReturn) && !isMain;
 
@@ -1182,7 +1182,7 @@ export function isReturnNode(node: GraphNode): boolean {
 export function supportsParamEdit(node: GraphNode): boolean {
   if (node.type === 'function-entry') {
     const data = node.data as FunctionEntryData;
-    return !data.isMain;
+    return data.functionName !== 'main';
   }
   return false;
 }
@@ -1193,7 +1193,7 @@ export function supportsParamEdit(node: GraphNode): boolean {
 export function supportsReturnEdit(node: GraphNode): boolean {
   if (node.type === 'function-return') {
     const data = node.data as FunctionReturnData;
-    return !data.isMain;
+    return data.functionName !== 'main';
   }
   return false;
 }

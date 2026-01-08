@@ -16,11 +16,11 @@ import { useReactStore, projectStore } from '../stores';
  */
 export function useCurrentFunction() {
   return useReactStore(projectStore, state => {
-    if (!state.project || !state.currentFunctionId) return null;
-    if (state.project.mainFunction.id === state.currentFunctionId) {
+    if (!state.project || !state.currentFunctionName) return null;
+    if (state.project.mainFunction.name === state.currentFunctionName) {
       return state.project.mainFunction;
     }
-    return state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+    return state.project.customFunctions.find(f => f.name === state.currentFunctionName) || null;
   });
 }
 

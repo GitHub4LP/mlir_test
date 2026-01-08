@@ -56,17 +56,17 @@ const { handleTypeChange } = useTypeChangeHandler(props.id);
 const currentFunction = useVueStore(
   projectStore,
   (state) => {
-    if (!state.project || !state.currentFunctionId) return null;
-    return state.project.mainFunction.id === state.currentFunctionId
+    if (!state.project || !state.currentFunctionName) return null;
+    return state.currentFunctionName === 'main'
       ? state.project.mainFunction
-      : state.project.customFunctions.find(f => f.id === state.currentFunctionId) || null;
+      : state.project.customFunctions.find(f => f.name === state.currentFunctionName) || null;
   }
 );
 
 // 获取节点数据
 const nodeData = computed(() => props.data as FunctionEntryData);
-const functionId = computed(() => nodeData.value.functionId);
-const isMain = computed(() => nodeData.value.isMain || false);
+const functionName = computed(() => nodeData.value.functionName);
+const isMain = computed(() => functionName.value === 'main');
 const portStates = computed(() => nodeData.value.portStates || {});
 
 const parameters = computed(() => currentFunction.value?.parameters || []);
@@ -125,13 +125,13 @@ function handleAddParameter() {
   const func = state.getCurrentFunction();
   const existingNames = func?.parameters.map(p => p.name) || [];
   const newName = generateParameterName(existingNames);
-  state.addParameter(functionId.value, { name: newName, constraint: 'AnyType' });
+  state.addParameter(functionName.value, { name: newName, constraint: 'AnyType' });
 }
 
 function handleRemoveParameter(paramName: unknown) {
   if (typeof paramName === 'string') {
     const state = projectStore.getState();
-    state.removeParameter(functionId.value, paramName);
+    state.removeParameter(functionName.value, paramName);
   }
 }
 
@@ -141,7 +141,7 @@ function handleRenameParameter(oldName: unknown, newName: unknown) {
     const func = state.getCurrentFunction();
     const param = func?.parameters.find(p => p.name === oldName);
     if (param) {
-      state.updateParameter(functionId.value, oldName, { ...param, name: newName });
+      state.updateParameter(functionName.value, oldName, { ...param, name: newName });
     }
   }
 }
@@ -149,7 +149,7 @@ function handleRenameParameter(oldName: unknown, newName: unknown) {
 // Traits 操作
 function handleTraitsChange(newTraits: FunctionTrait[]) {
   const state = projectStore.getState();
-  state.setFunctionTraits(functionId.value, newTraits);
+  state.setFunctionTraits(functionName.value, newTraits);
 }
 
 // Handle 渲染回调

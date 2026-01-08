@@ -1,44 +1,15 @@
 /**
  * 项目持久化服务
  * 
- * 处理项目的保存/加载，通过 hydration/dehydration 转换存储格式和运行时格式
+ * 新文件格式：
+ * - main.mlir.json: main 函数 + 项目元数据
+ * - {name}.mlir.json: 自定义函数
  */
 
-import type { Project, StoredProject } from '../types';
-import { dehydrateProject, loadAndHydrateProject } from './projectHydration';
-import { apiUrl } from './apiClient';
-
-/**
- * Response type for save operation
- */
-export interface SaveProjectResponse {
-  status: string;
-  path: string;
-}
-
-/**
- * Response type for load operation
- * Note: API returns StoredProject format (without full operation definitions)
- */
-export interface LoadProjectResponse {
-  project: StoredProject;
-}
-
-/**
- * Response type for create operation
- */
-export interface CreateProjectResponse {
-  name: string;
-  path: string;
-  dialects: string[];
-}
-
-/**
- * Error response from API
- */
-export interface ApiError {
-  detail: string;
-}
+import type { Project, FunctionDef, StoredFunctionDef, FunctionFile } from '../types';
+import { dehydrateFunctionDef, hydrateFunctionDef } from './projectHydration';
+import { apiFetch } from './apiClient';
+import { useDialectStore } from '../stores/dialectStore';
 
 /**
  * Custom error class for project persistence errors
@@ -47,11 +18,7 @@ export class ProjectPersistenceError extends Error {
   readonly statusCode?: number;
   readonly detail?: string;
 
-  constructor(
-    message: string,
-    statusCode?: number,
-    detail?: string
-  ) {
+  constructor(message: string, statusCode?: number, detail?: string) {
     super(message);
     this.name = 'ProjectPersistenceError';
     this.statusCode = statusCode;
@@ -66,7 +33,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail = 'Unknown error';
     try {
-      const errorData = await response.json() as ApiError;
+      const errorData = await response.json();
       detail = errorData.detail || detail;
     } catch {
       // Ignore JSON parse errors
@@ -80,108 +47,61 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-/**
- * Save a project to the specified path
- * 
- * Dehydrates the project before saving to strip operation definitions.
- * 
- * Requirements: 1.2
- * 
- * @param project - The project to save (runtime format)
- * @param path - The path to save the project to (defaults to project.path)
- * @returns Promise resolving to save response
- */
-export async function saveProject(
-  project: Project,
-  path?: string
-): Promise<SaveProjectResponse> {
-  const savePath = path || project.path;
+// --- API Response Types ---
 
-  if (!savePath) {
-    throw new ProjectPersistenceError('Project path is required for saving');
-  }
-
-  // Dehydrate project to strip operation definitions before saving
-  // Update project path if different
-  const projectToSave = savePath !== project.path
-    ? { ...project, path: savePath }
-    : project;
-  const storedProject = dehydrateProject(projectToSave);
-
-  // 使用 POST + 请求体传递路径，避免 URL 编码问题
-  const response = await fetch(
-    apiUrl('/projects/save'),
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ project: storedProject }),
-    }
-  );
-
-  return handleResponse<SaveProjectResponse>(response);
+interface LoadProjectResponse {
+  projectName: string;
+  mainFunction: StoredFunctionDef;
+  functionNames: string[];
 }
 
-/**
- * Load a project from the specified path
- * 
- * Hydrates the project after loading to fill operation definitions from dialectStore.
- * 
- * Requirements: 1.3
- * 
- * @param path - The path to load the project from
- * @returns Promise resolving to the loaded project (runtime format)
- */
-export async function loadProject(path: string): Promise<Project> {
-  if (!path) {
-    throw new ProjectPersistenceError('Project path is required for loading');
-  }
-
-  // 使用 POST + 请求体传递路径，避免 URL 编码问题
-  const response = await fetch(
-    apiUrl('/projects/load'),
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ projectPath: path }),
-    }
-  );
-
-  const data = await handleResponse<LoadProjectResponse>(response);
-
-  // Hydrate project to fill operation definitions from dialectStore
-  return loadAndHydrateProject(data.project);
+interface LoadFunctionResponse {
+  function: StoredFunctionDef;
 }
 
+interface SaveFunctionResponse {
+  status: string;
+}
+
+interface CreateFunctionResponse {
+  function: StoredFunctionDef;
+}
+
+interface RenameFunctionResponse {
+  status: string;
+  updatedFiles: string[];
+}
+
+interface DeleteFunctionResponse {
+  status: string;
+  references: string[];
+}
+
+interface ListFunctionsResponse {
+  functionNames: string[];
+}
+
+interface CreateProjectResponse {
+  name: string;
+  path: string;
+}
+
+// --- Project API ---
+
 /**
- * Create a new project at the specified path
- * 
- * Requirements: 1.1
- * 
- * @param name - The name of the project
- * @param path - The path to create the project at
- * @returns Promise resolving to create response
+ * 创建新项目
  */
-export async function createProject(
-  name: string,
-  path: string
-): Promise<CreateProjectResponse> {
+export async function createProject(name: string, path: string): Promise<CreateProjectResponse> {
   if (!name) {
     throw new ProjectPersistenceError('Project name is required');
   }
-
   if (!path) {
     throw new ProjectPersistenceError('Project path is required');
   }
 
-  const response = await fetch(apiUrl('/projects/'), {
+  const response = await apiFetch('/projects/', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, path }),
   });
 
@@ -189,36 +109,243 @@ export async function createProject(
 }
 
 /**
- * Delete a project at the specified path
+ * 加载项目（加载所有函数）
  * 
- * @param path - The path of the project to delete
- * @returns Promise resolving when deletion is complete
+ * 设计决策：不使用懒加载，因为：
+ * 1. 函数数量通常不多，全部加载不会有性能问题
+ * 2. 函数列表需要显示签名信息（参数、返回值）
+ * 3. 切换函数时需要完整的函数定义
+ * 4. 拖放创建 function-call 节点需要函数签名
+ */
+export async function loadProject(path: string): Promise<{
+  project: Project;
+  functionNames: string[];
+}> {
+  if (!path) {
+    throw new ProjectPersistenceError('Project path is required for loading');
+  }
+
+  const response = await apiFetch('/projects/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath: path }),
+  });
+
+  const data = await handleResponse<LoadProjectResponse>(response);
+  const store = useDialectStore.getState();
+
+  // 收集所有需要加载的方言
+  const allDialects = new Set<string>(data.mainFunction.directDialects || []);
+
+  // 加载所有自定义函数
+  const customFunctionNames = data.functionNames.filter(name => name !== 'main');
+  const customFunctionsStored: StoredFunctionDef[] = [];
+
+  for (const funcName of customFunctionNames) {
+    const funcResponse = await apiFetch('/functions/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectPath: path, functionName: funcName }),
+    });
+    const funcData = await handleResponse<LoadFunctionResponse>(funcResponse);
+    customFunctionsStored.push(funcData.function);
+    
+    // 收集方言
+    for (const dialect of funcData.function.directDialects || []) {
+      allDialects.add(dialect);
+    }
+  }
+
+  // 一次性加载所有方言
+  if (allDialects.size > 0) {
+    await store.loadDialects(Array.from(allDialects));
+  }
+
+  // 创建函数查找器（用于 hydrate function-call 节点）
+  const functionMap = new Map<string, FunctionDef>();
+  
+  // 先 hydrate main 函数（不需要 getFunctionByName，因为 main 不能被调用）
+  const mainFunction = hydrateFunctionDef(
+    data.mainFunction,
+    store.getOperation,
+    undefined
+  );
+  functionMap.set('main', mainFunction);
+
+  // Hydrate 自定义函数
+  const customFunctions: FunctionDef[] = [];
+  for (const storedFunc of customFunctionsStored) {
+    const func = hydrateFunctionDef(
+      storedFunc,
+      store.getOperation,
+      (name) => functionMap.get(name)
+    );
+    functionMap.set(func.name, func);
+    customFunctions.push(func);
+  }
+
+  // 重新 hydrate main 函数，现在可以解析 function-call 节点
+  const mainFunctionFinal = hydrateFunctionDef(
+    data.mainFunction,
+    store.getOperation,
+    (name) => functionMap.get(name)
+  );
+
+  const project: Project = {
+    name: data.projectName,
+    path,
+    mainFunction: mainFunctionFinal,
+    customFunctions,
+  };
+
+  return {
+    project,
+    functionNames: data.functionNames,
+  };
+}
+
+/**
+ * 删除项目
  */
 export async function deleteProject(path: string): Promise<void> {
   if (!path) {
     throw new ProjectPersistenceError('Project path is required for deletion');
   }
 
-  // 使用 POST + 请求体传递路径，避免 URL 编码问题
-  const response = await fetch(
-    apiUrl('/projects/delete'),
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ projectPath: path }),
-    }
-  );
+  const response = await apiFetch('/projects/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath: path }),
+  });
 
   await handleResponse<{ status: string; path: string }>(response);
 }
 
+// --- Function API ---
+
+/**
+ * 加载单个函数
+ */
+export async function loadFunction(
+  projectPath: string,
+  functionName: string,
+  getFunctionByName?: (name: string) => FunctionDef | undefined
+): Promise<FunctionDef> {
+  const response = await apiFetch('/functions/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, functionName }),
+  });
+
+  const data = await handleResponse<LoadFunctionResponse>(response);
+  const store = useDialectStore.getState();
+
+  // 加载函数使用的方言
+  const dialects = data.function.directDialects || [];
+  if (dialects.length > 0) {
+    await store.loadDialects(dialects);
+  }
+
+  return hydrateFunctionDef(data.function, store.getOperation, getFunctionByName);
+}
+
+/**
+ * 保存单个函数
+ */
+export async function saveFunction(
+  projectPath: string,
+  func: FunctionDef,
+  projectName?: string
+): Promise<void> {
+  const storedFunc = dehydrateFunctionDef(func);
+
+  const response = await apiFetch('/functions/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectPath,
+      function: storedFunc,
+      projectName,  // 仅保存 main 时需要
+    }),
+  });
+
+  await handleResponse<SaveFunctionResponse>(response);
+}
+
+/**
+ * 创建新函数
+ */
+export async function createFunction(
+  projectPath: string,
+  functionName: string
+): Promise<FunctionDef> {
+  const response = await apiFetch('/functions/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, functionName }),
+  });
+
+  const data = await handleResponse<CreateFunctionResponse>(response);
+  const store = useDialectStore.getState();
+
+  return hydrateFunctionDef(data.function, store.getOperation);
+}
+
+/**
+ * 重命名函数
+ */
+export async function renameFunction(
+  projectPath: string,
+  oldName: string,
+  newName: string
+): Promise<{ updatedFiles: string[] }> {
+  const response = await apiFetch('/functions/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, oldName, newName }),
+  });
+
+  const data = await handleResponse<RenameFunctionResponse>(response);
+  return { updatedFiles: data.updatedFiles };
+}
+
+/**
+ * 删除函数
+ */
+export async function deleteFunction(
+  projectPath: string,
+  functionName: string,
+  force: boolean = false
+): Promise<{ deleted: boolean; references: string[] }> {
+  const response = await apiFetch('/functions/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, functionName, force }),
+  });
+
+  const data = await handleResponse<DeleteFunctionResponse>(response);
+  return {
+    deleted: data.status === 'deleted',
+    references: data.references,
+  };
+}
+
+/**
+ * 列出项目中的所有函数名
+ */
+export async function listFunctions(projectPath: string): Promise<string[]> {
+  const response = await apiFetch('/functions/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath }),
+  });
+
+  const data = await handleResponse<ListFunctionsResponse>(response);
+  return data.functionNames;
+}
+
 /**
  * Check if a project exists at the specified path
- * 
- * @param path - The path to check
- * @returns Promise resolving to true if project exists
  */
 export async function projectExists(path: string): Promise<boolean> {
   try {
@@ -233,35 +360,10 @@ export async function projectExists(path: string): Promise<boolean> {
 }
 
 /**
- * Serialize a project to JSON string (stored format)
- * 
- * Useful for local storage or clipboard operations.
- * Dehydrates the project to strip operation definitions.
- * 
- * @param project - The project to serialize (runtime format)
- * @returns JSON string representation of the project (stored format)
+ * Serialize a function to JSON string (for clipboard/export)
  */
-export function serializeProject(project: Project): string {
-  const storedProject = dehydrateProject(project);
-  return JSON.stringify(storedProject, null, 2);
-}
-
-/**
- * Deserialize a project from JSON string
- * 
- * Note: This returns a StoredProject. Use loadAndHydrateProject to get runtime format.
- * 
- * @param json - The JSON string to deserialize
- * @returns The deserialized project (stored format)
- */
-export function deserializeProject(json: string): StoredProject {
-  try {
-    return JSON.parse(json) as StoredProject;
-  } catch (error) {
-    throw new ProjectPersistenceError(
-      'Failed to parse project JSON',
-      undefined,
-      error instanceof Error ? error.message : 'Unknown parse error'
-    );
-  }
+export function serializeFunction(func: FunctionDef): string {
+  const stored = dehydrateFunctionDef(func);
+  const file: FunctionFile = { function: stored };
+  return JSON.stringify(file, null, 2);
 }
